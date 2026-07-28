@@ -1,10 +1,10 @@
-// Garra Delivery - Core Application Logic
+// Dahora Expresso - Core Application Logic
 
 mapboxgl.accessToken = window.MAPBOX_ACCESS_TOKEN || ['pk', 'eyJ1Ijoic25la3giLCJhIjoiY21xc3g5eXEzMGQweTJzb2xoemg1YzQwZCJ9', 'SyNFqkGgDnkuvY2wRpFDhg'].join('.');
 
 // Supabase Configuration
-const supabaseUrl = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.url : 'https://faowxiyxjfogkoynsohj.supabase.co';
-const supabaseKey = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.key : 'sb_publishable_UFy_HB0JaKUVCvHUlHSQ0Q_2HFOk4_V';
+const supabaseUrl = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.url : 'https://fajkqyapnycnnumpdwrr.supabase.co';
+const supabaseKey = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.key : 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a';
 let supabaseClient = null;
 let maxSimultaneousDeliveries = 1;
 if (window.supabase) {
@@ -19,11 +19,9 @@ const mockData = {
   fleet: [],
   clientHistory: [],
   credentials: {
-    owner: { email: 'admin@garradelivery.com.br', pass: 'admin123', name: 'Gustavo Souza', role: 'Dono & CEO', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=256&auto=format&fit=crop' },
-    client: { email: 'parceiro@garradelivery.com.br', pass: 'parceiro123', name: 'Parceiro Garra', role: 'Área do parceiro', commerceName: 'Parceiro Garra', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
-    order: { email: 'pedido@garradelivery.com.br', pass: 'pedido123', name: 'Operação do Parceiro', role: 'Solicitação de entrega', commerceName: 'Parceiro Garra', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
-    client_bora: { email: 'gerente@boraacai.com.br', pass: 'acai123', name: 'Gerente Bora Açaí', role: 'Gerente - Bora Açaí', commerceName: 'Bora Açaí', avatar: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=256&auto=format&fit=crop' },
-    order_bora: { email: 'pedido@boraacai.com.br', pass: 'acai123', name: 'Pedido Bora Açaí', role: 'Gerente - Bora Açaí', commerceName: 'Bora Açaí', avatar: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=256&auto=format&fit=crop' }
+    owner: { email: 'admin@dahoraexpresso.com.br', pass: 'admin123', name: 'Gustavo Souza', role: 'Dono & CEO', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=256&auto=format&fit=crop' },
+    client: { email: 'gerente@lanchonetedahora.com.br', pass: 'teste123', name: 'Gerente Lanchonete Dahora', role: 'Área do parceiro', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
+    order: { email: 'pedido@lanchonetedahora.com.br', pass: 'teste123', name: 'Pedido Lanchonete Dahora', role: 'Solicitação de entrega', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' }
   },
   pendingDeliveries: [],
   riderConsumables: [],
@@ -40,46 +38,30 @@ let clientTeleViewMode = 'list';
 async function fetchCommerces() {
   if (!supabaseClient) {
     commercesList = [
-      { id: '1', nome: 'Lancheria Garra' },
+      { id: '1', nome: 'Lancheria Dahora' },
       { id: '2', nome: 'Pizzaria da Nonna' },
       { id: '3', nome: 'Dogão Express' },
-      { id: '4', nome: 'Bora Açaí' }
+      { id: '4', nome: 'Lanchonete Dahora' }
     ];
     return;
   }
   try {
     const { data, error } = await supabaseClient
-      .from('lojas')
-      .select('*')
-      .order('nome', { ascending: true });
-    if (error) throw error;
-    commercesList = data || [];
+      .from('commercial_clients')
+      .select('id, establishment_name, client_code, lifecycle_status')
+      .order('establishment_name', { ascending: true });
 
-    if (commercesList.length === 0) {
-      const defaultNames = ['Lancheria Garra', 'Pizzaria da Nonna', 'Dogão Express', 'Bora Açaí'];
-      const inserts = defaultNames.map(nome => ({ nome }));
-      const { data: inserted, error: insertError } = await supabaseClient
-        .from('lojas')
-        .insert(inserts)
-        .select();
-      if (!insertError && inserted) {
-        commercesList = inserted;
-      }
-    } else {
-      const hasBora = commercesList.some(c => c.nome.toLowerCase() === 'bora açai' || c.nome.toLowerCase() === 'bora açaí');
-      if (!hasBora) {
-        const { data: inserted, error: insertError } = await supabaseClient
-          .from('lojas')
-          .insert([{ nome: 'Bora Açaí' }])
-          .select();
-        if (!insertError && inserted && inserted.length > 0) {
-          commercesList.push(inserted[0]);
-          commercesList.sort((a, b) => a.nome.localeCompare(b.nome));
-        }
-      }
+    if (error) {
+      console.warn("Aviso ao buscar commercial_clients:", error);
+      return;
     }
+
+    commercesList = (data || []).map(c => ({
+      id: c.id,
+      nome: c.establishment_name || c.client_code || 'Cliente'
+    }));
   } catch (err) {
-    console.error("Error fetching commerces/lojas:", err);
+    console.error("Error fetching commercial_clients:", err);
   }
 }
 
@@ -190,67 +172,38 @@ function getFixedPriceFormatted(address) {
 
 async function fetchClientHistory() {
   await fetchCommerces();
-  const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Parceiro Garra';
-
   if (!supabaseClient) return;
 
   try {
-    const [pendingRes, historyRes] = await Promise.all([
-      supabaseClient
-        .from('pending_deliveries')
-        .select('*')
-        .eq('client', currentCommerce),
-      supabaseClient
-        .from('client_history')
-        .select('*')
-        .eq('client', currentCommerce)
-    ]);
+    const { data, error } = await supabaseClient
+      .from('teles')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    if (pendingRes.error) throw pendingRes.error;
-    if (historyRes.error) throw historyRes.error;
+    if (error) {
+      console.warn("Aviso ao buscar teles em fetchClientHistory:", error);
+      return;
+    }
 
-    // 1. Process pending items
-    const pendingItems = pendingRes.data.map(item => ({
-      id: escapeHtml(String(item.id)),
-      client: escapeHtml(item.client || 'Parceiro Garra'),
+    mockData.clientHistory = (data || []).map(item => ({
+      id: escapeHtml(String(item.tele_code || item.id)),
+      raw_id: item.id,
+      client_id: item.client_id,
+      client: escapeHtml(resolveClientDisplayName(item)),
       destName: escapeHtml(item.dest_name || 'Cliente'),
       address: escapeHtml(item.address),
       rider: escapeHtml(item.rider || 'Aguardando Despacho'),
-      dist: escapeHtml(item.dist || '—'),
-      price: formatMoneyBR(getFixedPriceByAddress(item.address)),
-      date: 'Hoje, Agora',
-      status: 'Aguardando Despacho',
-      statusClass: 'status-warning',
+      dist: '—',
+      price: formatMoneyBR(Number(item.delivery_charge || item.valor || 15)),
+      date: item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : 'Hoje',
+      status: escapeHtml(item.status),
+      statusClass: item.status === 'concluida' ? 'status-success' : (item.status === 'cancelada' ? 'status-danger' : 'status-warning'),
       payment_status: 'Pendente',
       created_at: item.created_at,
       total_order_amount: item.total_order_amount || null
     }));
-
-    // 2. Process history items
-    const historyItems = historyRes.data.map(item => ({
-      id: escapeHtml(String(item.id)),
-      client: escapeHtml(item.client || 'Parceiro Garra'),
-      destName: escapeHtml(item.dest_name || 'Cliente'),
-      address: escapeHtml(item.address),
-      rider: escapeHtml(item.rider || 'Sem entregador'),
-      dist: escapeHtml(item.dist ? item.dist.split('|')[0] : '—'),
-      price: formatMoneyBR(getFixedPriceByAddress(item.address)),
-      date: escapeHtml(item.date),
-      status: escapeHtml(item.status),
-      statusClass: escapeHtml(item.status_class || (item.status === 'Entregue' || item.status === 'Concluído' ? 'status-success' : (item.status === 'Cancelado' ? 'status-danger' : 'status-progress'))),
-      payment_status: escapeHtml(item.payment_status || 'Pendente'),
-      created_at: item.created_at,
-      total_order_amount: item.total_order_amount || null
-    }));
-
-    // Merge and sort descending by created_at or id
-    mockData.clientHistory = [...pendingItems, ...historyItems].sort((a, b) => {
-      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-    });
-
   } catch (err) {
-    console.error("Error fetching client history from Supabase:", err);
+    console.error("Error fetching teles history from Supabase:", err);
   }
 }
 
@@ -287,7 +240,7 @@ async function searchActiveRidersForExtract() {
 
   try {
     const { data, error } = await supabaseClient
-      .from('client_history')
+      .from('teles')
       .select('rider, created_at')
       .gte('created_at', start.toISOString())
       .lte('created_at', end.toISOString());
@@ -355,7 +308,7 @@ async function generateRiderExtract() {
 
   try {
     const { data, error } = await supabaseClient
-      .from('client_history')
+      .from('teles')
       .select('*')
       .eq('rider', riderName)
       .gte('created_at', start.toISOString())
@@ -383,11 +336,6 @@ async function generateRiderExtract() {
       totalPayout += netPayout;
 
       let displayId = item.id;
-      if (item.id.toLowerCase().includes('99food')) {
-        displayId = item.id.replace(/99Food\s*#?/gi, '');
-      } else if (item.id.toLowerCase().includes('ifood')) {
-        displayId = item.id.replace(/iFood\s*#?/gi, '');
-      }
 
       const tr = document.createElement('tr');
       tr.className = 'ops-table-row';
@@ -432,19 +380,25 @@ async function fetchPendingDeliveries() {
   if (!supabaseClient) return;
   try {
     const { data, error } = await supabaseClient
-      .from('pending_deliveries')
+      .from('teles')
       .select('*')
-      .order('id', { ascending: true });
-    if (error) throw error;
-    mockData.pendingDeliveries = data.map(item => ({
-      id: escapeHtml(String(item.id)),
-      client: escapeHtml(item.client),
-      destName: escapeHtml(item.dest_name),
-      address: escapeHtml(item.address),
-      dist: escapeHtml(item.dist),
-      price: getFixedPriceFormatted(item.address),
-      payment: escapeHtml(item.payment),
-      cargo: escapeHtml(item.cargo),
+      .in('status', ['solicitada', 'solicitado', 'criada'])
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn("Aviso ao buscar teles pendentes:", error.message);
+      return;
+    }
+
+    mockData.pendingDeliveries = (data || []).map(item => ({
+      id: escapeHtml(String(item.id || item.tele_code || '')),
+      client: escapeHtml(item.client_name || item.client || 'Cliente Comercial'),
+      destName: escapeHtml(item.recipient_name || item.dest_name || 'Destinatário'),
+      address: escapeHtml(item.delivery_address || item.address || ''),
+      dist: item.dist || '3,5 km',
+      price: item.delivery_charge ? `R$ ${parseFloat(item.delivery_charge).toFixed(2).replace('.', ',')}` : getFixedPriceFormatted(item.delivery_address || item.address),
+      payment: escapeHtml(item.payment_method || item.payment || 'Faturado'),
+      cargo: escapeHtml(item.cargo || 'Pacote'),
       pickup_lat: item.pickup_lat,
       pickup_lng: item.pickup_lng,
       dest_lat: item.dest_lat,
@@ -453,7 +407,7 @@ async function fetchPendingDeliveries() {
       total_order_amount: item.total_order_amount || null
     }));
   } catch (err) {
-    console.error("Error fetching pending deliveries from Supabase:", err);
+    console.warn("Aviso ao buscar teles pendentes:", err.message);
   }
 }
 
@@ -461,24 +415,29 @@ async function fetchRiderConsumables() {
   if (!supabaseClient) return;
   try {
     const { data, error } = await supabaseClient
-      .from('rider_consumables')
+      .from('rider_consumable_purchases')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) throw error;
-    mockData.riderConsumables = data.map(item => ({
+
+    if (error) {
+      console.warn("Aviso ao buscar rider_consumable_purchases:", error.message);
+      return;
+    }
+
+    mockData.riderConsumables = (data || []).map(item => ({
       id: item.id,
-      rider_id: escapeHtml(String(item.rider_id)),
-      rider_name: escapeHtml(item.rider_name),
+      rider_id: escapeHtml(String(item.rider_id || item.motoboy_id || '')),
+      rider_name: escapeHtml(item.rider_name || item.motoboy_name || 'Motoboy'),
       categoria: escapeHtml(item.categoria || 'Consumível'),
-      item_type: escapeHtml(item.item_type),
+      item_type: escapeHtml(item.item_type || item.item_name || 'Item'),
       quantidade: parseInt(item.quantidade || 1),
-      valor_unitario: parseFloat(item.valor_unitario || 0),
-      amount: parseFloat(item.amount),
+      valor_unitario: parseFloat(item.valor_unitario || item.amount || 0),
+      amount: parseFloat(item.amount || 0),
       observacao: escapeHtml(item.observacao || ''),
       created_at: item.created_at
     }));
   } catch (err) {
-    console.error("Error fetching rider consumables from Supabase:", err);
+    console.warn("Aviso ao buscar rider_consumable_purchases:", err.message);
   }
 }
 
@@ -486,26 +445,30 @@ async function fetchRiderCredits() {
   if (!supabaseClient) return;
   try {
     const { data, error } = await supabaseClient
-      .from('rider_credits')
+      .from('rider_credits_ledger')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) throw error;
-    mockData.riderCredits = data.map(item => ({
+
+    if (error) {
+      console.warn("Aviso ao buscar rider_credits_ledger:", error.message);
+      return;
+    }
+
+    mockData.riderCredits = (data || []).map(item => ({
       id: item.id,
-      rider_id: escapeHtml(String(item.rider_id)),
-      amount: parseFloat(item.amount),
-      description: escapeHtml(item.description),
-      target_date: item.target_date,
+      rider_id: escapeHtml(String(item.rider_id || item.motoboy_id || '')),
+      amount: parseFloat(item.amount || 0),
+      description: escapeHtml(item.description || item.tipo || ''),
+      target_date: item.target_date || item.created_at,
       created_at: item.created_at
     }));
   } catch (err) {
-    console.error("Error fetching rider credits from Supabase:", err);
+    console.warn("Aviso ao buscar rider_credits_ledger:", err.message);
   }
 }
 
 
-// Initialize App
-document.addEventListener('DOMContentLoaded', async () => {
+const initAppHandler = async () => {
   // Register Service Worker for PWA (com auto-atualização para nunca prender versão velha em cache)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
@@ -533,7 +496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Hide loader after a simulated 1.2s delay for premium entry feel
   setTimeout(() => {
     const loader = document.getElementById('loader');
-    loader.classList.add('hidden');
+    if (loader) loader.classList.add('hidden');
   }, 1200);
 
   // Try to restore previous logged-in session, otherwise show the login card
@@ -550,13 +513,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Set Date display in header
   const options = { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' };
-  document.getElementById('current-date-span').innerText = new Date().toLocaleDateString('pt-BR', options);
+  const currentDateEl = document.getElementById('current-date-span');
+  if (currentDateEl) currentDateEl.innerText = new Date().toLocaleDateString('pt-BR', options);
 
   // Initialize address suggestions autocomplete for manual tele request
   setupAddressGeocodingListener();
 
   // Initialize lucide icons
-  lucide.createIcons();
+  if (window.lucide) lucide.createIcons();
 
   // Eye toggle listener for password visibility
   const passwordToggleBtn = document.getElementById('toggle-password');
@@ -582,10 +546,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (paymentSelect) {
     paymentSelect.addEventListener('change', (e) => {
       const changeGroup = document.getElementById('change-group');
-      if (e.target.value === 'dinheiro') {
-        changeGroup.style.display = 'flex';
-      } else {
-        changeGroup.style.display = 'none';
+      if (changeGroup) {
+        if (e.target.value === 'dinheiro') {
+          changeGroup.style.display = 'flex';
+        } else {
+          changeGroup.style.display = 'none';
+        }
       }
     });
   }
@@ -603,13 +569,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   function openMobileSidebar() {
-    sidebar.classList.add('open');
-    overlay.classList.add('active');
+    if (sidebar) sidebar.classList.add('open');
+    if (overlay) overlay.classList.add('active');
   }
   
   function closeMobileSidebar() {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('active');
+    if (sidebar) sidebar.classList.remove('open');
+    if (overlay) overlay.classList.remove('active');
   }
   
   if (toggleBtn) {
@@ -641,7 +607,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
-});
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAppHandler);
+} else {
+  initAppHandler();
+}
 
 // Profile switching inside Landing Login Card
 function switchLoginTab(profile) {
@@ -665,14 +637,14 @@ function switchLoginTab(profile) {
     usernameLabel.innerText = 'Login do Parceiro';
     usernameInput.type = 'text';
     usernameInput.value = '';
-    usernameInput.placeholder = 'boraacai';
+    usernameInput.placeholder = 'lanchonetedahora';
     passwordInput.value = '';
     passwordGroup.style.display = 'flex';
   } else if (profile.startsWith('client')) {
     usernameLabel.innerText = 'Login do Parceiro';
     usernameInput.type = 'text';
     usernameInput.value = '';
-    usernameInput.placeholder = 'boraacai';
+    usernameInput.placeholder = 'lanchonetedahora';
     passwordInput.value = '';
     passwordGroup.style.display = 'flex';
   } else {
@@ -709,8 +681,8 @@ async function handleLogin(event) {
       return;
     }
   } else if (activeTab === 'client') {
-    if ((loginInput === 'boraaçai' || loginInput === 'boraacai') && passwordInput === 'cliente123') {
-      mockData.activeProfile = 'client_bora';
+    if (loginInput === 'lanchonetedahora' && passwordInput === 'teste123') {
+      mockData.activeProfile = 'client';
     } else {
       if (loader) loader.classList.add('hidden');
       alert('Usuário ou senha incorretos para o perfil selecionado.');
@@ -787,7 +759,7 @@ async function loginSuccess() {
   if (profile === 'owner') {
     document.getElementById('display-role').innerText = 'Painel do Dono';
     document.getElementById('nav-owner-group').classList.remove('hidden');
-    document.getElementById('dashboard-title').innerText = 'Painel de Logística Garra';
+    document.getElementById('dashboard-title').innerText = 'Painel de Logística Dahora Expresso';
     document.getElementById('dashboard-subtitle').innerText = 'Acompanhe a atividade em tempo real de toda a empresa.';
     
     // Fetch initial owner data from Supabase
@@ -796,10 +768,10 @@ async function loginSuccess() {
     await fetchRiderConsumables();
     await fetchClientHistory();
 
-    // Switch to saved tab or fallback to owner-overview
+    // Switch to saved tab or fallback to owner-fleet-map
     const savedTab = localStorage.getItem('activeDashboardTab');
-    const isOwnerTab = savedTab && (savedTab.startsWith('owner-') || savedTab === 'order-tracking' || savedTab.startsWith('client-') === false);
-    const targetTab = isOwnerTab ? savedTab : 'owner-overview';
+    const isOwnerTab = savedTab && savedTab !== 'owner-overview' && (savedTab.startsWith('owner-') || savedTab === 'order-tracking' || savedTab.startsWith('client-') === false);
+    const targetTab = isOwnerTab ? savedTab : 'owner-fleet-map';
     switchDashboardTab(targetTab);
     
     // Subscribe to support realtime notifications immediately on login
@@ -809,8 +781,7 @@ async function loginSuccess() {
     // Render Fleet table
     renderFleetTable();
 
-    // Verify 99Food integration connection status
-    verificarIntegracao99Food();
+
   } else if (profile.startsWith('client') || profile.startsWith('order')) {
     document.getElementById('display-role').innerText = 'Painel Cliente';
     document.getElementById('nav-client-group').classList.remove('hidden');
@@ -983,25 +954,18 @@ async function switchDashboardTab(targetTab) {
     populateCreditRiderSearchDropdown();
     renderRiderCredits();
   } else if (targetTab === 'owner-rider-extract') {
-    const now = new Date();
-    const firstDay = new Date(now.setDate(now.getDate() - now.getDay())); // Sunday
-    const lastDay = new Date(now.setDate(now.getDate() - now.getDay() + 6)); // Saturday
-    
-    const startInput = document.getElementById('extract-start-date');
-    const endInput = document.getElementById('extract-end-date');
-    if (startInput && !startInput.value) {
-      startInput.value = firstDay.toISOString().split('T')[0];
-    }
-    if (endInput && !endInput.value) {
-      endInput.value = lastDay.toISOString().split('T')[0];
-    }
+    const accordion = document.getElementById('extratos-accordion');
+    if (accordion) accordion.classList.add('open');
+    await initRiderExtract();
+  } else if (targetTab === 'owner-client-extract') {
+    const accordion = document.getElementById('extratos-accordion');
+    if (accordion) accordion.classList.add('open');
+    await initClientExtract();
   } else if (targetTab === 'owner-settings') {
     await fetchFleet();
     renderRiderSettings();
     renderRiderLimits();
-  } else if (targetTab === 'owner-integracoes') {
-    if (window.lucide) lucide.createIcons();
-    verificarIntegracao99Food();
+
   } else if (targetTab === 'client-overview') {
     const clientInfoPanels = document.getElementById('client-info-panels');
     if (clientInfoPanels) {
@@ -1061,160 +1025,7 @@ async function switchDashboardTab(targetTab) {
   }
 }
 
-/* ============================================================
-   INTEGRAÇÕES (iFood / 99Food) — chamam as Edge Functions
-   ============================================================ */
-const FUNCTIONS_BASE = `${supabaseUrl}/functions/v1`;
 
-// Chama uma Edge Function. Só manda Authorization (anon) + Content-Type.
-// Tenta de novo algumas vezes por causa do "cold start" (primeira chamada demora).
-async function invokeFn(nome, body = {}, tentativas = 3) {
-  let ultimoErro = null;
-  for (let i = 0; i < tentativas; i++) {
-    try {
-      const resp = await fetch(`${FUNCTIONS_BASE}/${nome}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const txt = await resp.text();
-      let data = {};
-      try { data = txt ? JSON.parse(txt) : {}; } catch (_) { data = { raw: txt }; }
-      if (!resp.ok || data.ok === false) {
-        throw new Error(data.erro || data.raw || `HTTP ${resp.status}`);
-      }
-      return data;
-    } catch (err) {
-      ultimoErro = err;
-      // espera curtinha antes de tentar de novo (cold start)
-      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 1200));
-    }
-  }
-  throw ultimoErro || new Error('Falha na requisição');
-}
-
-async function gerarLink99food() {
-  const btn = document.getElementById('btn-99food-gerar');
-  const erroEl = document.getElementById('99food-erro');
-  const wrapper = document.getElementById('99food-link-wrapper');
-  const input = document.getElementById('99food-link-input');
-  if (erroEl) { erroEl.classList.add('hidden'); erroEl.innerText = ''; }
-  if (btn) { btn.disabled = true; btn.querySelector('span').innerText = 'Gerando…'; }
-  try {
-    const r = await invokeFn('food99-vincular', {});
-    if (!r.url) throw new Error('O 99Food não retornou um link. Verifique o app no portal.');
-    if (input) input.value = r.url;
-    if (wrapper) wrapper.classList.remove('hidden');
-  } catch (err) {
-    if (erroEl) { erroEl.classList.remove('hidden'); erroEl.innerText = 'Erro: ' + (err.message || err); }
-  } finally {
-    if (btn) { btn.disabled = false; btn.querySelector('span').innerText = 'Gerar link de conexão'; }
-  }
-}
-
-function copiarLink99food() {
-  const input = document.getElementById('99food-link-input');
-  const btn = document.getElementById('btn-99food-copiar');
-  if (!input || !input.value) return;
-  navigator.clipboard.writeText(input.value).then(() => {
-    if (btn) {
-      btn.innerText = 'Copiado!';
-      setTimeout(() => { btn.innerText = 'Copiar'; }, 2000);
-    }
-  });
-}
-
-async function configurar99food() {
-  const btn = document.getElementById('btn-99food-config');
-  const msg = document.getElementById('99food-setup-msg');
-  const statusBadge = document.getElementById('status-99food');
-  if (msg) { msg.classList.add('hidden'); msg.innerText = ''; }
-  if (btn) { btn.disabled = true; btn.querySelector('span').innerText = 'Configurando…'; }
-  try {
-    const r = await invokeFn('food99-setup', {});
-    const configuracoes99food = r.configuradas || [];
-    const errosSetup99food = configuracoes99food.filter(c => c.erro);
-    const configuradas = configuracoes99food.filter(c => c.online && c.confirm && !c.erro).length;
-    if (msg) {
-      msg.classList.remove('hidden');
-      if (!r.total) {
-        msg.innerText = 'Nenhuma loja vinculada ainda. Envie o link e peça pra loja autorizar.';
-      } else if (errosSetup99food.length) {
-        msg.innerText = errosSetup99food.map(c => c.erro).join('\n');
-        if (statusBadge) {
-          statusBadge.innerText = 'Ação necessária';
-          statusBadge.style.background = 'rgba(245, 158, 11, 0.12)';
-          statusBadge.style.color = '#f59e0b';
-        }
-      } else {
-        msg.innerText = `Pronto! ${configuradas} loja(s) online com confirmação pelo sistema.`;
-        if (statusBadge && configuradas > 0) {
-          statusBadge.innerText = 'Conectada';
-          statusBadge.style.background = 'rgba(16, 185, 129, 0.12)';
-          statusBadge.style.color = '#10b981';
-        }
-      }
-    }
-  } catch (err) {
-    if (msg) { msg.classList.remove('hidden'); msg.innerText = 'Erro: ' + (err.message || err); }
-  } finally {
-    if (btn) { btn.disabled = false; btn.querySelector('span').innerText = 'Configurar loja vinculada'; }
-  }
-}
-
-async function verificarIntegracao99Food() {
-  try {
-    // Attempt 1: Query food99_tokens
-    const { data: tokenData, error: tokenError } = await supabaseClient
-      .from('food99_tokens')
-      .select('app_shop_id')
-      .limit(1);
-
-    const statusBadge = document.getElementById('status-99food');
-    const msg = document.getElementById('99food-setup-msg');
-
-    let isConnected = false;
-
-    if (!tokenError && tokenData && tokenData.length > 0) {
-      isConnected = true;
-    } else {
-      // Fallback: Check if there is a store marked 'conectada' in the lojas table
-      const { data: lojasData, error: lojasError } = await supabaseClient
-        .from('lojas')
-        .select('food99_app_shop_id')
-        .eq('status', 'conectada')
-        .not('food99_app_shop_id', 'is', null)
-        .limit(1);
-        
-      if (!lojasError && lojasData && lojasData.length > 0) {
-        isConnected = true;
-      }
-    }
-
-    if (isConnected) {
-      if (statusBadge) {
-        statusBadge.innerText = 'Conectada';
-        statusBadge.style.background = 'rgba(16, 185, 129, 0.12)';
-        statusBadge.style.color = '#10b981';
-      }
-      if (msg) {
-        msg.classList.remove('hidden');
-        msg.innerText = 'Pronto! Integração com 99Food ativa no servidor remoto.';
-      }
-    } else {
-      if (statusBadge) {
-        statusBadge.innerText = 'Ação necessária';
-        statusBadge.style.background = 'rgba(245, 158, 11, 0.12)';
-        statusBadge.style.color = '#f59e0b';
-      }
-    }
-  } catch (err) {
-    console.error("Erro ao verificar integração do 99Food:", err);
-  }
-}
 
 async function loadTelesManagement() {
   setTelesLoadingState();
@@ -1379,17 +1190,6 @@ function getCurrentWeekBounds() {
 }
 
 function formatOrderIdForDisplay(id, payment, client) {
-  const is99 = (payment || '').toLowerCase().includes('99food') || (client || '').toLowerCase().includes('99food') || (id || '').toLowerCase().includes('99food');
-  
-  if (is99) {
-    const match = String(id || '').match(/99Food\s*#\d+/i);
-    if (match) {
-      return match[0];
-    }
-    const last4 = String(id || '').replace(/[^\d]/g, '').slice(-4);
-    return `99Food #${last4}`;
-  }
-  
   return id || '';
 }
 
@@ -1911,7 +1711,7 @@ function renderClientHistoryTable() {
 
   tbody.innerHTML = '';
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Parceiro Garra';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
 
   const filteredHistory = mockData.clientHistory.filter(order => {
     return order.client === currentCommerce;
@@ -1924,18 +1724,8 @@ function renderClientHistoryTable() {
 
     // Composite ID Shield
     let displayId = order.id;
-    let originLabel = 'Manual';
+    let originLabel = 'Painel do Cliente';
     let originBadgeClass = 'badge-soft';
-
-    if (order.id.toLowerCase().includes('99food') || order.client === '99Food') {
-      displayId = order.id.replace(/99Food\s*#?/gi, '');
-      originLabel = '99Food';
-      originBadgeClass = 'badge-warning';
-    } else if (order.id.toLowerCase().includes('ifood') || order.client === 'iFood') {
-      displayId = order.id.replace(/iFood\s*#?/gi, '');
-      originLabel = 'iFood';
-      originBadgeClass = 'badge-danger';
-    }
 
     const statusHtml = `
       <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
@@ -1980,13 +1770,13 @@ function renderClientHistoryTable() {
   if (window.lucide) lucide.createIcons();
 }
 
-// Generate next sequential TELE ID (#TELE-0001, #TELE-0002, ...)
+// Generate next sequential TELE ID (#TEL-100001, #TEL-100002, ...)
 async function getNextTeleId() {
   let maxNum = 0;
   if (supabaseClient) {
     const [{ data: pending }, { data: history }] = await Promise.all([
-      supabaseClient.from('pending_deliveries').select('id'),
-      supabaseClient.from('client_history').select('id')
+      supabaseClient.from('teles').select('id'),
+      supabaseClient.from('teles').select('id')
     ]);
     [...(pending || []), ...(history || [])].forEach(item => {
       const match = (item.id || '').match(/#TELE-(\d+)/);
@@ -2072,7 +1862,7 @@ async function submitDeliveryRequest(event, type = 'client') {
   const cargoType = document.getElementById(`${type}-cargo-type`).value;
   const payMethod = document.getElementById(`${type}-payment-method`).value;
   const notes = document.getElementById(`${type}-order-notes`).value;
-  const clientName = document.getElementById(`${type}-delivery-client`)?.value || 'Parceiro Garra';
+  const clientName = document.getElementById(`${type}-delivery-client`)?.value || 'Cliente não vinculado';
   const destName = document.getElementById(`${type}-delivery-dest-name`)?.value || 'Cliente informado';
 
   if (!window.lastEstimate) return;
@@ -2138,10 +1928,10 @@ async function submitDeliveryRequest(event, type = 'client') {
     dest_lng: destLng
   };
 
-  // Insert to Supabase pending_deliveries table
+  // Insert to Supabase teles table
   if (supabaseClient) {
     const { error } = await supabaseClient
-      .from('pending_deliveries')
+      .from('teles')
       .insert([newDelivery]);
     if (error) {
       console.error("Error inserting delivery to Supabase:", error);
@@ -2429,7 +2219,7 @@ function initOwnerFinancialChart() {
   ownerFinancialChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: ['Repasse Motoboys', 'Comissão Garra', 'Seguros / Taxas'],
+      labels: ['Repasse Motoboys', 'Comissão Plataforma', 'Seguros / Taxas'],
       datasets: [{
         data: [71, 24, 5],
         backgroundColor: ['#ffb700', '#f97316', '#10b981'],
@@ -2807,11 +2597,11 @@ window.openRiderMapPopup = function(riderId) {
 
 window.openBaseMapPopup = function() {
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Parceiro Garra';
+  const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Lanchonete Dahora';
   
   const commerceAddresses = {
-    'Parceiro Garra': 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS',
-    'Bora Açaí': 'Rua Flores da Cunha, 450 - Centro, Sapucaia do Sul - RS'
+    'Lanchonete Dahora': 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS',
+    'Lanchonete Dahora': 'Rua Flores da Cunha, 450 - Centro, Sapucaia do Sul - RS'
   };
   const address = commerceAddresses[currentCommerce] || 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS';
 
@@ -2993,11 +2783,11 @@ window.openClientRiderMapPopup = function(riderId) {
 
 window.openClientBaseMapPopup = function() {
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Parceiro Garra';
+  const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Lanchonete Dahora';
   
   const commerceAddresses = {
-    'Parceiro Garra': 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS',
-    'Bora Açaí': 'Rua Flores da Cunha, 450 - Centro, Sapucaia do Sul - RS'
+    'Lanchonete Dahora': 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS',
+    'Lanchonete Dahora': 'Rua Flores da Cunha, 450 - Centro, Sapucaia do Sul - RS'
   };
   const address = commerceAddresses[currentCommerce] || 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS';
 
@@ -3087,7 +2877,7 @@ window.saveEditPrice = async function(itemId, itemType) {
     // 1. Verify eligibility (must not be canceled or completed)
     if (itemType === 'active') {
       const { data, error: checkError } = await supabaseClient
-        .from('client_history')
+        .from('teles')
         .select('status')
         .eq('id', itemId)
         .single();
@@ -3106,7 +2896,7 @@ window.saveEditPrice = async function(itemId, itemType) {
       }
     } else if (itemType === 'pending') {
       const { data, error: checkError } = await supabaseClient
-        .from('pending_deliveries')
+        .from('teles')
         .select('id')
         .eq('id', itemId);
         
@@ -3120,7 +2910,7 @@ window.saveEditPrice = async function(itemId, itemType) {
     }
 
     // 2. Perform DB Update
-    const table = itemType === 'pending' ? 'pending_deliveries' : 'client_history';
+    const table = itemType === 'pending' ? 'teles' : 'teles';
     const { error: updateError } = await supabaseClient
       .from(table)
       .update({ price: priceFormatted })
@@ -3206,7 +2996,7 @@ window.renderTelesUnified = function() {
     return {
       id: d.id,
       type: 'pending',
-      client: d.client || 'Parceiro Garra',
+      client: d.client || 'Cliente não vinculado',
       destName: d.destName,
       address: d.address,
       dest_lat: d.dest_lat,
@@ -3237,7 +3027,7 @@ window.renderTelesUnified = function() {
     return {
       id: o.id,
       type: type,
-      client: o.client || 'Parceiro Garra',
+      client: o.client || 'Cliente não vinculado',
       destName: o.destName,
       address: o.address,
       dest_lat: o.dest_lat,
@@ -3612,7 +3402,7 @@ window.handleTableReassignRider = async function(deliveryId, oldRiderName, newRi
 
       // 3. Update history
       await supabaseClient
-        .from('client_history')
+        .from('teles')
         .update({ rider: newRider.name })
         .eq('id', deliveryId);
     }
@@ -3628,15 +3418,15 @@ window.handleCancelTeleClick = async function(deliveryId, riderName, type) {
   if (confirm(`Deseja realmente cancelar a tele ${deliveryId}?`)) {
     if (supabaseClient) {
       if (type === 'pending') {
-        // Delete ONLY from pending_deliveries
+        // Delete ONLY from teles
         await supabaseClient
-          .from('pending_deliveries')
+          .from('teles')
           .delete()
           .eq('id', deliveryId);
       } else if (type === 'active') {
-        // Delete ONLY from client_history
+        // Delete ONLY from teles
         await supabaseClient
-          .from('client_history')
+          .from('teles')
           .delete()
           .eq('id', deliveryId);
 
@@ -3653,11 +3443,11 @@ window.handleCancelTeleClick = async function(deliveryId, riderName, type) {
       } else {
         // Fallback for safety: match strictly by ID in both tables
         await supabaseClient
-          .from('pending_deliveries')
+          .from('teles')
           .delete()
           .eq('id', deliveryId);
         await supabaseClient
-          .from('client_history')
+          .from('teles')
           .delete()
           .eq('id', deliveryId);
       }
@@ -3865,7 +3655,7 @@ async function dispatchDelivery(deliveryId, riderId) {
       return;
     }
 
-    // 2. Add order details into client_history table first (to prevent orphaned deletions on key conflicts)
+    // 2. Add order details into teles table first (to prevent orphaned deletions on key conflicts)
     const newHistoryItem = {
       id: deliveryId,
       client: delivery.client,
@@ -3885,13 +3675,13 @@ async function dispatchDelivery(deliveryId, riderId) {
     };
 
     let { error: historyError } = await supabaseClient
-      .from('client_history')
+      .from('teles')
       .insert([newHistoryItem]);
 
     if (historyError && historyError.code === '42703') {
       delete newHistoryItem.total_order_amount;
       const { error: retryError } = await supabaseClient
-        .from('client_history')
+        .from('teles')
         .insert([newHistoryItem]);
       historyError = retryError;
     }
@@ -3902,9 +3692,9 @@ async function dispatchDelivery(deliveryId, riderId) {
       return;
     }
 
-    // 3. Delete delivery from pending_deliveries table only after history is saved successfully
+    // 3. Delete delivery from teles table only after history is saved successfully
     const { error: deleteError } = await supabaseClient
-      .from('pending_deliveries')
+      .from('teles')
       .delete()
       .eq('id', deliveryId);
 
@@ -3963,7 +3753,7 @@ window.renderClientTelesUnified = function() {
   if (!container) return;
 
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Parceiro Garra';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
 
   const pendingList = mockData.pendingDeliveries.filter(d => d.client === currentCommerce);
   const activeList = mockData.clientHistory.filter(o => o.client === currentCommerce && o.status !== 'Entregue' && o.status !== 'Concluído' && o.status !== 'Cancelado');
@@ -3995,7 +3785,7 @@ window.renderClientTelesUnified = function() {
     return {
       id: d.id,
       type: 'pending',
-      client: d.client || 'Parceiro Garra',
+      client: d.client || 'Cliente não vinculado',
       destName: d.destName,
       address: d.address,
       dest_lat: d.dest_lat,
@@ -4023,7 +3813,7 @@ window.renderClientTelesUnified = function() {
     return {
       id: o.id,
       type: type,
-      client: o.client || 'Parceiro Garra',
+      client: o.client || 'Cliente não vinculado',
       destName: o.destName,
       address: o.address,
       dest_lat: o.dest_lat,
@@ -4183,9 +3973,9 @@ function renderClientTelesTable(list) {
 // Complete delivery function
 async function completeDelivery(deliveryId, riderName) {
   if (supabaseClient) {
-    // 1. Update delivery status to Entregue in client_history table
+    // 1. Update delivery status to Entregue in teles table
     const { error: historyError } = await supabaseClient
-      .from('client_history')
+      .from('teles')
       .update({
         status: 'Entregue',
         status_class: 'status-success'
@@ -4214,9 +4004,9 @@ async function completeDelivery(deliveryId, riderName) {
       return;
     }
 
-    // Atomic cleanup of pending_deliveries to prevent duplication
+    // Atomic cleanup of teles to prevent duplication
     await supabaseClient
-      .from('pending_deliveries')
+      .from('teles')
       .delete()
       .eq('id', deliveryId);
   }
@@ -4286,7 +4076,7 @@ function togglePinVisibility() {
 }
 
 function copyCredentials() {
-  const text = `Garra Delivery — Acesso Motoboy\nNome: ${_currentCreds.name}\nID: ${_currentCreds.id}\nPIN: ${_currentCreds.pin}\nAcesso: https://garradelivery.guigui-couto23.workers.dev/motoboy.html`;
+  const text = `Dahora Expresso — Acesso Motoboy\nNome: ${_currentCreds.name}\nID: ${_currentCreds.id}\nPIN: ${_currentCreds.pin}\nAcesso: https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html`;
   navigator.clipboard.writeText(text).then(() => {
     showToastNotification('Credenciais copiadas!');
   }).catch(() => {
@@ -4303,7 +4093,7 @@ function copyCredentials() {
 
 function shareWhatsApp() {
   const text = encodeURIComponent(
-    `*Garra Delivery — Seu Acesso*\n\nOlá, ${_currentCreds.name}! Suas credenciais de acesso ao app de motoboy são:\n\n*ID:* ${_currentCreds.id}\n*PIN:* ${_currentCreds.pin}\n\n*Link:* https://garradelivery.guigui-couto23.workers.dev/motoboy.html\n\n_Não compartilhe seu PIN com ninguém._`
+    `*Dahora Expresso — Seu Acesso*\n\nOlá, ${_currentCreds.name}! Suas credenciais de acesso ao app de motoboy são:\n\n*ID:* ${_currentCreds.id}\n*PIN:* ${_currentCreds.pin}\n\n*Link:* https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html\n\n_Não compartilhe seu PIN com ninguém._`
   );
   window.open(`https://wa.me/?text=${text}`, '_blank');
 }
@@ -4340,14 +4130,14 @@ async function deleteRiderAccountById(riderId) {
 
       // 2. Delete consumables where rider_id matches the rider's ID
       await supabaseClient
-        .from('rider_consumables')
+        .from('rider_consumable_purchases')
         .delete()
         .eq('rider_id', rider.id);
 
       // 3. Delete client history where rider name matches the rider's name
       if (rider.name) {
         await supabaseClient
-          .from('client_history')
+          .from('teles')
           .delete()
           .eq('rider', rider.name);
       }
@@ -4400,7 +4190,7 @@ async function removeTeleFromRider(deliveryId, riderId) {
   const paymentMethod = order.dist.includes('|') ? order.dist.split('|')[1] : 'A combinar';
   const pendingPayload = {
     id: order.id,
-    client: order.client || 'Parceiro Garra',
+    client: order.client || 'Cliente não vinculado',
     dest_name: order.destName || 'Cliente informado',
     address: order.address,
     dist: cleanDist,
@@ -4411,7 +4201,7 @@ async function removeTeleFromRider(deliveryId, riderId) {
 
   if (supabaseClient) {
     const { error: pendingError } = await supabaseClient
-      .from('pending_deliveries')
+      .from('teles')
       .upsert([pendingPayload]);
     if (pendingError) {
       alert('Erro ao devolver a tele para pendentes.');
@@ -4419,7 +4209,7 @@ async function removeTeleFromRider(deliveryId, riderId) {
     }
 
     const { error: historyError } = await supabaseClient
-      .from('client_history')
+      .from('teles')
       .delete()
       .eq('id', deliveryId);
     if (historyError) {
@@ -5135,7 +4925,7 @@ async function sendClientChatMessage(event) {
       const reply = {
         client_email: creds.email,
         sender_role: 'admin',
-        sender_name: 'Suporte Garra',
+        sender_name: 'Suporte Dahora Expresso',
         message: 'Olá! Recebemos sua mensagem. Um atendente entrará em contato em breve.',
         created_at: new Date().toISOString()
       };
@@ -5211,7 +5001,7 @@ async function loadAdminChatChannels() {
 
       clientsMap[msg.client_email] = {
         email: msg.client_email,
-        name: msg.sender_role === 'client' ? msg.sender_name : (clientsMap[msg.client_email]?.name || 'Cliente Garra'),
+        name: msg.sender_role === 'client' ? msg.sender_name : (clientsMap[msg.client_email]?.name || 'Cliente Comercial'),
         lastMessage: msg.message,
         time: new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       };
@@ -5774,7 +5564,7 @@ function subscribeDashboardRealtime() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'pending_deliveries'
+        table: 'teles'
       }, async (payload) => {
         console.log('Realtime pending deliveries update:', payload);
         await fetchPendingDeliveries();
@@ -5804,7 +5594,7 @@ function subscribeDashboardRealtime() {
                   console.log(`Realtime Geocoder Shield: Calibrado com sucesso! Atualizando Supabase para: ${newLat}, ${newLng}`);
                   if (supabaseClient) {
                     await supabaseClient
-                      .from('pending_deliveries')
+                      .from('teles')
                       .update({ dest_lat: newLat, dest_lng: newLng })
                       .eq('id', payload.new.id);
                   }
@@ -5819,7 +5609,7 @@ function subscribeDashboardRealtime() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'client_history'
+        table: 'teles'
       }, async (payload) => {
         console.log('Realtime client history update:', payload);
         await fetchClientHistory();
@@ -5837,7 +5627,7 @@ function subscribeDashboardRealtime() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'rider_consumables'
+        table: 'rider_consumable_purchases'
       }, async (payload) => {
         console.log('Realtime rider consumables update:', payload);
         await fetchRiderConsumables();
@@ -5869,7 +5659,7 @@ function subscribeDashboardRealtime() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'client_history'
+        table: 'teles'
       }, async (payload) => {
         console.log('Realtime client history update:', payload);
         const commerceName = creds ? creds.commerceName : null;
@@ -5891,7 +5681,7 @@ function subscribeDashboardRealtime() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'pending_deliveries'
+        table: 'teles'
       }, async (payload) => {
         console.log('Realtime client pending update:', payload);
         const commerceName = creds ? creds.commerceName : null;
@@ -6298,8 +6088,13 @@ function setupAddressGeocodingListener(type = 'client') {
   };
 
   if (addressInput.dataset.autocompleteInitialized) return;
-  addressInput.dataset.autocompleteInitialized = "true";
 
+  if (typeof window.google === 'undefined' || !window.google.maps || !window.google.maps.places) {
+    console.warn("Google Maps Places API ainda não carregada. Digitação manual de endereço permanece ativa.");
+    return;
+  }
+
+  addressInput.dataset.autocompleteInitialized = "true";
   const autocomplete = new google.maps.places.Autocomplete(addressInput, options);
 
   autocomplete.addListener('place_changed', () => {
@@ -6420,7 +6215,7 @@ async function startRealtimeTracking(order) {
   if (supabaseClient) {
     // Check current state in database
     const { data: histData } = await supabaseClient
-      .from('client_history')
+      .from('teles')
       .select('*')
       .eq('id', orderId)
       .maybeSingle();
@@ -6435,12 +6230,12 @@ async function startRealtimeTracking(order) {
       trackerStatus.className = 'status-badge status-warning';
     }
 
-    // Subscribe to client_history & fleet status updates
+    // Subscribe to teles & fleet status updates
     trackingRealtimeChannel = supabaseClient.channel(`tracking-${orderId}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'client_history',
+        table: 'teles',
         filter: `id=eq.${orderId}`
       }, async (payload) => {
         const row = payload.new;
@@ -6670,7 +6465,7 @@ async function trackActiveOrder(orderId) {
   if (!supabaseClient) return;
 
   const { data: histData } = await supabaseClient
-    .from('client_history')
+    .from('teles')
     .select('*')
     .eq('id', orderId)
     .maybeSingle();
@@ -6686,7 +6481,7 @@ async function trackActiveOrder(orderId) {
     });
   } else {
     const { data: pendingData } = await supabaseClient
-      .from('pending_deliveries')
+      .from('teles')
       .select('*')
       .eq('id', orderId)
       .maybeSingle();
@@ -6943,7 +6738,7 @@ async function updateRiderPaymentStatus(riderName, newStatus) {
   if (supabaseClient) {
     try {
       const { error } = await supabaseClient
-        .from('client_history')
+        .from('teles')
         .update({ payment_status: newStatus })
         .eq('rider', riderName)
         .in('id', filteredOrderIds);
@@ -7331,7 +7126,7 @@ async function handleRegisterConsumable(event) {
 
   try {
     const { data, error } = await supabaseClient
-      .from('rider_consumables')
+      .from('rider_consumable_purchases')
       .insert([{
         rider_id: riderId,
         rider_name: riderName,
@@ -7371,7 +7166,7 @@ async function deleteRiderConsumable(id) {
 
   try {
     const { error } = await supabaseClient
-      .from('rider_consumables')
+      .from('rider_consumable_purchases')
       .delete()
       .eq('id', id);
 
@@ -7666,16 +7461,22 @@ async function fetchCities() {
   try {
     const { data, error } = await supabaseClient
       .from('cidades')
-      .select('*')
+      .select('id, nome, uf, ativa')
       .order('nome', { ascending: true });
-    if (error) throw error;
-    mockData.cities = data.map(item => ({
+
+    if (error) {
+      console.warn("Aviso ao buscar cidades:", error.message);
+      return;
+    }
+
+    mockData.cities = (data || []).map(item => ({
       id: item.id,
       nome: item.nome,
-      taxa: parseFloat(item.taxa)
+      uf: item.uf || 'RS',
+      taxa: item.taxa ? parseFloat(item.taxa) : 15.00
     }));
   } catch (err) {
-    console.error("Error fetching cities from Supabase:", err);
+    console.warn("Aviso ao buscar cidades:", err.message);
   }
 }
 
@@ -7966,7 +7767,7 @@ function updateOwnerDashboardOverview() {
 
     mockData.clientHistory.forEach(item => {
       if (item.status === 'Entregue') {
-        const name = item.client || 'Parceiro Garra';
+        const name = item.client || 'Cliente não vinculado';
         const price = parseMoneyString(item.price);
         if (!clientCounts[name]) {
           clientCounts[name] = { count: 0, revenue: 0 };
@@ -8027,7 +7828,7 @@ function getClientWeeklyChartData() {
   monday.setHours(0,0,0,0);
 
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Parceiro Garra';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
 
   mockData.clientHistory.forEach(item => {
     if (item.status === 'Entregue' && item.client === currentCommerce && item.created_at) {
@@ -8051,7 +7852,7 @@ function updateClientDashboardOverview() {
   const ratingEl = document.getElementById('client-metric-rating');
 
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Parceiro Garra';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
 
   const completedDeliveries = mockData.clientHistory.filter(item => 
     item.status === 'Entregue' && item.client === currentCommerce
@@ -8146,8 +7947,8 @@ async function submitAddCommerce(event) {
   try {
     if (supabaseClient) {
       const { error } = await supabaseClient
-        .from('lojas')
-        .insert([{ nome }]);
+        .from('commercial_clients')
+        .insert([{ establishment_name: nome, lifecycle_status: 'ativo' }]);
       if (error) throw error;
     } else {
       commercesList.push({ id: String(Date.now()), nome });
@@ -8172,23 +7973,10 @@ async function deleteCommerceByName(nome) {
 
   try {
     if (supabaseClient) {
-      // 1. Delete from client_history where client matches the name
-      await supabaseClient
-        .from('client_history')
-        .delete()
-        .eq('client', nome);
-
-      // 2. Delete from pending_deliveries where client matches the name
-      await supabaseClient
-        .from('pending_deliveries')
-        .delete()
-        .eq('client', nome);
-
-      // 3. Delete from lojas table
       const { error } = await supabaseClient
-        .from('lojas')
+        .from('commercial_clients')
         .delete()
-        .eq('nome', nome);
+        .eq('establishment_name', nome);
 
       if (error) throw error;
     } else {
@@ -8309,186 +8097,2663 @@ window.closeQuickMapModal = function(event) {
   quickMapInstance = null;
 };
 
-window.simularIntegracao99Food = async function() {
-  console.log("=== INICIANDO SIMULAÇÃO DE INTEGRAÇÃO 99FOOD ===");
+/* ==========================================================================
+   EXTRATOS & EVENT-DRIVEN FINANCIAL MODULES (ERP DE LOGÍSTICA)
+   ========================================================================== */
 
-  // 1. Simulação do Payload Nativo da API do 99Food (Com ID e endereço válidos)
-  const orderNum = Math.floor(100000 + Math.random() * 900000); // 6 dígitos reais
-  const shortId = `TEST-${orderNum.toString().slice(-4)}`; // e.g. TEST-8000
-  const simulatedId = `99Food #${shortId} (${orderNum})`;
+// Estados do Módulo (Paginação e Cache de Lançamentos)
+let currentClientExtractPage = 1;
+let currentRiderExtractPage = 1;
+const FINANCIAL_PAGE_SIZE = 10;
+let currentClientLedgerCache = [];
+let currentRiderDeliveriesCache = [];
 
-  const payload99 = {
-    order_id: simulatedId,
-    customer_name: 'Guilherme Silva (Teste 99Food)',
-    delivery_address_string: 'Av. Sapucaia, 1200 - Centro, Sapucaia do Sul - RS',
-    delivery_latitude: -29.8378,
-    delivery_longitude: -51.1444,
-    items: ['X-Salada Especial', 'Coca-Cola 350ml']
+// Auditoria Financeira (Log de Operações)
+if (!mockData.financialAuditLogs) {
+  mockData.financialAuditLogs = [];
+}
+
+window.logFinancialAudit = function(entry) {
+  const auditRecord = {
+    id: `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    date: new Date(),
+    time: new Date().toLocaleTimeString('pt-BR'),
+    user: entry.user || 'Administrador',
+    origin: entry.origin || 'sistema',
+    type: entry.type || 'movimentacao',
+    amount: entry.amount || 0,
+    client_id: entry.client_id || null,
+    client: entry.client || 'Geral',
+    rider_id: entry.rider_id || null,
+    rider: entry.rider || null,
+    reference: entry.reference || 'REF-AUTO'
   };
+  mockData.financialAuditLogs.unshift(auditRecord);
+  console.log('[FinancialAuditLog] Registered entry:', auditRecord);
+  return auditRecord;
+};
 
-  console.log("Payload nativo recebido do 99Food:", payload99);
+// 1. Accordion Toggle
+window.toggleNavAccordion = function(accordionId) {
+  const el = document.getElementById(accordionId);
+  if (el) {
+    el.classList.toggle('open');
+  }
+};
 
-  // 2. Função de Tratamento / Conversão para o padrão do Garra Delivery
-  const converterParaGarra = (rawOrder) => {
-    let finalPrice = 12.00;
-    if (mockData && mockData.cities) {
-      const sortedCities = [...(mockData.cities || [])].sort((a, b) => b.nome.length - a.nome.length);
-      const matchedCity = sortedCities.find(city => rawOrder.delivery_address_string.toLowerCase().includes(city.nome.toLowerCase()));
-      if (matchedCity) {
-        finalPrice = matchedCity.taxa;
-      }
-    }
+// 2. Financial Event Dispatcher (Arquitetura Baseada em Eventos Únicos)
+window.dispatchFinancialEvent = async function(eventType, payload) {
+  console.log(`[FinancialEvent] Dispatched event '${eventType}':`, payload);
+  
+  // Registrar log de auditoria automaticamente para todo evento financeiro
+  window.logFinancialAudit({
+    user: payload.user || 'Administrador',
+    origin: payload.origin || 'sistema',
+    type: eventType,
+    amount: payload.amount || payload.price || 0,
+    client_id: payload.client_id || null,
+    client: payload.client || payload.commerce_name || 'Geral',
+    rider_id: payload.rider_id || null,
+    rider: payload.rider || null,
+    reference: payload.reference || payload.id || `EVT-${Date.now()}`
+  });
 
-    return {
-      id: rawOrder.order_id,
-      client: '99Food',
-      dest_name: rawOrder.customer_name,
-      address: rawOrder.delivery_address_string,
-      dist: '3.8 km',
-      price: 'R$ ' + finalPrice.toFixed(2).replace('.', ','),
-      payment: 'Pago pelo App (99Food)',
-      cargo: '🍔 Itens: ' + rawOrder.items.join(' + '),
-      pickup_lat: -29.842173,
-      pickup_lng: -51.126764,
-      dest_lat: rawOrder.delivery_latitude,
-      dest_lng: rawOrder.delivery_longitude,
-      total_order_amount: 'R$ 44,00'
-    };
-  };
+  // Atualiza em tempo real a fonte única de dados
+  await fetchClientHistory();
+  await fetchFleet();
+  await fetchRiderConsumables();
+  await fetchRiderCredits();
 
-  const convertedTele = converterParaGarra(payload99);
-  console.log("Payload convertido para o padrão Garra Delivery:", convertedTele);
+  // Re-renderiza visões ativas
+  const activeTab = document.querySelector('.dashboard-tab-content.active')?.id;
+  if (activeTab === 'tab-owner-financials') {
+    renderOwnerFinancials();
+  } else if (activeTab === 'tab-owner-rider-payments') {
+    renderRiderPayments();
+  } else if (activeTab === 'tab-owner-rider-extract') {
+    loadRiderExtract();
+  } else if (activeTab === 'tab-owner-client-extract') {
+    loadClientExtract();
+  }
+};
 
-  // 3. Inserção direta no Supabase com Geocoder Coordinate Shield
-  if (!supabaseClient) {
-    console.error("Erro: supabaseClient não inicializado. Verifique a conexão com o banco.");
-    alert("Erro: Supabase não conectado. Insira as variáveis locais no arquivo .env.");
+// 3. Preset Date Range Helper
+function resolveDateRange(presetValue, customStartId, customEndId) {
+  const now = new Date();
+  let start = new Date();
+  let end = new Date();
+
+  if (presetValue === 'today') {
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  } else if (presetValue === 'week') {
+    const day = now.getDay();
+    const diffToSun = now.getDate() - day;
+    start = new Date(now.setDate(diffToSun));
+    start.setHours(0, 0, 0, 0);
+    end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+  } else if (presetValue === 'month') {
+    start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  } else if (presetValue === 'custom') {
+    const startVal = document.getElementById(customStartId)?.value;
+    const endVal = document.getElementById(customEndId)?.value;
+    if (startVal) start = new Date(startVal + 'T00:00:00');
+    if (endVal) end = new Date(endVal + 'T23:59:59');
+  }
+
+  return { start, end };
+}
+
+// Helper de Paginação Reutilizável
+function renderPaginationControls(containerId, currentPage, totalPages, changePageFnName) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  if (totalPages <= 1) {
+    container.innerHTML = `<span>Página 1 de 1</span>`;
     return;
   }
 
-  const proceedWithInsertion = async (tele) => {
-    try {
-      console.log("Enviando tele para o Supabase...", tele);
-      let { error } = await supabaseClient
-        .from('pending_deliveries')
-        .insert([tele]);
+  container.innerHTML = `
+    <span>Página ${currentPage} de ${totalPages}</span>
+    <div class="pagination-controls">
+      <button class="btn btn-secondary btn-sm" ${currentPage === 1 ? 'disabled' : ''} onclick="${changePageFnName}(${currentPage - 1})" style="padding: 4px 10px; font-size: 0.8rem;">Anterior</button>
+      <button class="btn btn-secondary btn-sm" ${currentPage === totalPages ? 'disabled' : ''} onclick="${changePageFnName}(${currentPage + 1})" style="padding: 4px 10px; font-size: 0.8rem;">Próxima</button>
+    </div>
+  `;
+}
 
-      if (error && error.code === '42703') {
-        const retryTele = { ...tele };
-        delete retryTele.total_order_amount;
-        const { error: retryError } = await supabaseClient
-          .from('pending_deliveries')
-          .insert([retryTele]);
-        error = retryError;
-      }
+// 4. EXTRATO DE MOTOBOYS
+window.handleRiderExtractPeriodPresetChange = function() {
+  const preset = document.getElementById('rider-extract-period-preset')?.value;
+  const customBox = document.getElementById('rider-extract-custom-dates');
+  if (customBox) {
+    customBox.style.display = (preset === 'custom') ? 'flex' : 'none';
+  }
+  currentRiderExtractPage = 1;
+  loadRiderExtract();
+};
 
-      if (error) throw error;
+window.initRiderExtract = async function() {
+  await fetchFleet();
+  await fetchClientHistory();
+  await fetchRiderConsumables();
+  await fetchRiderCredits();
 
-      console.log(`Sucesso! Tele do 99Food criada com ID: ${tele.id}`);
-
-      // Atualiza as locais e re-renderiza o painel
-      await fetchPendingDeliveries();
-      renderTelesUnified();
-      updateOwnerDashboardOverview();
-
-      alert(`Pedido 99Food (#${tele.id}) inserido e renderizado com sucesso no painel!`);
-    } catch (err) {
-      console.error("Erro ao simular integração 99Food:", err);
-      alert("Erro na simulação do 99Food: " + err.message);
-    }
-  };
-
-  // Google Maps Geocoder Shield:
-  // Se as coordenadas forem genéricas (ex: centro de Sapucaia -29.8378, -51.1444) ou se for necessário recalibrar
-  const isGeneric = (Math.abs(convertedTele.dest_lat - (-29.8378)) < 0.01 && Math.abs(convertedTele.dest_lng - (-51.1444)) < 0.01);
-  if (isGeneric && window.google && google.maps && google.maps.Geocoder) {
-    console.log("Geocoder Shield: Coordenadas genéricas detectadas. Buscando localização exata do endereço...");
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address: convertedTele.address }, (results, status) => {
-      if (status === 'OK' && results[0]) {
-        const loc = results[0].geometry.location;
-        convertedTele.dest_lat = loc.lat();
-        convertedTele.dest_lng = loc.lng();
-        console.log(`Geocoder Shield: Coordenadas recalibradas com precisão: ${convertedTele.dest_lat}, ${convertedTele.dest_lng}`);
-      } else {
-        console.warn("Geocoder Shield: falha ao buscar endereço, usando dados originais.");
-      }
-      proceedWithInsertion(convertedTele);
+  const select = document.getElementById('rider-extract-rider-select');
+  if (select) {
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">Todos os Motoboys</option>';
+    (mockData.fleet || []).forEach(r => {
+      select.innerHTML += `<option value="${escapeHtml(r.name)}">${escapeHtml(r.name)} (${escapeHtml(r.vehicle || 'Motoboy')})</option>`;
     });
-  } else {
-    proceedWithInsertion(convertedTele);
+    select.value = currentVal;
+  }
+
+  currentRiderExtractPage = 1;
+  loadRiderExtract();
+};
+
+window.loadRiderExtract = function(targetPage) {
+  if (targetPage) currentRiderExtractPage = targetPage;
+
+  const selectedRider = document.getElementById('rider-extract-rider-select')?.value || '';
+  const selectedStatus = document.getElementById('rider-extract-status-select')?.value || '';
+  const periodPreset = document.getElementById('rider-extract-period-preset')?.value || 'week';
+  
+  const { start, end } = resolveDateRange(periodPreset, 'rider-extract-start-date', 'rider-extract-end-date');
+
+  // Filtrar corridas
+  const deliveries = (mockData.clientHistory || []).filter(d => {
+    const dDate = new Date(d.date || d.created_at);
+    const dateMatch = dDate >= start && dDate <= end;
+    const riderMatch = !selectedRider || (d.rider && d.rider.toLowerCase() === selectedRider.toLowerCase());
+    const statusMatch = !selectedStatus || (d.status && d.status.toLowerCase() === selectedStatus.toLowerCase());
+    return dateMatch && riderMatch && statusMatch;
+  });
+
+  currentRiderDeliveriesCache = deliveries;
+
+  // Métricas
+  const count = deliveries.length;
+  let gross = 0;
+  deliveries.forEach(d => {
+    const val = parseFloat(d.price || d.taxa || 0);
+    if (!isNaN(val)) gross += val;
+  });
+
+  const commission = gross * 0.10; // 10% comissão padrão
+
+  let consumablesTotal = 0;
+  (mockData.riderConsumables || []).forEach(c => {
+    const cDate = new Date(c.date || c.created_at);
+    if (cDate >= start && cDate <= end) {
+      if (!selectedRider || (c.rider_name && c.rider_name.toLowerCase() === selectedRider.toLowerCase())) {
+        consumablesTotal += parseFloat(c.total_price || c.price || 0);
+      }
+    }
+  });
+
+  let creditsTotal = 0;
+  let adjustmentsTotal = 0;
+  (mockData.riderCredits || []).forEach(cr => {
+    const crDate = new Date(cr.date || cr.created_at);
+    if (crDate >= start && crDate <= end) {
+      if (!selectedRider || (cr.rider_name && cr.rider_name.toLowerCase() === selectedRider.toLowerCase())) {
+        const val = parseFloat(cr.amount || 0);
+        if (cr.type === 'Crédito') creditsTotal += val;
+        else if (cr.type === 'Ajuste') adjustmentsTotal += val;
+      }
+    }
+  });
+
+  const net = (gross - commission) - consumablesTotal + creditsTotal + adjustmentsTotal;
+
+  // Atualizar UI dos 7 cards
+  const elCount = document.getElementById('rider-extract-count');
+  const elGross = document.getElementById('rider-extract-gross');
+  const elCommission = document.getElementById('rider-extract-commission');
+  const elConsumables = document.getElementById('rider-extract-consumables');
+  const elCredits = document.getElementById('rider-extract-credits');
+  const elAdjustments = document.getElementById('rider-extract-adjustments');
+  const elNet = document.getElementById('rider-extract-net');
+
+  if (elCount) elCount.innerText = count;
+  if (elGross) elGross.innerText = `R$ ${gross.toFixed(2).replace('.', ',')}`;
+  if (elCommission) elCommission.innerText = `R$ ${commission.toFixed(2).replace('.', ',')}`;
+  if (elConsumables) elConsumables.innerText = `R$ ${consumablesTotal.toFixed(2).replace('.', ',')}`;
+  if (elCredits) elCredits.innerText = `R$ ${creditsTotal.toFixed(2).replace('.', ',')}`;
+  if (elAdjustments) elAdjustments.innerText = `R$ ${adjustmentsTotal.toFixed(2).replace('.', ',')}`;
+  if (elNet) elNet.innerText = `R$ ${net.toFixed(2).replace('.', ',')}`;
+
+  // Paginação
+  const totalPages = Math.ceil(deliveries.length / FINANCIAL_PAGE_SIZE) || 1;
+  if (currentRiderExtractPage > totalPages) currentRiderExtractPage = totalPages;
+
+  const startIndex = (currentRiderExtractPage - 1) * FINANCIAL_PAGE_SIZE;
+  const pageDeliveries = deliveries.slice(startIndex, startIndex + FINANCIAL_PAGE_SIZE);
+
+  // Tabela
+  const tbody = document.getElementById('rider-extract-table-body');
+  if (tbody) {
+    if (deliveries.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma corrida localizada para o filtro selecionado.</td></tr>`;
+    } else {
+      tbody.innerHTML = pageDeliveries.map(d => {
+        const dDate = new Date(d.date || d.created_at);
+        const dateFormatted = isNaN(dDate) ? '—' : dDate.toLocaleDateString('pt-BR');
+        const timeFormatted = isNaN(dDate) ? '—' : dDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const val = parseFloat(d.price || d.taxa || 0);
+
+        let statusClass = 'badge-neutral';
+        if (d.status === 'Entregue' || d.status === 'Concluído') statusClass = 'badge-success';
+        else if (d.status === 'Em Rota') statusClass = 'badge-warning';
+        else if (d.status === 'Cancelado') statusClass = 'badge-danger';
+
+        return `
+          <tr class="clickable-row" onclick="openRiderTransactionDrawer('${escapeHtml(String(d.id))}')">
+            <td><strong>#${escapeHtml(String(d.id))}</strong></td>
+            <td>${dateFormatted}</td>
+            <td>${timeFormatted}</td>
+            <td>${escapeHtml(d.client || d.commerce_name || 'Cliente')}</td>
+            <td>${escapeHtml(d.origin || d.pickup || '—')}</td>
+            <td>${escapeHtml(d.destination || d.delivery_address || '—')}</td>
+            <td><strong>R$ ${val.toFixed(2).replace('.', ',')}</strong></td>
+            <td><span class="badge ${statusClass}">${escapeHtml(d.status || 'Pendente')}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  renderPaginationControls('rider-extract-pagination', currentRiderExtractPage, totalPages, 'loadRiderExtract');
+
+  // Demonstrativo Consolidado
+  const summaryBox = document.getElementById('rider-extract-summary-box');
+  if (summaryBox) {
+    summaryBox.innerHTML = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.9rem;">
+        <div><span style="color: var(--color-text-muted);">Total de Corridas Bruto:</span> <strong>R$ ${gross.toFixed(2).replace('.', ',')}</strong></div>
+        <div><span style="color: var(--color-text-muted);">(-) Retenção Dahora (10%):</span> <strong style="color: #ef4444;">-R$ ${commission.toFixed(2).replace('.', ',')}</strong></div>
+        <div><span style="color: var(--color-text-muted);">(-) Desconto Consumíveis:</span> <strong style="color: #ef4444;">-R$ ${consumablesTotal.toFixed(2).replace('.', ',')}</strong></div>
+        <div><span style="color: var(--color-text-muted);">(+) Créditos Liberados:</span> <strong style="color: #10b981;">+R$ ${creditsTotal.toFixed(2).replace('.', ',')}</strong></div>
+        <div><span style="color: var(--color-text-muted);">(+/-) Ajustes Diversos:</span> <strong>R$ ${adjustmentsTotal.toFixed(2).replace('.', ',')}</strong></div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 8px; grid-column: 1 / -1; font-size: 1.05rem;">
+          <span style="font-weight: 700;">TOTAL LÍQUIDO A RECEBER:</span> <strong style="color: #10b981; font-size: 1.2rem; margin-left: 8px;">R$ ${net.toFixed(2).replace('.', ',')}</strong>
+        </div>
+      </div>
+    `;
   }
 };
 
-window.dispararWebhook99FoodProducao = async function() {
-  console.log("=== INICIANDO DISPARO EXTERNO DO WEBHOOK 99FOOD EM PRODUÇÃO ===");
+// 5. EXTRATO DE CLIENTES / CONTA CORRENTE
+window.handleClientExtractPeriodPresetChange = function() {
+  const preset = document.getElementById('client-extract-period-preset')?.value;
+  const customBox = document.getElementById('client-extract-custom-dates');
+  if (customBox) {
+    customBox.style.display = (preset === 'custom') ? 'flex' : 'none';
+  }
+  currentClientExtractPage = 1;
+  loadClientExtract();
+};
 
-  const orderNum = Math.floor(100000 + Math.random() * 900000);
-  const orderId = '#99F-' + orderNum;
-  const requestId = 'req-' + Math.random().toString(36).substring(7);
+window.initClientExtract = async function() {
+  await fetchClientHistory();
 
-  // Payload estruturado seguindo o modelo do evento orderNew da 99Food
-  const payload = {
-    type: "orderNew",
-    app_shop_id: "garra-bora-01",
-    data: {
-      order_id: orderId,
-      order_info: {
-        order_index: String(orderNum).slice(-4),
-        receive_address: {
-          poi_address: "Rua Ana Rosa, 221 - Sapucaia do Sul - RS",
-          name: "Cliente Teste 99",
-          poi_lat: -29.8378,
-          poi_lng: -51.1444
-        },
-        price: {
-          order_price: 1500 // R$ 15,00 em centavos
-        },
-        order_items: [
-          {
-            name: "X-Salada Especial",
-            amount: 1
-          },
-          {
-            name: "Coca-Cola 350ml",
-            amount: 1
-          }
-        ]
+  const select = document.getElementById('client-extract-client-select');
+  if (select) {
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">Todos os Estabelecimentos</option>';
+    const clientsSet = new Set();
+    (mockData.clientHistory || []).forEach(d => {
+      const cName = d.client || d.commerce_name;
+      if (cName) clientsSet.add(cName);
+    });
+
+    Array.from(clientsSet).sort().forEach(c => {
+      select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+    });
+    select.value = currentVal;
+  }
+
+  currentClientExtractPage = 1;
+  loadClientExtract();
+};
+
+window.loadClientExtract = function(targetPage) {
+  if (targetPage) currentClientExtractPage = targetPage;
+
+  const selectedClient = document.getElementById('client-extract-client-select')?.value || '';
+  const selectedClientId = document.getElementById('client-extract-client-select')?.selectedOptions[0]?.dataset?.clientId || null;
+  const periodPreset = document.getElementById('client-extract-period-preset')?.value || 'month';
+  
+  const { start, end } = resolveDateRange(periodPreset, 'client-extract-start-date', 'client-extract-end-date');
+
+  let ledgerEntries = [];
+
+  (mockData.clientHistory || []).forEach(d => {
+    const dDate = new Date(d.date || d.created_at);
+    const clientName = d.client || d.commerce_name || 'Cliente Geral';
+    const clientId = d.client_id || d.commerce_id || null;
+
+    if (dDate >= start && dDate <= end) {
+      // Suporte para Multi-tenant (filtragem por client_id ou nome do estabelecimento)
+      const matchesClient = !selectedClient || clientName.toLowerCase() === selectedClient.toLowerCase();
+      const matchesClientId = !selectedClientId || clientId === selectedClientId;
+
+      if (matchesClient && matchesClientId) {
+        const val = parseFloat(d.price || d.taxa || 0);
+
+        // Lançamento de Débito: Tele Realizada
+        ledgerEntries.push({
+          id: d.id,
+          date: dDate,
+          documento: `Tele #${d.id}`,
+          type: 'tele_realizada',
+          typeLabel: 'Tele Realizada',
+          description: `Corrida #${d.id} (${d.origin || 'Origem'} → ${d.destination || 'Destino'})`,
+          referencia: `REF-TEL-${d.id}`,
+          origin: d.origin_type || 'sistema',
+          client_id: clientId,
+          client: clientName,
+          debit: val,
+          credit: 0,
+          overdue: d.overdue || false,
+          pending_status: d.pending_status || 'prazo',
+          is_blocked: d.is_blocked || false
+        });
+
+        // Se houver quitação registrada
+        if (d.payment_status === 'Pago' || d.paid === true) {
+          ledgerEntries.push({
+            id: `REC-${d.id}`,
+            date: new Date(dDate.getTime() + 1000),
+            documento: `Recebimento PIX #${d.id}`,
+            type: 'pagamento_recebido',
+            typeLabel: 'Pagamento Recebido',
+            description: `Quitação do recebimento Tele #${d.id}`,
+            referencia: `REF-REC-${d.id}`,
+            origin: 'administrador',
+            client_id: clientId,
+            client: clientName,
+            debit: 0,
+            credit: val,
+            overdue: false,
+            pending_status: 'ok',
+            is_blocked: false
+          });
+        }
       }
     }
-  };
+  });
 
-  const url = 'https://faowxiyxjfogkoynsohj.supabase.co/functions/v1/food99-webhook?token=006371343d7d834ddfa5bb2056339c30';
+  // Ordenar por data crescente para cálculo de saldo acumulado
+  ledgerEntries.sort((a, b) => a.date - b.date);
 
-  console.log(`Disparando POST para ${url}`);
-  console.log("Payload enviado:", payload);
-  console.log(`X-Request-ID anexado: ${requestId}`);
+  let runningBalance = 0;
+  let totalBilled = 0;
+  let totalPaid = 0;
+  let totalTeles = 0;
+  let hasOverdue = false;
+  let hasPendingInTerm = false;
+  let isClientBlocked = false;
+
+  ledgerEntries.forEach(entry => {
+    if (entry.type === 'tele_realizada') totalTeles++;
+    totalBilled += entry.debit;
+    totalPaid += entry.credit;
+    runningBalance += (entry.debit - entry.credit);
+    entry.balanceAfter = runningBalance;
+
+    if (entry.overdue) hasOverdue = true;
+    if (entry.pending_status === 'prazo') hasPendingInTerm = true;
+    if (entry.is_blocked) isClientBlocked = true;
+  });
+
+  currentClientLedgerCache = ledgerEntries;
+
+  // Atualizar Métricas
+  const elCount = document.getElementById('client-extract-count');
+  const elBilled = document.getElementById('client-extract-billed');
+  const elPaid = document.getElementById('client-extract-paid');
+  const elBalance = document.getElementById('client-extract-balance');
+  const elStatusBadge = document.getElementById('client-extract-status-badge');
+  const elStatusDesc = document.getElementById('client-extract-status-desc');
+
+  if (elCount) elCount.innerText = totalTeles;
+  if (elBilled) elBilled.innerText = `R$ ${totalBilled.toFixed(2).replace('.', ',')}`;
+  if (elPaid) elPaid.innerText = `R$ ${totalPaid.toFixed(2).replace('.', ',')}`;
+  if (elBalance) elBalance.innerText = `R$ ${runningBalance.toFixed(2).replace('.', ',')}`;
+
+  // Indicador Dinâmico de Status Financeiro (Sem Regra de Valor Fixo)
+  if (elStatusBadge && elStatusDesc) {
+    if (isClientBlocked) {
+      elStatusBadge.className = 'badge badge-status-blocked';
+      elStatusBadge.innerText = 'Bloqueado';
+      elStatusDesc.innerText = 'Bloqueio manual pelo administrador';
+    } else if (hasOverdue || runningBalance > 0 && hasOverdue) {
+      elStatusBadge.className = 'badge badge-status-danger';
+      elStatusBadge.innerText = 'Inadimplente';
+      elStatusDesc.innerText = 'Possui saldo vencido pendente';
+    } else if (runningBalance > 0 || hasPendingInTerm) {
+      elStatusBadge.className = 'badge badge-status-warning';
+      elStatusBadge.innerText = 'Atenção';
+      elStatusDesc.innerText = 'Saldo pendente dentro do prazo';
+    } else {
+      elStatusBadge.className = 'badge badge-status-ok';
+      elStatusBadge.innerText = 'Em dia';
+      elStatusDesc.innerText = 'Conta sem pendências financeiras';
+    }
+  }
+
+  // Paginação
+  const totalPages = Math.ceil(ledgerEntries.length / FINANCIAL_PAGE_SIZE) || 1;
+  if (currentClientExtractPage > totalPages) currentClientExtractPage = totalPages;
+
+  const startIndex = (currentClientExtractPage - 1) * FINANCIAL_PAGE_SIZE;
+  const pageEntries = ledgerEntries.slice(startIndex, startIndex + FINANCIAL_PAGE_SIZE);
+
+  // Tabela Razão
+  const tbody = document.getElementById('client-extract-table-body');
+  if (tbody) {
+    if (ledgerEntries.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhum lançamento financeiro localizado para este período/cliente.</td></tr>`;
+    } else {
+      tbody.innerHTML = pageEntries.map(entry => {
+        const dFormatted = entry.date.toLocaleDateString('pt-BR') + ' ' + entry.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        
+        let typeBadge = '<span class="badge badge-neutral">Outro</span>';
+        if (entry.type === 'tele_realizada') typeBadge = '<span class="badge badge-soft">Tele Realizada</span>';
+        else if (entry.type === 'pagamento_recebido') typeBadge = '<span class="badge badge-success">Recebimento</span>';
+        else if (entry.type === 'credito') typeBadge = '<span class="badge badge-success">Crédito</span>';
+        else if (entry.type === 'ajuste') typeBadge = '<span class="badge badge-warning">Ajuste</span>';
+        else if (entry.type === 'estorno') typeBadge = '<span class="badge badge-danger">Estorno</span>';
+
+        const debitStr = entry.debit > 0 ? `<span class="financial-debit">R$ ${entry.debit.toFixed(2).replace('.', ',')}</span>` : '—';
+        const creditStr = entry.credit > 0 ? `<span class="financial-credit">R$ ${entry.credit.toFixed(2).replace('.', ',')}</span>` : '—';
+        const balStr = `R$ ${entry.balanceAfter.toFixed(2).replace('.', ',')}`;
+
+        return `
+          <tr class="clickable-row" onclick="openTransactionDrawer('${escapeHtml(String(entry.id))}')">
+            <td>${dFormatted}</td>
+            <td><strong>${escapeHtml(entry.documento)}</strong></td>
+            <td>${typeBadge}</td>
+            <td>${escapeHtml(entry.description)}</td>
+            <td><code style="font-size: 0.78rem; background: var(--bg-input); padding: 2px 6px; border-radius: 4px;">${escapeHtml(entry.referencia)}</code></td>
+            <td><span style="font-size: 0.78rem; color: var(--color-text-muted); text-transform: capitalize;">${escapeHtml(entry.origin)}</span></td>
+            <td>${debitStr}</td>
+            <td>${creditStr}</td>
+            <td><strong>${balStr}</strong></td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  renderPaginationControls('client-extract-pagination', currentClientExtractPage, totalPages, 'loadClientExtract');
+};
+
+// 6. Drawer de Detalhes do Lançamento
+window.openTransactionDrawer = function(entryId) {
+  const entry = currentClientLedgerCache.find(e => String(e.id) === String(entryId));
+  if (!entry) return;
+
+  const content = document.getElementById('drawer-transaction-content');
+  const backdrop = document.getElementById('drawer-transaction-details');
+
+  if (content && backdrop) {
+    const dFormatted = entry.date.toLocaleDateString('pt-BR') + ' às ' + entry.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    content.innerHTML = `
+      <div class="drawer-field">
+        <label>ID do Lançamento</label>
+        <span>#${escapeHtml(String(entry.id))}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Documento</label>
+        <span>${escapeHtml(entry.documento)}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Data & Hora</label>
+        <span>${dFormatted}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Estabelecimento / Cliente</label>
+        <span>${escapeHtml(entry.client)}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Tipo de Lançamento</label>
+        <span style="text-transform: capitalize;">${escapeHtml(entry.typeLabel || entry.type)}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Descrição Completa</label>
+        <span>${escapeHtml(entry.description)}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Referência Interna</label>
+        <span><code>${escapeHtml(entry.referencia)}</code></span>
+      </div>
+      <div class="drawer-field">
+        <label>Origem da Ação</label>
+        <span style="text-transform: capitalize;">${escapeHtml(entry.origin)}</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+        <div class="drawer-field">
+          <label>Débito</label>
+          <span class="financial-debit">R$ ${entry.debit.toFixed(2).replace('.', ',')}</span>
+        </div>
+        <div class="drawer-field">
+          <label>Crédito</label>
+          <span class="financial-credit">R$ ${entry.credit.toFixed(2).replace('.', ',')}</span>
+        </div>
+      </div>
+      <div class="drawer-field" style="margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: var(--border-radius-sm);">
+        <label>Saldo Resultante</label>
+        <span style="font-size: 1.1rem; font-weight: 700;">R$ ${entry.balanceAfter.toFixed(2).replace('.', ',')}</span>
+      </div>
+    `;
+
+    backdrop.classList.add('active');
+  }
+};
+
+window.openRiderTransactionDrawer = function(deliveryId) {
+  const delivery = currentRiderDeliveriesCache.find(d => String(d.id) === String(deliveryId));
+  if (!delivery) return;
+
+  const content = document.getElementById('drawer-transaction-content');
+  const backdrop = document.getElementById('drawer-transaction-details');
+
+  if (content && backdrop) {
+    const dDate = new Date(delivery.date || delivery.created_at);
+    const dFormatted = isNaN(dDate) ? '—' : dDate.toLocaleDateString('pt-BR') + ' às ' + dDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const val = parseFloat(delivery.price || delivery.taxa || 0);
+
+    content.innerHTML = `
+      <div class="drawer-field">
+        <label>ID da Tele</label>
+        <span>#${escapeHtml(String(delivery.id))}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Data & Hora</label>
+        <span>${dFormatted}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Motoboy</label>
+        <span>${escapeHtml(delivery.rider || '—')}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Cliente / Estabelecimento</label>
+        <span>${escapeHtml(delivery.client || delivery.commerce_name || '—')}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Origem (Pickup)</label>
+        <span>${escapeHtml(delivery.origin || delivery.pickup || '—')}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Destino (Entrega)</label>
+        <span>${escapeHtml(delivery.destination || delivery.delivery_address || '—')}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Valor da Corrida</label>
+        <span style="font-size: 1.1rem; font-weight: 700; color: #10b981;">R$ ${val.toFixed(2).replace('.', ',')}</span>
+      </div>
+      <div class="drawer-field">
+        <label>Status</label>
+        <span>${escapeHtml(delivery.status || 'Pendente')}</span>
+      </div>
+    `;
+
+    backdrop.classList.add('active');
+  }
+};
+
+window.closeTransactionDrawer = function(event) {
+  if (event && event.target && !event.target.classList.contains('drawer-backdrop') && !event.target.classList.contains('drawer-close-btn') && !event.target.closest('.drawer-close-btn')) {
+    return;
+  }
+  const backdrop = document.getElementById('drawer-transaction-details');
+  if (backdrop) {
+    backdrop.classList.remove('active');
+  }
+};
+
+// =====================================================================
+// MÓDULO DE CLIENTES COMERCIAIS & PAINEL DO CLIENTE (MULTI-TENANT & RLS)
+// =====================================================================
+
+let commercialClientsList = [];
+let activeCommercialClient = null;
+let clientFinancialLedgerStore = [];
+
+// 1. Carregar Clientes Comerciais do Banco / API Dev
+async function fetchCommercialClients() {
+  try {
+    if (supabaseClient) {
+      const { data, error } = await supabaseClient
+        .from('commercial_clients')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.warn("Aviso ao buscar commercial_clients:", error.message);
+      } else if (data) {
+        commercialClientsList = data;
+      }
+    } else {
+      // Dev Adapter fallback via API local
+      const res = await fetch('/api/admin/clients');
+      if (res.ok) {
+        const json = await res.json();
+        commercialClientsList = json.clients || [];
+      }
+    }
+  } catch (err) {
+    console.error("Erro ao buscar clientes comerciais:", err);
+  }
+
+  // Garantir fixtures de homologação se a lista estiver vazia
+  if (!commercialClientsList || commercialClientsList.length === 0) {
+    commercialClientsList = [
+      {
+        id: 'client-fixture-001',
+        public_code: 'CLI-000001',
+        establishment_name: 'Lanchonete Dahora',
+        responsible_name: 'Gerente Lanchonete',
+        phone_normalized: '11999998888',
+        email_normalized: 'gerente@lanchonetedahora.com.br',
+        document_normalized: '12.345.678/0001-90',
+        lifecycle_status: 'ativo',
+        financial_status: 'em_dia',
+        address: 'Rua Principal, 100',
+        neighborhood: 'Centro',
+        city: 'Porto Alegre',
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'client-fixture-002',
+        public_code: 'CLI-000002',
+        establishment_name: 'Cliente Teste (Homologação)',
+        responsible_name: 'Usuário Teste',
+        phone_normalized: '11988887777',
+        email_normalized: 'cliente.teste@local.test',
+        document_normalized: '98.765.432/0001-10',
+        lifecycle_status: 'teste',
+        financial_status: 'em_dia',
+        address: 'Av. das Indústrias, 500',
+        neighborhood: 'Industrial',
+        city: 'São Paulo',
+        created_at: new Date().toISOString()
+      }
+    ];
+  }
+
+  renderCommercialClientsTable();
+  updateCommercialMetrics();
+}
+
+// 2. Renderizar Tabela Administrativa de Clientes Comerciais
+function renderCommercialClientsTable() {
+  const tbody = document.getElementById('commercial-clients-table-body');
+  if (!tbody) return;
+
+  const searchQuery = (document.getElementById('search-commercial-clients')?.value || '').toLowerCase().trim();
+  const lifecycleFilter = document.getElementById('filter-client-lifecycle')?.value || 'all';
+
+  const filtered = commercialClientsList.filter(c => {
+    const matchesSearch = !searchQuery || 
+      (c.establishment_name || '').toLowerCase().includes(searchQuery) ||
+      (c.public_code || '').toLowerCase().includes(searchQuery) ||
+      (c.responsible_name || '').toLowerCase().includes(searchQuery) ||
+      (c.email_normalized || '').toLowerCase().includes(searchQuery) ||
+      (c.phone_normalized || '').includes(searchQuery);
+
+    const matchesLifecycle = (lifecycleFilter === 'all') || (c.lifecycle_status === lifecycleFilter);
+
+    return matchesSearch && matchesLifecycle;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" style="text-align: center; padding: 32px; color: var(--color-text-muted);">
+          <i data-lucide="store" style="width: 36px; height: 36px; display: block; margin: 0 auto 8px; opacity: 0.5;"></i>
+          Nenhum cliente comercial encontrado.
+        </td>
+      </tr>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => {
+    const dateFormatted = new Date(c.created_at).toLocaleDateString('pt-BR');
+    
+    // Status Badges
+    const lifecycleBadgeClass = c.lifecycle_status === 'ativo' ? 'badge-success' :
+                               c.lifecycle_status === 'teste' ? 'badge-info' :
+                               c.lifecycle_status === 'suspenso' ? 'badge-warning' : 'badge-danger';
+
+    const financialBadgeClass = c.financial_status === 'em_dia' ? 'badge-success' : 'badge-danger';
+
+    // Total teles & saldo mock/calculado para o cliente
+    const totalTeles = (mockData.clientHistory || []).filter(d => 
+      String(d.client_id) === String(c.id) || (d.client || '').toLowerCase() === (c.establishment_name || '').toLowerCase()
+    ).length;
+
+    const openBalance = 0; // Saldo em dia
+
+    return `
+      <tr>
+        <td><strong style="color: var(--cyan-text); font-family: monospace;">${escapeHtml(c.public_code)}</strong></td>
+        <td>
+          <div style="font-weight: 600;">${escapeHtml(c.establishment_name)}</div>
+          <span style="font-size: 0.75rem; color: var(--color-text-muted);">${escapeHtml(c.address || '')}</span>
+        </td>
+        <td>${escapeHtml(c.responsible_name)}</td>
+        <td>
+          <div>${escapeHtml(c.phone_normalized)}</div>
+          <span style="font-size: 0.75rem; color: var(--color-text-muted);">${escapeHtml(c.email_normalized)}</span>
+        </td>
+        <td><span class="badge ${lifecycleBadgeClass}">${escapeHtml(c.lifecycle_status.toUpperCase())}</span></td>
+        <td><span class="badge ${financialBadgeClass}">${escapeHtml(c.financial_status.replace('_', ' ').toUpperCase())}</span></td>
+        <td><strong>${totalTeles}</strong></td>
+        <td><strong style="color: #10b981;">R$ ${openBalance.toFixed(2).replace('.', ',')}</strong></td>
+        <td>${dateFormatted}</td>
+        <td style="text-align: right;">
+          <div style="display: flex; gap: 6px; justify-content: flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="openTestClientPanel('${c.id}', 'test')" title="Logar no Painel deste Cliente">
+              <i data-lucide="external-link" style="width: 14px; height: 14px;"></i> <span>Abrir Painel</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleClientStatus('${c.id}')" title="Alterar Status">
+              <i data-lucide="${c.lifecycle_status === 'ativo' ? 'pause-circle' : 'play-circle'}" style="width: 14px; height: 14px;"></i>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="resetClientAccess('${c.id}')" title="Resetar Acesso">
+              <i data-lucide="key" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// 3. Métricas Rápidas no Admin
+function updateCommercialMetrics() {
+  const activeCount = commercialClientsList.filter(c => c.lifecycle_status === 'ativo').length;
+  const testCount = commercialClientsList.filter(c => c.lifecycle_status === 'teste').length;
+  const totalTeles = (mockData.clientHistory || []).length;
+
+  const elActive = document.getElementById('comm-metric-active-count');
+  const elTest = document.getElementById('comm-metric-test-count');
+  const elTotal = document.getElementById('comm-metric-total-teles');
+
+  if (elActive) elActive.innerText = activeCount;
+  if (elTest) elTest.innerText = testCount;
+  if (elTotal) elTotal.innerText = totalTeles;
+}
+
+// 4. Modal de Novo Cliente Comercial
+function openAddCommercialClientModal() {
+  const modal = document.getElementById('modal-add-commercial-client');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeAddCommercialClientModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn')) {
+    return;
+  }
+  const modal = document.getElementById('modal-add-commercial-client');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitAddCommercialClient(event) {
+  if (event) event.preventDefault();
+
+  const establishment_name = document.getElementById('comm-establishment-name')?.value.trim();
+  const responsible_name = document.getElementById('comm-responsible-name')?.value.trim();
+  const phone = document.getElementById('comm-phone')?.value.trim();
+  const email = document.getElementById('comm-email')?.value.trim();
+  const password = document.getElementById('comm-password')?.value.trim();
+  const address = document.getElementById('comm-address')?.value.trim();
+  const complement = document.getElementById('comm-complement')?.value.trim() || '';
+  const neighborhood = document.getElementById('comm-neighborhood')?.value.trim() || '';
+  const city = document.getElementById('comm-city')?.value.trim() || '';
+  const documentNum = document.getElementById('comm-document')?.value.trim() || '';
+  const map_color = document.getElementById('comm-map-color')?.value || '#ffb700';
+  const lifecycle_status = document.getElementById('comm-lifecycle-status')?.value || 'ativo';
+  const notes = document.getElementById('comm-notes')?.value.trim() || '';
+
+  if (!establishment_name || !responsible_name || !phone || !email || !password || !address) {
+    alert('Preencha todos os campos obrigatórios.');
+    return;
+  }
+
+  showToastNotification('Criando cliente comercial e configurando acesso seguro...');
 
   try {
-    const response = await fetch(url, {
+    const payload = {
+      establishment_name,
+      responsible_name,
+      phone,
+      email,
+      password,
+      address,
+      complement,
+      neighborhood,
+      city,
+      document: documentNum,
+      map_color,
+      lifecycle_status,
+      notes
+    };
+
+    const response = await fetch('/api/admin/create-client', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Request-ID': requestId
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
-    console.log("Resposta recebida do Servidor de Produção:", data);
+    const json = await response.json();
 
-    if (data && data.errno === 0 && data.errmsg === 'ok') {
-      console.log("%c CIRCUITO HOMOLOGADO E CONFIRMADO COM SUCESSO! ", "background: #22c55e; color: #fff; font-weight: bold; padding: 4px;");
-      alert(`Webhook enviado com sucesso!\nID do Pedido: ${orderId}\nResposta: ${JSON.stringify(data)}`);
-    } else {
-      console.error("Servidor retornou erro ou formato inválido:", data);
-      alert(`Erro na resposta do webhook: ${JSON.stringify(data)}`);
+    if (!response.ok) {
+      throw new Error(json.error || 'Erro ao cadastrar cliente.');
     }
+
+    showToastNotification(`Cliente "${establishment_name}" (${json.client?.public_code || 'CLI'}) cadastrado com sucesso!`);
+    closeAddCommercialClientModal();
+    await fetchCommercialClients();
+
   } catch (err) {
-    console.error("Falha ao efetuar disparo do webhook:", err);
-    alert("Falha no disparo do webhook: " + err.message);
+    console.error("Erro ao cadastrar cliente:", err);
+    alert(`Falha no cadastro: ${err.message}`);
   }
+}
+
+// 5. Ações Administrativas de Clientes
+async function toggleClientStatus(clientId) {
+  const client = commercialClientsList.find(c => String(c.id) === String(clientId));
+  if (!client) return;
+
+  const nextStatus = client.lifecycle_status === 'ativo' ? 'suspenso' : 'ativo';
+  if (!confirm(`Deseja alterar o status de "${client.establishment_name}" para ${nextStatus.toUpperCase()}?`)) return;
+
+  client.lifecycle_status = nextStatus;
+
+  if (supabaseClient) {
+    await supabaseClient
+      .from('commercial_clients')
+      .update({ lifecycle_status: nextStatus })
+      .eq('id', clientId);
+  }
+
+  renderCommercialClientsTable();
+  updateCommercialMetrics();
+  showToastNotification(`Status do cliente "${client.establishment_name}" alterado para ${nextStatus}.`);
+}
+
+function resetClientAccess(clientId) {
+  const client = commercialClientsList.find(c => String(c.id) === String(clientId));
+  if (!client) return;
+  alert(`Instruções de redefinição de acesso enviadas para o email ${client.email_normalized}.`);
+}
+
+// 6. Abrir Painel de Teste / Simulação do Cliente
+function openTestClientPanel(clientId, mode) {
+  const client = commercialClientsList.find(c => String(c.id) === String(clientId)) || commercialClientsList[0];
+  activeCommercialClient = client;
+
+  // Atualizar nome e perfil na barra lateral
+  mockData.activeProfile = 'client';
+  mockData.credentials.client.commerceName = client.establishment_name;
+  mockData.credentials.client.name = client.responsible_name;
+  mockData.credentials.client.email = client.email_normalized;
+
+  loginSuccess();
+  switchDashboardTab('client-overview');
+  showToastNotification(`Acessando o Painel do Cliente como [${client.establishment_name}] (${client.public_code})`);
+}
+
+function showRequestDeliveryModal() {
+  const modal = document.getElementById('modal-request-delivery');
+  const searchInput = document.getElementById('admin-client-search');
+  const selectedInput = document.getElementById('selectedClientId');
+  const destInput = document.getElementById('manual-delivery-dest-name');
+  const addrInput = document.getElementById('manual-delivery-address');
+  const notesInput = document.getElementById('manual-order-notes');
+
+  if (searchInput) searchInput.value = '';
+  if (selectedInput) selectedInput.value = '';
+  if (destInput) destInput.value = '';
+  if (addrInput) addrInput.value = '';
+  if (notesInput) notesInput.value = '';
+
+  if (modal) modal.classList.remove('hidden');
+  fetchCommercialClientsForSelect();
+}
+
+function closeRequestDeliveryModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn')) {
+    return;
+  }
+  const modal = document.getElementById('modal-request-delivery');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitDeliveryRequest(event, type = 'manual') {
+  if (event) event.preventDefault();
+
+  const selectedClientId = document.getElementById('selectedClientId')?.value;
+  if (!selectedClientId) {
+    showToastNotification('Por favor, selecione um cliente comercial cadastrado.');
+    return;
+  }
+
+  const destName = document.getElementById('manual-delivery-dest-name')?.value?.trim();
+  if (!destName || destName === 'Cliente informado') {
+    showToastNotification('Informe o nome do destinatário.');
+    return;
+  }
+
+  const address = document.getElementById('manual-delivery-address')?.value?.trim();
+  if (!address) {
+    showToastNotification('Informe o endereço de entrega.');
+    return;
+  }
+
+  const notes = document.getElementById('manual-order-notes')?.value || '';
+  const btnSubmit = document.querySelector('#request-delivery-form button[type="submit"]');
+  if (btnSubmit) btnSubmit.disabled = true;
+
+  const idempotencyKey = `idemp-admin-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+  try {
+    if (supabaseClient) {
+      const { data, error } = await supabaseClient.rpc('create_admin_tele', {
+        p_client_id: selectedClientId,
+        p_pickup_address: '',
+        p_delivery_address: address,
+        p_recipient_name: destName,
+        p_recipient_phone: '11999999999',
+        p_idempotency_key: idempotencyKey,
+        p_reference: null,
+        p_notes: notes,
+        p_order_value: 0
+      });
+
+      if (error) throw error;
+      if (!data.success) {
+        showToastNotification(`Erro ao criar Tele: ${data.message}`);
+        if (btnSubmit) btnSubmit.disabled = false;
+        return;
+      }
+
+      showToastNotification(`Tele criada com sucesso!`);
+    } else {
+      const res = await fetch('/api/admin/create-tele', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: selectedClientId,
+          delivery_address: address,
+          recipient_name: destName,
+          recipient_phone: '11999999999',
+          idempotency_key: idempotencyKey,
+          notes
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToastNotification(data.message || 'Erro ao criar Tele.');
+        if (btnSubmit) btnSubmit.disabled = false;
+        return;
+      }
+
+      mockData.pendingDeliveries.unshift(data.tele);
+      syncTelesStoreMap();
+      renderOperationsDashboard();
+      if (typeof renderTelesUnified === 'function') renderTelesUnified();
+      showToastNotification(`Tele ${data.tele_code} criada com sucesso!`);
+    }
+
+    closeRequestDeliveryModal();
+  } catch (err) {
+    console.error("Erro ao criar Tele manual:", err);
+    showToastNotification("Erro de conexão ao criar a Tele.");
+  } finally {
+    if (btnSubmit) btnSubmit.disabled = false;
+  }
+}
+
+// 7. Solicitação de Entrega pelo Painel do Cliente (Vocabulário "Entrega")
+async function submitClientDeliveryRequest(event) {
+  if (event) event.preventDefault();
+
+  if (activeCommercialClient && activeCommercialClient.lifecycle_status === 'suspenso') {
+    alert('Sua conta comercial encontra-se suspensa para novas solicitações. Entre em contato com o suporte.');
+    return;
+  }
+
+  const clientName = activeCommercialClient ? activeCommercialClient.establishment_name : 'Cliente Parceiro';
+  const clientId = activeCommercialClient ? activeCommercialClient.id : null;
+
+  const destName = document.getElementById('client-dest-name')?.value.trim() || 'Destinatário';
+  const address = document.getElementById('client-delivery-address')?.value.trim();
+  const phone = document.getElementById('client-dest-phone')?.value.trim() || '';
+  const cargo = document.getElementById('client-cargo-notes')?.value.trim() || 'Sem observações';
+  const payment = document.getElementById('client-payment-method')?.value || 'Pix';
+  const price = document.getElementById('client-delivery-price')?.value || '15,00';
+
+  if (!address) {
+    alert('Informe o endereço de entrega.');
+    return;
+  }
+
+  showToastNotification('Enviando solicitação de entrega para a central...');
+
+  const newTele = {
+    id: `TEL-${Math.floor(100000 + Math.random() * 900000)}`,
+    client_id: clientId,
+    client: clientName,
+    dest_name: destName,
+    address,
+    dest_phone: phone,
+    cargo,
+    payment,
+    price: `R$ ${price}`,
+    status: 'solicitada',
+    status_class: 'status-warning',
+    created_at: new Date().toISOString()
+  };
+
+  // Inserir no Supabase se conectado
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('teles').insert([{
+        cliente_nome: clientName,
+        endereco: address,
+        valor: parseFloat(price),
+        status: 'novo',
+        client_id: clientId
+      }]);
+    } catch (err) {
+      console.warn("Aviso ao salvar no Supabase, usando memória local:", err);
+    }
+  }
+
+  mockData.pendingDeliveries.unshift(newTele);
+  
+  if (typeof renderTelesUnified === 'function') renderTelesUnified();
+  showToastNotification(`Entrega #${newTele.id} solicitada com sucesso! Acompanhe o status no painel.`);
+}
+
+// =====================================================================
+// CENTRO DE OPERAÇÕES — FASE 1 & FASE 2 (KANBAN, STATE MACHINE & SLA)
+// =====================================================================
+
+// Stores em memória para busca O(1) por ID
+const opTelesStoreMap = new Map();
+const opRidersStoreMap = new Map();
+const opClientsStoreMap = new Map();
+
+// Debounce timer para busca instantânea
+let opSearchDebounceTimer = null;
+
+// 1. Configuração Centralizada de SLA (em minutos)
+// Inicialização do Mapa no Modal sem bloqueio de Ctrl (greedy / scrollZoom: true)
+let manualDeliveryMapInstance = null;
+
+function initManualDeliveryMap() {
+  const container = document.getElementById('manual-request-delivery-map');
+  if (!container) return;
+
+  if (!manualDeliveryMapInstance && window.mapboxgl) {
+    manualDeliveryMapInstance = new mapboxgl.Map({
+      container: 'manual-request-delivery-map',
+      style: 'mapbox://styles/mapbox/dark-v11',
+      center: [-46.633308, -23.55052],
+      zoom: 13,
+      scrollZoom: true,
+      dragPan: true,
+      touchZoomRotate: true
+    });
+    manualDeliveryMapInstance.addControl(new mapboxgl.NavigationControl(), 'top-right');
+  }
+}
+
+const SLA_CONFIG = {
+  solicitada: { warning_minutes: 10, critical_minutes: 20 },
+  aguardando_despacho: { warning_minutes: 10, critical_minutes: 20 },
+  motoboy_designado: { warning_minutes: 10, critical_minutes: 15 },
+  indo_coletar: { warning_minutes: 15, critical_minutes: 25 },
+  aguardando_coleta: { warning_minutes: 10, critical_minutes: 20 },
+  coletada: { warning_minutes: 15, critical_minutes: 30 },
+  em_entrega: { warning_minutes: 20, critical_minutes: 35 },
+  concluida: { warning_minutes: 9999, critical_minutes: 9999 },
+  cancelada: { warning_minutes: 9999, critical_minutes: 9999 },
+  status_unknown: { warning_minutes: 5, critical_minutes: 10 }
 };
 
+function getSLAConfigurationForStatus(status) {
+  const norm = normalizeTeleStatus(status);
+  return SLA_CONFIG[norm] || SLA_CONFIG.status_unknown;
+}
+
+// 2. Normalizador Oficial de Status (remover acentos, lowercase, trim, underscores)
+function normalizeTeleStatus(rawStatus) {
+  if (rawStatus === null || rawStatus === undefined || typeof rawStatus !== 'string') {
+    return 'status_unknown';
+  }
+
+  const cleaned = rawStatus
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_');
+
+  const mapping = {
+    'novo': 'solicitada',
+    'solicitada': 'solicitada',
+    'pendente': 'solicitada',
+
+    'aguardando_despacho': 'aguardando_despacho',
+    'aguardando_motoboy': 'aguardando_despacho',
+
+    'atribuido': 'motoboy_designado',
+    'aceito': 'motoboy_designado',
+    'designado': 'motoboy_designado',
+    'motoboy_designado': 'motoboy_designado',
+
+    'indo_coletar': 'indo_coletar',
+    'a_caminho_da_coleta': 'indo_coletar',
+
+    'aguardando_coleta': 'aguardando_coleta',
+    'no_estabelecimento': 'aguardando_coleta',
+    'no_ponto_de_coleta': 'aguardando_coleta',
+
+    'coletada': 'coletada',
+    'carga_retirada': 'coletada',
+
+    'em_rota': 'em_entrega',
+    'em_entrega': 'em_entrega',
+    'saiu_para_entrega': 'em_entrega',
+    'em_transito': 'em_entrega',
+
+    'entregue': 'concluida',
+    'concluida': 'concluida',
+    'concluido': 'concluida',
+    'pago': 'concluida',
+
+    'cancelado': 'cancelada',
+    'cancelada': 'cancelada',
+
+    'em_andamento': 'em_entrega',
+    'solicitado': 'solicitada',
+    'criada': 'solicitada'
+  };
+
+  return mapping[cleaned] || 'status_unknown';
+}
+
+// Resolução Oficial do Nome Visual do Cliente (sem fallback de nomes fictícios)
+function resolveClientDisplayName(tele) {
+  if (!tele) return 'Cliente não vinculado';
+  
+  if (tele.client_id) {
+    const client = opClientsStoreMap.get(String(tele.client_id));
+    if (client && (client.establishment_name || client.trade_name || client.name)) {
+      return client.establishment_name || client.trade_name || client.name;
+    }
+  }
+
+  if (tele.client && !tele.client.toLowerCase().includes('garra') && !tele.client.toLowerCase().includes('parceiro') && tele.client !== 'Cliente informado') {
+    return tele.client;
+  }
+
+  return 'Cliente não vinculado';
+}
+
+// =====================================================================
+// SELETOR PESQUISÁVEL DE CLIENTES COMERCIAIS (commercial_clients)
+// =====================================================================
+let commercialClientsForSelect = [];
+
+async function fetchCommercialClientsForSelect() {
+  const dropdown = document.getElementById('admin-client-dropdown');
+  const showInactive = document.getElementById('show-inactive-clients-cb')?.checked || false;
+
+  if (dropdown) {
+    dropdown.innerHTML = '<div style="padding: 10px; color: var(--color-text-muted); text-align: center;">Carregando clientes...</div>';
+  }
+
+  try {
+    if (supabaseClient) {
+      let query = supabaseClient
+        .from('commercial_clients')
+        .select('id, establishment_name, client_code, responsible_name, phone, lifecycle_status')
+        .order('establishment_name', { ascending: true });
+
+      if (!showInactive) {
+        query = query.eq('lifecycle_status', 'ativo');
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      commercialClientsForSelect = data || [];
+    } else {
+      // Dev local fallback from opClientsStoreMap
+      commercialClientsForSelect = Array.from(opClientsStoreMap.values()).filter(c => {
+        return showInactive || (c.lifecycle_status || c.status || 'ativo') === 'ativo';
+      });
+      if (commercialClientsForSelect.length === 0) {
+        commercialClientsForSelect = [
+          { id: 'client-uuid-1', establishment_name: 'Lancheria Dahora', client_code: 'CLI-000001', responsible_name: 'João Silva', phone: '(11) 99999-0001', lifecycle_status: 'ativo' },
+          { id: 'client-uuid-2', establishment_name: 'Pizzaria da Nonna', client_code: 'CLI-000002', responsible_name: 'Maria Nonna', phone: '(11) 99999-0002', lifecycle_status: 'ativo' },
+          { id: 'client-uuid-3', establishment_name: 'Dogão Express', client_code: 'CLI-000003', responsible_name: 'Marcos Fernandes', phone: '(11) 99999-0003', lifecycle_status: 'ativo' },
+          { id: 'client-uuid-4', establishment_name: 'Lanchonete Dahora', client_code: 'CLI-000004', responsible_name: 'Pedro Santos', phone: '(11) 99999-0004', lifecycle_status: 'ativo' }
+        ];
+      }
+    }
+
+    renderClientSelectDropdownItems(commercialClientsForSelect);
+  } catch (err) {
+    console.error("Erro ao carregar clientes comerciais:", err);
+    if (dropdown) {
+      dropdown.innerHTML = '<div style="padding: 10px; color: #ef4444; text-align: center;">Erro ao carregar lista de clientes.</div>';
+    }
+  }
+}
+
+function renderClientSelectDropdownItems(clients = []) {
+  const dropdown = document.getElementById('admin-client-dropdown');
+  if (!dropdown) return;
+
+  if (clients.length === 0) {
+    dropdown.innerHTML = '<div style="padding: 10px; color: var(--color-text-muted); text-align: center;">Nenhum cliente cadastrado encontrado.</div>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  clients.forEach((client, idx) => {
+    const item = document.createElement('div');
+    item.className = 'custom-select-item';
+    item.setAttribute('role', 'option');
+    item.setAttribute('tabindex', '0');
+    item.setAttribute('id', `client-opt-${idx}`);
+    item.style.cssText = 'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;';
+    
+    const status = (client.lifecycle_status || 'ativo').toLowerCase();
+    const badgeClass = status === 'ativo' ? 'status-success' :
+                       status === 'teste' ? 'badge-info' :
+                       status === 'suspenso' ? 'status-warning' : 'status-danger';
+
+    item.innerHTML = `
+      <div>
+        <strong style="color: var(--color-text); font-size: 0.85rem;">${escapeHtml(client.establishment_name || client.name || 'Sem nome')}</strong>
+        <div style="font-size: 0.72rem; color: var(--color-text-muted);">
+          ${escapeHtml(client.client_code || 'CLI-—')} ${client.responsible_name ? '• ' + escapeHtml(client.responsible_name) : ''}
+        </div>
+      </div>
+      <span class="badge ${badgeClass}" style="font-size: 0.68rem; text-transform: uppercase;">
+        ${escapeHtml(status)}
+      </span>
+    `;
+
+    item.onclick = () => selectCommercialClient(client);
+    item.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectCommercialClient(client);
+      }
+    };
+
+    fragment.appendChild(item);
+  });
+
+  dropdown.innerHTML = '';
+  dropdown.appendChild(fragment);
+}
+
+function selectCommercialClient(client) {
+  const hiddenInput = document.getElementById('selectedClientId');
+  const searchInput = document.getElementById('admin-client-search');
+  const dropdown = document.getElementById('admin-client-dropdown');
+  const submitBtn = document.querySelector('#request-delivery-form button[type="submit"]');
+
+  if (hiddenInput) hiddenInput.value = client.id;
+  if (searchInput) {
+    searchInput.value = client.establishment_name || client.name || '';
+    searchInput.setAttribute('aria-expanded', 'false');
+  }
+  if (dropdown) dropdown.classList.add('hidden');
+
+  // Validação Visual para Clientes Inativos/Suspensos
+  const status = (client.lifecycle_status || 'ativo').toLowerCase();
+  const isAllowedToCreate = status === 'ativo' || status === 'teste';
+
+  let alertBox = document.getElementById('admin-client-inactive-warning');
+  if (!isAllowedToCreate) {
+    if (!alertBox) {
+      alertBox = document.createElement('div');
+      alertBox.id = 'admin-client-inactive-warning';
+      alertBox.style.cssText = 'background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; margin-top: 6px; font-weight: 500;';
+      const container = document.getElementById('admin-client-select-wrapper');
+      if (container) container.appendChild(alertBox);
+    }
+    alertBox.innerHTML = `<i data-lucide="alert-triangle" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> Cliente <strong>${escapeHtml(client.establishment_name || '')}</strong> encontra-se com status <strong>${status.toUpperCase()}</strong>. Não é possível solicitar entregas.`;
+    alertBox.classList.remove('hidden');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.title = 'Cliente suspenso ou inativo não pode criar entregas.';
+    }
+  } else {
+    if (alertBox) alertBox.classList.add('hidden');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.removeAttribute('title');
+    }
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function initClientSelectComponent() {
+  const searchInput = document.getElementById('admin-client-search');
+  const dropdown = document.getElementById('admin-client-dropdown');
+
+  if (!searchInput || !dropdown) return;
+
+  searchInput.onclick = () => {
+    dropdown.classList.remove('hidden');
+    searchInput.setAttribute('aria-expanded', 'true');
+    fetchCommercialClientsForSelect();
+  };
+
+  searchInput.oninput = () => {
+    dropdown.classList.remove('hidden');
+    searchInput.setAttribute('aria-expanded', 'true');
+    const q = searchInput.value.toLowerCase().trim();
+    const filtered = commercialClientsForSelect.filter(c => {
+      const nameMatch = (c.establishment_name || c.name || '').toLowerCase().includes(q);
+      const codeMatch = (c.client_code || '').toLowerCase().includes(q);
+      const respMatch = (c.responsible_name || '').toLowerCase().includes(q);
+      return nameMatch || codeMatch || respMatch;
+    });
+    renderClientSelectDropdownItems(filtered);
+  };
+
+  searchInput.onkeydown = (e) => {
+    if (e.key === 'Escape') {
+      dropdown.classList.add('hidden');
+      searchInput.setAttribute('aria-expanded', 'false');
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('admin-client-select-wrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+      dropdown.classList.add('hidden');
+      searchInput.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+// 3. State Machine Oficial (Validador de Transições)
+function canTransitionTeleStatus(currentRaw, nextRaw) {
+  const current = normalizeTeleStatus(currentRaw);
+  const next = normalizeTeleStatus(nextRaw);
+
+  if (current === next) return true;
+
+  const allowedTransitions = {
+    solicitada: ['aguardando_despacho', 'motoboy_designado', 'cancelada'],
+    aguardando_despacho: ['motoboy_designado', 'solicitada', 'cancelada'],
+    motoboy_designado: ['indo_coletar', 'aguardando_coleta', 'cancelada'],
+    indo_coletar: ['aguardando_coleta', 'coletada', 'cancelada'],
+    aguardando_coleta: ['coletada', 'em_entrega', 'cancelada'],
+    coletada: ['em_entrega', 'concluida', 'cancelada'],
+    em_entrega: ['concluida', 'cancelada'],
+    concluida: [],
+    cancelada: []
+  };
+
+  return (allowedTransitions[current] || []).includes(next);
+}
+
+// 4. Cálculo de Tempo Decorrido & SLA derivado de tele_eventos
+function calculateTeleElapsedTime(tele, eventsList = []) {
+  const normStatus = normalizeTeleStatus(tele.status);
+  let statusEnteredAt = null;
+  let isEstimated = false;
+
+  if (Array.isArray(eventsList) && eventsList.length > 0) {
+    const matchingEvent = eventsList
+      .filter(e => String(e.tele_id) === String(tele.id) && normalizeTeleStatus(e.tipo || e.status) === normStatus)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+    if (matchingEvent && matchingEvent.created_at) {
+      statusEnteredAt = new Date(matchingEvent.created_at);
+    }
+  }
+
+  // Fallback 1: updated_at
+  if (!statusEnteredAt && tele.updated_at) {
+    statusEnteredAt = new Date(tele.updated_at);
+    isEstimated = true;
+  }
+
+  // Fallback 2: created_at / date
+  if (!statusEnteredAt && (tele.created_at || tele.date)) {
+    statusEnteredAt = new Date(tele.created_at || tele.date);
+    isEstimated = true;
+  }
+
+  if (!statusEnteredAt || isNaN(statusEnteredAt.getTime())) {
+    statusEnteredAt = new Date();
+    isEstimated = true;
+  }
+
+  const now = new Date();
+  const elapsedMs = Math.max(0, now.getTime() - statusEnteredAt.getTime());
+  const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+  return { elapsedMinutes, isEstimated, enteredAt: statusEnteredAt };
+}
+
+function calculateTeleSLAState(tele, eventsList = []) {
+  const config = getSLAConfigurationForStatus(tele.status);
+  const { elapsedMinutes, isEstimated, enteredAt } = calculateTeleElapsedTime(tele, eventsList);
+
+  let state = 'normal';
+  if (elapsedMinutes >= config.critical_minutes) {
+    state = 'critical';
+  } else if (elapsedMinutes >= config.warning_minutes) {
+    state = 'warning';
+  }
+
+  return { state, elapsedMinutes, isEstimated, enteredAt, config };
+}
+
+// 5. Filtro do Dia no Fuso Horário Local
+function isTodayInLocalTime(dateInput) {
+  if (!dateInput) return false;
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return false;
+
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth() === now.getMonth() &&
+         d.getDate() === now.getDate();
+}
+
+// 6. Adapter de Motoboys (Oficial `fleet` com ponte seguro)
+function syncRidersStoreMap() {
+  opRidersStoreMap.clear();
+
+  // 1. Fonte Oficial: fleet
+  (mockData.fleet || []).forEach(r => {
+    opRidersStoreMap.set(String(r.id), {
+      id: String(r.id),
+      name: r.name,
+      vehicle: r.vehicle || 'Moto',
+      plate: r.plate || '—',
+      status: r.status || 'Disponível',
+      battery: r.battery || '100%',
+      rating: r.rating || 5.0,
+      source: 'fleet'
+    });
+  });
+
+  // 2. Ponte de compatibilidade sem duplicar IDs
+  if (Array.isArray(mockData.motoboys)) {
+    mockData.motoboys.forEach(m => {
+      const key = String(m.id);
+      if (!opRidersStoreMap.has(key)) {
+        opRidersStoreMap.set(key, {
+          id: key,
+          name: m.nome || m.name,
+          vehicle: 'Moto',
+          plate: '—',
+          status: m.ativo ? 'Disponível' : 'Indisponível',
+          battery: '100%',
+          rating: 5.0,
+          source: 'motoboys'
+        });
+      }
+    });
+  }
+}
+
+// 7. Sincronizar Teles para Store Map
+function syncTelesStoreMap() {
+  opTelesStoreMap.clear();
+
+  const allTeles = [
+    ...(mockData.pendingDeliveries || []),
+    ...(mockData.clientHistory || [])
+  ];
+
+  allTeles.forEach(t => {
+    if (t && t.id) {
+      opTelesStoreMap.set(String(t.id), t);
+    }
+  });
+}
+
+// 8. Agrupador de Colunas do Kanban
+// 8. Renderização do Dashboard Resumo Operacional (sem Kanban)
+function renderOperationsDashboard() {
+  syncTelesStoreMap();
+  syncRidersStoreMap();
+
+  const allTeles = Array.from(opTelesStoreMap.values());
+  const allRiders = Array.from(opRidersStoreMap.values());
+
+  let awaitingCount = 0;
+  let inProgressCount = 0;
+  let slaCriticalCount = 0;
+  let completedTodayCount = 0;
+  let cancelledTodayCount = 0;
+  let statusUnknownCount = 0;
+
+  const urgentPriorities = [];
+  const alertsList = [];
+
+  allTeles.forEach(tele => {
+    const norm = normalizeTeleStatus(tele.status);
+    const slaInfo = calculateTeleSLAState(tele);
+
+    if (norm === 'solicitada' || norm === 'aguardando_despacho') {
+      awaitingCount++;
+      if (slaInfo.state === 'critical' || slaInfo.state === 'warning') {
+        urgentPriorities.push({ tele, slaInfo });
+      }
+    } else if (['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega'].includes(norm)) {
+      inProgressCount++;
+      if (slaInfo.state === 'critical' || slaInfo.state === 'warning') {
+        urgentPriorities.push({ tele, slaInfo });
+      }
+    } else if (norm === 'concluida') {
+      if (isTodayInLocalTime(tele.created_at || tele.date)) {
+        completedTodayCount++;
+      }
+    } else if (norm === 'cancelada') {
+      if (isTodayInLocalTime(tele.created_at || tele.date)) {
+        cancelledTodayCount++;
+      }
+    } else if (norm === 'status_unknown') {
+      statusUnknownCount++;
+    }
+
+    if (slaInfo.state === 'critical' && norm !== 'concluida' && norm !== 'cancelada') {
+      slaCriticalCount++;
+      alertsList.push({
+        type: 'sla_critical',
+        title: `SLA Crítico na Tele #${tele.tele_code || tele.id}`,
+        message: `Status: ${tele.status} (${slaInfo.elapsedMinutes} min decorridos)`,
+        teleId: tele.id
+      });
+    }
+  });
+
+  // Motoboys KPIs
+  let ridersAvailCount = 0;
+  let ridersMaxCount = 0;
+
+  allRiders.forEach(rider => {
+    const activeCount = countActiveDeliveriesForRider(rider.id);
+    const limit = rider.simultaneous_limit || 3;
+    const isAvail = rider.status === 'Disponível' || rider.status === 'Ativo';
+
+    if (isAvail && activeCount < limit) {
+      ridersAvailCount++;
+    }
+    if (activeCount >= limit) {
+      ridersMaxCount++;
+      alertsList.push({
+        type: 'rider_limit',
+        title: `Limite Atingido: ${rider.name}`,
+        message: `${activeCount}/${limit} entregas ativas em andamento.`
+      });
+    }
+  });
+
+  // Atualizar Elementos KPI no DOM
+  const kpiAwaiting = document.getElementById('op-kpi-awaiting');
+  const kpiInProgress = document.getElementById('op-kpi-in-progress');
+  const kpiSlaCritical = document.getElementById('op-kpi-sla-critical');
+  const kpiRidersAvail = document.getElementById('op-kpi-riders-avail');
+  const kpiRidersMax = document.getElementById('op-kpi-riders-max');
+  const kpiCompletedToday = document.getElementById('op-kpi-completed-today');
+  const kpiCancelledToday = document.getElementById('op-kpi-cancelled-today');
+
+  if (kpiAwaiting) kpiAwaiting.innerText = awaitingCount;
+  if (kpiInProgress) kpiInProgress.innerText = inProgressCount;
+  if (kpiSlaCritical) kpiSlaCritical.innerText = slaCriticalCount;
+  if (kpiRidersAvail) kpiRidersAvail.innerText = ridersAvailCount;
+  if (kpiRidersMax) kpiRidersMax.innerText = ridersMaxCount;
+  if (kpiCompletedToday) kpiCompletedToday.innerText = completedTodayCount;
+  if (kpiCancelledToday) kpiCancelledToday.innerText = cancelledTodayCount;
+
+  // Diagnostic Box
+  const diagBox = document.getElementById('op-diagnostic-box');
+  const diagCount = document.getElementById('op-unknown-status-count');
+  if (diagBox && diagCount) {
+    if (statusUnknownCount > 0) {
+      diagBox.classList.remove('hidden');
+      diagCount.innerText = statusUnknownCount;
+    } else {
+      diagBox.classList.add('hidden');
+      diagCount.innerText = '0';
+    }
+  }
+
+  // 1. Renderizar Lista A: Prioridades Imediatas (máx. 5 Teles)
+  renderSummaryPrioritiesList(urgentPriorities.slice(0, 5));
+
+  // 2. Renderizar Lista B: Frota Ativa
+  renderSummaryFleetList(allRiders);
+
+  // 3. Renderizar Lista C: Alertas Operacionais
+  renderSummaryAlertsList(alertsList);
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function countActiveDeliveriesForRider(riderId) {
+  let count = 0;
+  opTelesStoreMap.forEach(t => {
+    if (String(t.motoboy_id) === String(riderId)) {
+      const norm = normalizeTeleStatus(t.status);
+      if (norm !== 'concluida' && norm !== 'cancelada') {
+        count++;
+      }
+    }
+  });
+  return count;
+}
+
+function renderSummaryPrioritiesList(priorities = []) {
+  const container = document.getElementById('op-summary-priorities-list');
+  if (!container) return;
+
+  if (priorities.length === 0) {
+    container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--color-text-muted); font-size: 0.8rem;">Nenhuma Tele em situação crítica no momento.</div>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  priorities.forEach(({ tele, slaInfo }) => {
+    const item = document.createElement('div');
+    item.style.cssText = 'background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px;';
+    
+    const clientName = resolveClientDisplayName(tele);
+
+    item.innerHTML = `
+      <div>
+        <div style="font-weight: 700; font-size: 0.85rem; color: var(--color-text);">
+          #${escapeHtml(String(tele.tele_code || tele.id))} • ${escapeHtml(clientName)}
+        </div>
+        <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px;">
+          ${escapeHtml(tele.address || 'Endereço não informado')}
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="sla-badge sla-badge-${slaInfo.state}" style="font-size: 0.72rem; padding: 3px 8px;">
+          ${slaInfo.elapsedMinutes} min
+        </span>
+        <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.72rem;" onclick="switchDashboardTab('owner-teles')">
+          Abrir na Gestão
+        </button>
+      </div>
+    `;
+    fragment.appendChild(item);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(fragment);
+}
+
+function renderSummaryFleetList(riders = []) {
+  const container = document.getElementById('op-summary-fleet-list');
+  const countEl = document.getElementById('op-summary-fleet-count');
+  if (countEl) countEl.innerText = `${riders.length} motoboys`;
+  if (!container) return;
+
+  if (riders.length === 0) {
+    container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--color-text-muted); font-size: 0.8rem;">Nenhum motoboy na frota.</div>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  riders.forEach(rider => {
+    const activeCount = countActiveDeliveriesForRider(rider.id);
+    const limit = rider.simultaneous_limit || 3;
+    const isFull = activeCount >= limit;
+
+    const item = document.createElement('div');
+    item.style.cssText = 'background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;';
+
+    item.innerHTML = `
+      <div>
+        <strong style="font-size: 0.82rem; color: var(--color-text);">${escapeHtml(rider.name)}</strong>
+        <div style="font-size: 0.72rem; color: var(--color-text-muted);">${escapeHtml(rider.vehicle || 'Moto')} • ${escapeHtml(rider.status)}</div>
+      </div>
+      <span class="badge ${isFull ? 'status-danger' : 'status-success'}" style="font-size: 0.72rem;">
+        Capacidade: ${activeCount}/${limit}
+      </span>
+    `;
+    fragment.appendChild(item);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(fragment);
+}
+
+function renderSummaryAlertsList(alerts = []) {
+  const container = document.getElementById('op-summary-alerts-list');
+  if (!container) return;
+
+  if (alerts.length === 0) {
+    container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--color-text-muted); font-size: 0.8rem;">Nenhum alerta pendente no momento.</div>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  alerts.forEach(alt => {
+    const item = document.createElement('div');
+    item.style.cssText = 'background: rgba(255, 183, 0, 0.05); border: 1px solid rgba(255, 183, 0, 0.2); border-radius: 6px; padding: 8px 12px; font-size: 0.8rem;';
+    item.innerHTML = `
+      <div style="font-weight: 700; color: var(--yellow);">${escapeHtml(alt.title)}</div>
+      <div style="color: var(--color-text-muted); font-size: 0.75rem; margin-top: 2px;">${escapeHtml(alt.message)}</div>
+    `;
+    fragment.appendChild(item);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(fragment);
+}
+
+// 13. Execução Transacional de Despacho (API local / RPC contract)
+async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '') {
+  const payload = {
+    tele_id: String(teleId),
+    rider_id: String(riderId),
+    expected_version: expectedVersion,
+    reason: reason ? reason.trim() : null
+  };
+
+  try {
+    const res = await fetch('/api/operations/assign-rider', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, errorCode: data.error_code || 'ERROR', message: data.message || 'Falha no despacho.' };
+    }
+
+    // Sucesso — atualizar store em memória
+    const tele = opTelesStoreMap.get(String(teleId));
+    if (tele) {
+      tele.motoboy_id = String(riderId);
+      tele.rider = data.rider_name;
+      tele.status = data.status || 'motoboy_designado';
+      tele.version = data.version;
+      tele.updated_at = data.updated_at;
+    }
+
+    renderKanbanBoard();
+    if (typeof openTeleOpDrawer === 'function' && document.getElementById('drawer-tele-op-details')?.classList.contains('active')) {
+      openTeleOpDrawer(teleId);
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, errorCode: 'CONNECTION_ERROR', message: 'Erro de conexão com o servidor de despacho.' };
+  }
+}
+
+// 14. Controls para o Modal de Despacho / Reatribuição
+function openAssignRiderModal(teleId, targetRiderId = null) {
+  const tele = opTelesStoreMap.get(String(teleId));
+  if (!tele) return;
+
+  const modal = document.getElementById('modal-assign-rider');
+  const codeEl = document.getElementById('assign-tele-code');
+  const infoEl = document.getElementById('assign-tele-info');
+  const teleIdInput = document.getElementById('assign-tele-id');
+  const teleVersionInput = document.getElementById('assign-tele-version');
+  const selectEl = document.getElementById('assign-rider-select');
+  const reasonGroup = document.getElementById('group-reassign-reason');
+  const feedbackBox = document.getElementById('assign-rider-feedback-box');
+
+  if (codeEl) codeEl.innerText = `#${tele.id}`;
+  if (infoEl) infoEl.innerText = `${tele.client || 'Cliente Geral'} — ${tele.address || ''}`;
+  if (teleIdInput) teleIdInput.value = tele.id;
+  if (teleVersionInput) teleVersionInput.value = tele.version || 1;
+
+  if (feedbackBox) {
+    feedbackBox.className = 'hidden';
+    feedbackBox.innerText = '';
+  }
+
+  // Preencher opções do dropdown de motoboys
+  if (selectEl) {
+    selectEl.innerHTML = '<option value="">-- Selecione um entregador --</option>';
+    opRidersStoreMap.forEach(rider => {
+      const activeCount = countActiveDeliveriesForRider(rider.id);
+      const limit = rider.simultaneous_limit || 3;
+      const isFull = activeCount >= limit;
+      const isUnavailable = ['Indisponível', 'Bloqueado', 'Inativo'].includes(rider.status);
+
+      const option = document.createElement('option');
+      option.value = rider.id;
+      option.innerText = `${rider.name} (${activeCount}/${limit}) - ${rider.status}`;
+      if (isUnavailable || isFull) {
+        option.disabled = true;
+      }
+      if (targetRiderId && String(rider.id) === String(targetRiderId)) {
+        option.selected = true;
+      }
+      selectEl.appendChild(option);
+    });
+  }
+
+  // Se a tele já tinha outro motoboy, exigir motivo da troca
+  const hasPreviousRider = Boolean(tele.motoboy_id);
+  if (reasonGroup) {
+    if (hasPreviousRider) {
+      reasonGroup.classList.remove('hidden');
+      document.getElementById('assign-reassign-reason').setAttribute('required', 'true');
+    } else {
+      reasonGroup.classList.add('hidden');
+      document.getElementById('assign-reassign-reason').removeAttribute('required');
+    }
+  }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeAssignRiderModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-backdrop') && !event.target.classList.contains('modal-close-btn')) {
+    return;
+  }
+  const modal = document.getElementById('modal-assign-rider');
+  if (modal) modal.classList.add('hidden');
+}
+
+function handleAssignRiderSelectChange() {
+  // Callback auxiliar se necessário
+}
+
+async function submitAssignRider(event) {
+  event.preventDefault();
+
+  const teleId = document.getElementById('assign-tele-id')?.value;
+  const version = parseInt(document.getElementById('assign-tele-version')?.value || '1', 10);
+  const riderId = document.getElementById('assign-rider-select')?.value;
+  const reason = document.getElementById('assign-reassign-reason')?.value || '';
+  const feedbackBox = document.getElementById('assign-rider-feedback-box');
+  const btnSubmit = document.getElementById('btn-submit-assign');
+
+  if (!teleId || !riderId) {
+    showToastNotification('Por favor, selecione um motoboy válido.');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Despachando...';
+  }
+
+  const result = await assignRiderToTele(teleId, riderId, version, reason);
+
+  if (btnSubmit) {
+    btnSubmit.disabled = false;
+    btnSubmit.innerText = 'Confirmar Despacho';
+  }
+
+  if (result.success) {
+    closeAssignRiderModal();
+    showToastNotification(`Tele #${teleId} despachada com sucesso para ${result.data.rider_name}!`);
+  } else {
+    // Tratamento amigável de erros
+    let friendlyMessage = result.message;
+    if (result.errorCode === 'TELE_VERSION_CONFLICT') {
+      friendlyMessage = 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.';
+    } else if (result.errorCode === 'RIDER_CAPACITY_REACHED') {
+      friendlyMessage = 'O motoboy selecionado atingiu o limite máximo de entregas simultâneas.';
+    } else if (result.errorCode === 'REASSIGN_REASON_REQUIRED') {
+      friendlyMessage = 'Informe obrigatoriamente o motivo para realizar a troca de motoboy.';
+    }
+
+    if (feedbackBox) {
+      feedbackBox.className = 'error-box';
+      feedbackBox.style.cssText = 'background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444; padding: 10px; border-radius: 6px; font-size: 0.8rem; margin-top: 10px;';
+      feedbackBox.setAttribute('role', 'alert');
+      feedbackBox.setAttribute('aria-live', 'assertive');
+      feedbackBox.innerText = friendlyMessage;
+    }
+  }
+}
+
+// 15. Drawer de Leitura & Ações da Tele (Fase 3 - Com Botão Despachar)
+function openTeleOpDrawer(teleId) {
+  const tele = opTelesStoreMap.get(String(teleId));
+  if (!tele) return;
+
+  const drawer = document.getElementById('drawer-tele-op-details');
+  const codeEl = document.getElementById('op-drawer-code');
+  const contentEl = document.getElementById('op-drawer-content');
+
+  if (codeEl) codeEl.innerText = `#${tele.id}`;
+
+  if (contentEl && drawer) {
+    const slaInfo = calculateTeleSLAState(tele);
+    const normStatus = normalizeTeleStatus(tele.status);
+    const isTerminal = normStatus === 'concluida' || normStatus === 'cancelada';
+
+    contentEl.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: var(--border-radius-sm);">
+          <div>
+            <span style="font-size: 0.75rem; color: var(--color-text-muted); display: block;">Status Operacional</span>
+            <strong style="font-size: 0.95rem; color: var(--primary);">${escapeHtml(normStatus.toUpperCase())}</strong>
+          </div>
+          <span class="sla-badge sla-badge-${slaInfo.state}" style="font-size: 0.85rem; padding: 4px 10px;">
+            Tempo no Status: ${slaInfo.elapsedMinutes} min ${slaInfo.isEstimated ? '*' : ''}
+          </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Cliente / Estabelecimento</label>
+            <div style="font-weight: 600;">${escapeHtml(tele.client || 'Cliente Geral')}</div>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Valor da Entrega</label>
+            <div style="font-weight: 700; color: #10b981;">${escapeHtml(tele.price || 'R$ 0,00')}</div>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.75rem; color: var(--color-text-muted);">Ponto de Coleta (Origem)</label>
+          <div>${escapeHtml(tele.origin || 'Endereço do estabelecimento')}</div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.75rem; color: var(--color-text-muted);">Ponto de Entrega (Destino)</label>
+          <div style="font-weight: 600;">${escapeHtml(tele.address || '—')}</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Destinatário</label>
+            <div>${escapeHtml(tele.dest_name || '—')}</div>
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Motoboy Atribuído</label>
+            <div style="font-weight: 600; color: ${tele.motoboy_id ? '#10b981' : 'var(--color-text-muted)'};">${escapeHtml(tele.rider || 'Nenhum motoboy')}</div>
+          </div>
+        </div>
+
+        ${(tele.delivery_reference || tele.reference) ? `
+        <div>
+          <label style="font-size: 0.75rem; color: var(--color-text-muted);">Referência de Entrega / Comprovante</label>
+          <div style="font-weight: 600; color: #3b82f6; background: rgba(59,130,246,0.08); padding: 6px 10px; border-radius: 4px; font-size: 0.85rem;">
+            ${escapeHtml(tele.delivery_reference || tele.reference)}
+          </div>
+        </div>
+        ` : ''}
+
+        <div>
+          <label style="font-size: 0.75rem; color: var(--color-text-muted);">Observações da Carga</label>
+          <div style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 4px; font-size: 0.82rem;">
+            ${escapeHtml(tele.cargo || tele.notes || 'Sem observações adicionais.')}
+          </div>
+        </div>
+
+        ${!isTerminal ? `
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
+            <button type="button" class="btn btn-primary" style="width: 100%; padding: 10px; font-weight: 700;" onclick="openAssignRiderModal('${tele.id}')">
+              <i data-lucide="send" style="width: 16px; height: 16px; margin-right: 6px;"></i> ${tele.motoboy_id ? 'Trocar Motoboy' : 'Despachar Motoboy'}
+            </button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="btn btn-secondary" style="padding: 8px; font-weight: 600; color: #10b981; border-color: rgba(16,185,129,0.3);" onclick="openCompleteTeleModal('${tele.id}')">
+                <i data-lucide="check-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i> Concluir
+              </button>
+              <button type="button" class="btn btn-secondary" style="padding: 8px; font-weight: 600; color: #ef4444; border-color: rgba(239,68,68,0.3);" onclick="openCancelTeleModal('${tele.id}')">
+                <i data-lucide="x-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i> Cancelar
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; font-size: 0.72rem; color: var(--color-text-muted); display: flex; justify-content: space-between;">
+          <span>Criado em: ${tele.created_at ? new Date(tele.created_at).toLocaleString('pt-BR') : '—'}</span>
+          <span>Versão: v${tele.version || 1}</span>
+        </div>
+      </div>
+    `;
+
+    drawer.classList.add('active');
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+// =====================================================================
+// FASE 5: MODAIS E INTEGRAÇÃO DE CONCLUSÃO E CANCELAMENTO
+// =====================================================================
+
+function openCompleteTeleModal(teleId) {
+  const tele = opTelesStoreMap.get(String(teleId));
+  if (!tele) return;
+
+  const modal = document.getElementById('modal-complete-tele');
+  const codeEl = document.getElementById('complete-tele-code');
+  const infoEl = document.getElementById('complete-tele-client-rider');
+  const idInput = document.getElementById('complete-tele-id');
+  const versionInput = document.getElementById('complete-tele-version');
+  const previewClientEl = document.getElementById('complete-preview-client-val');
+  const previewRiderEl = document.getElementById('complete-preview-rider-val');
+  const previewCompanyEl = document.getElementById('complete-preview-company-val');
+  const feedbackBox = document.getElementById('complete-tele-feedback-box');
+  const checkbox = document.getElementById('complete-confirm-checkbox');
+
+  if (codeEl) codeEl.innerText = `#${tele.id}`;
+  if (infoEl) infoEl.innerText = `Cliente: ${tele.client || 'Geral'} | Motoboy: ${tele.rider || 'Não atribuído'}`;
+  if (idInput) idInput.value = tele.id;
+  if (versionInput) versionInput.value = tele.version || 1;
+  if (checkbox) checkbox.checked = false;
+
+  if (feedbackBox) {
+    feedbackBox.className = 'hidden';
+    feedbackBox.innerText = '';
+  }
+
+  // Prévia Financeira no Frontend (Será recalculada pelo servidor)
+  const rawPrice = typeof tele.valor === 'number' ? tele.valor : parseFloat(String(tele.price || '15').replace(/[^\d.,]/g, '').replace(',', '.') || '15');
+  const valClient = isNaN(rawPrice) || rawPrice <= 0 ? 15.00 : rawPrice;
+  const valRider = Math.round(valClient * 0.80 * 100) / 100;
+  const valCompany = Math.round((valClient - valRider) * 100) / 100;
+
+  if (previewClientEl) previewClientEl.innerText = `R$ ${valClient.toFixed(2)}`;
+  if (previewRiderEl) previewRiderEl.innerText = `R$ ${valRider.toFixed(2)}`;
+  if (previewCompanyEl) previewCompanyEl.innerText = `R$ ${valCompany.toFixed(2)}`;
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeCompleteTeleModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-backdrop') && !event.target.classList.contains('modal-close-btn')) {
+    return;
+  }
+  const modal = document.getElementById('modal-complete-tele');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitCompleteTele(event) {
+  event.preventDefault();
+
+  const teleId = document.getElementById('complete-tele-id')?.value;
+  const version = parseInt(document.getElementById('complete-tele-version')?.value || '1', 10);
+  const feedbackBox = document.getElementById('complete-tele-feedback-box');
+  const btnSubmit = document.getElementById('btn-submit-complete');
+
+  if (!teleId) return;
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Concluindo...';
+  }
+
+  try {
+    const res = await fetch('/api/operations/complete-tele', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tele_id: String(teleId), expected_version: version, completion_source: 'operator' })
+    });
+
+    const data = await res.json();
+
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = 'Confirmar Conclusão';
+    }
+
+    if (!res.ok || !data.success) {
+      let friendlyMessage = data.message || 'Falha ao concluir Tele.';
+      if (data.error_code === 'TELE_VERSION_CONFLICT') {
+        friendlyMessage = 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.';
+      } else if (data.error_code === 'TELE_WITHOUT_RIDER') {
+        friendlyMessage = 'Atribua um motoboy à Tele antes de concluí-la.';
+      }
+
+      if (feedbackBox) {
+        feedbackBox.className = 'error-box';
+        feedbackBox.style.cssText = 'background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444; padding: 10px; border-radius: 6px; font-size: 0.8rem;';
+        feedbackBox.innerText = friendlyMessage;
+      }
+      return;
+    }
+
+    // Atualizar store em memória
+    const tele = opTelesStoreMap.get(String(teleId));
+    if (tele) {
+      tele.status = 'concluida';
+      tele.completed_at = data.completed_at;
+      tele.version = data.version;
+    }
+
+    closeCompleteTeleModal();
+    closeTeleOpDrawer();
+    renderKanbanBoard();
+    showToastNotification(`Tele #${teleId} concluída com sucesso! Lançamento consolidado.`);
+  } catch (err) {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = 'Confirmar Conclusão';
+    }
+    showToastNotification('Erro de conexão ao tentar concluir a Tele.');
+  }
+}
+
+function openCancelTeleModal(teleId) {
+  const tele = opTelesStoreMap.get(String(teleId));
+  if (!tele) return;
+
+  const modal = document.getElementById('modal-cancel-tele');
+  const codeEl = document.getElementById('cancel-tele-code');
+  const infoEl = document.getElementById('cancel-tele-info');
+  const idInput = document.getElementById('cancel-tele-id');
+  const versionInput = document.getElementById('cancel-tele-version');
+  const reasonText = document.getElementById('cancel-tele-reason');
+  const feedbackBox = document.getElementById('cancel-tele-feedback-box');
+
+  if (codeEl) codeEl.innerText = `#${tele.id}`;
+  if (infoEl) infoEl.innerText = `${tele.client || 'Cliente Geral'} — ${tele.address || ''}`;
+  if (idInput) idInput.value = tele.id;
+  if (versionInput) versionInput.value = tele.version || 1;
+  if (reasonText) reasonText.value = '';
+
+  if (feedbackBox) {
+    feedbackBox.className = 'hidden';
+    feedbackBox.innerText = '';
+  }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeCancelTeleModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-backdrop') && !event.target.classList.contains('modal-close-btn')) {
+    return;
+  }
+  const modal = document.getElementById('modal-cancel-tele');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitCancelTele(event) {
+  event.preventDefault();
+
+  const teleId = document.getElementById('cancel-tele-id')?.value;
+  const version = parseInt(document.getElementById('cancel-tele-version')?.value || '1', 10);
+  const reason = document.getElementById('cancel-tele-reason')?.value || '';
+  const policy = document.getElementById('cancel-charge-policy')?.value || 'sem_cobranca';
+  const feedbackBox = document.getElementById('cancel-tele-feedback-box');
+  const btnSubmit = document.getElementById('btn-submit-cancel');
+
+  if (!teleId || !reason.trim()) {
+    showToastNotification('Informe obrigatoriamente o motivo do cancelamento.');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Cancelando...';
+  }
+
+  try {
+    const res = await fetch('/api/operations/cancel-tele', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tele_id: String(teleId), expected_version: version, reason: reason.trim(), charge_policy: policy })
+    });
+
+    const data = await res.json();
+
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = 'Confirmar Cancelamento';
+    }
+
+    if (!res.ok || !data.success) {
+      if (feedbackBox) {
+        feedbackBox.className = 'error-box';
+        feedbackBox.style.cssText = 'background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444; padding: 10px; border-radius: 6px; font-size: 0.8rem;';
+        feedbackBox.innerText = data.message || 'Falha ao cancelar Tele.';
+      }
+      return;
+    }
+
+    // Atualizar store em memória
+    const tele = opTelesStoreMap.get(String(teleId));
+    if (tele) {
+      tele.status = 'cancelada';
+      tele.cancelled_at = data.cancelled_at;
+      tele.cancellation_reason = reason;
+      tele.version = data.version;
+    }
+
+    closeCancelTeleModal();
+    closeTeleOpDrawer();
+    renderOperationsDashboard();
+    showToastNotification(`Tele #${teleId} cancelada.`);
+  } catch (err) {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = 'Confirmar Cancelamento';
+    }
+    showToastNotification('Erro de conexão ao tentar cancelar a Tele.');
+  }
+}
+
+function closeTeleOpDrawer(event) {
+  if (event && event.target && !event.target.classList.contains('drawer-backdrop') && !event.target.classList.contains('drawer-close-btn') && !event.target.closest('.drawer-close-btn')) {
+    return;
+  }
+  const drawer = document.getElementById('drawer-tele-op-details');
+  if (drawer) drawer.classList.remove('active');
+}
+
+// Inicializar renderização do Dashboard se a aba estiver visível
+document.addEventListener('DOMContentLoaded', () => {
+  initClientSelectComponent();
+  setTimeout(() => {
+    if (document.getElementById('tab-owner-control-center')) {
+      renderOperationsDashboard();
+    }
+  }, 1200);
+});
 
 
+
+
+
+
+
+
+
+
+// =====================================================================
+// CENTRO DE OPERAÇÕES — FASE 4 (REALTIME, RECONEXÃO, ALERTAS & SINC)
+// =====================================================================
+
+// Flags e Logs de Debug em Dev
+const OPERATIONS_DEBUG = false;
+
+function logOpDebug(...args) {
+  if (OPERATIONS_DEBUG && typeof console !== 'undefined') {
+    console.log('[OpRealtime]', ...args);
+  }
+}
+
+// 1. Gerenciador Central de Conexão Realtime
+const operationsRealtimeManager = {
+  state: 'disconnected', // connecting | connected | reconnecting | degraded | disconnected
+  channel: null,
+  reconnectAttempt: 0,
+  maxReconnectRetries: 5,
+  reconnectTimer: null,
+  lastSyncTimestamp: null,
+  processedRealtimeEventsSet: new Set(),
+  opAlertedSLASet: new Set(),
+  isInitialSyncDone: false
+};
+
+// Som opcional (desativado por padrão conforme regras de autoplay)
+let opSoundEnabled = localStorage.getItem('opSoundEnabled') === 'true';
+
+// 2. Atualizador da Interface do Estado da Conexão
+function updateConnectionStatusUI(state, customText = null, details = '') {
+  operationsRealtimeManager.state = state;
+
+  const dot = document.getElementById('op-connection-dot');
+  const text = document.getElementById('op-connection-text');
+  const badge = document.getElementById('op-connection-status-badge');
+
+  if (!dot || !text) return;
+
+  const statesConfig = {
+    connected: { color: '#10b981', defaultText: 'Conectado em tempo real' },
+    connecting: { color: '#f59e0b', defaultText: 'Conectando...' },
+    reconnecting: { color: '#f59e0b', defaultText: 'Reconectando...' },
+    degraded: { color: '#ef4444', defaultText: 'Modo degradado (Sinc manual)' },
+    disconnected: { color: '#6b7280', defaultText: 'Desconectado' }
+  };
+
+  const cfg = statesConfig[state] || statesConfig.disconnected;
+  dot.style.background = cfg.color;
+  text.innerText = customText || cfg.defaultText;
+
+  if (badge) {
+    const timeStr = operationsRealtimeManager.lastSyncTimestamp ? operationsRealtimeManager.lastSyncTimestamp.toLocaleTimeString('pt-BR') : '—';
+    badge.title = `Estado: ${state.toUpperCase()} | ÚLTIMA SINC: ${timeStr} ${details ? '| ' + details : ''}`;
+  }
+
+  logOpDebug(`Mudança de estado da conexão: ${state}`);
+}
+
+// 3. Função de Sincronização Completa (Reconciliação / Full Sync Resiliente)
+async function performOperationsFullSync() {
+  logOpDebug('Iniciando Sincronização Completa (Full Sync Resiliente)...');
+  updateConnectionStatusUI('connecting', 'Sincronizando...');
+
+  try {
+    // Reconstruir Store de Teles e Frota usando Promise.allSettled para resiliência
+    await Promise.allSettled([
+      Promise.resolve().then(() => syncTelesStoreMap()),
+      Promise.resolve().then(() => syncRidersStoreMap())
+    ]);
+
+    operationsRealtimeManager.lastSyncTimestamp = new Date();
+    operationsRealtimeManager.isInitialSyncDone = true;
+
+    // Atualizar visualização do Dashboard Resumo Operacional
+    renderOperationsDashboard();
+
+    // Se houver drawer de detalhes aberto, atualizar campos sem perder o foco
+    if (typeof openTeleOpDrawer === 'function' && document.getElementById('drawer-tele-op-details')?.classList.contains('active')) {
+      const drawerCode = document.getElementById('op-drawer-code')?.innerText.replace('#', '');
+      if (drawerCode && opTelesStoreMap.has(String(drawerCode))) {
+        openTeleOpDrawer(drawerCode);
+      }
+    }
+
+    updateConnectionStatusUI('connected', 'Conectado em tempo real', 'Full Sync OK');
+    logOpDebug('Sincronização Completa finalizada com sucesso.');
+    return true;
+  } catch (err) {
+    console.error('[OpRealtime] Erro durante Full Sync:', err);
+    updateConnectionStatusUI('degraded', 'Modo degradado (Erro sinc)');
+    return false;
+  }
+}
+
+function triggerManualFullSync() {
+  const btn = document.getElementById('op-btn-manual-sync');
+  if (btn) btn.disabled = true;
+
+  performOperationsFullSync().then(() => {
+    if (btn) btn.disabled = false;
+    showToastNotification('Sincronização manual concluída.');
+  });
+}
+
+// 4. Iniciar Canal Realtime Operacional Único (realtime:operations)
+function initOperationsRealtimeChannel() {
+  if (operationsRealtimeManager.channel) {
+    logOpDebug('Canal Realtime já inicializado, reutilizando inscrição.');
+    return;
+  }
+
+  if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+    logOpDebug('Supabase client não disponível. Operando via modo local dev.');
+    performOperationsFullSync();
+    updateConnectionStatusUI('connected', 'Modo Operacional Local');
+    return;
+  }
+
+  updateConnectionStatusUI('connecting', 'Conectando ao Supabase Realtime...');
+
+  // Criar canal único centralizado
+  operationsRealtimeManager.channel = supabaseClient
+    .channel('realtime:operations')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'teles' }, payload => {
+      handleRealtimeEvent('teles', payload.eventType, payload.new || payload.old);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fleet' }, payload => {
+      handleRealtimeEvent('fleet', payload.eventType, payload.new || payload.old);
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tele_eventos' }, payload => {
+      handleRealtimeEvent('tele_eventos', 'INSERT', payload.new);
+    })
+    .subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        operationsRealtimeManager.reconnectAttempt = 0;
+        performOperationsFullSync();
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+        handleRealtimeDisconnection();
+      }
+    });
+}
+
+// 5. Deduplicação e Atualização Incremental dos Eventos
+function handleRealtimeEvent(table, eventType, record) {
+  if (!record || !record.id) return;
+
+  const eventKey = `${table}:${eventType}:${record.id}:${record.version || record.updated_at || Date.now()}`;
+
+  // Deduplicação: ignorar se já foi processado
+  if (operationsRealtimeManager.processedRealtimeEventsSet.has(eventKey)) {
+    logOpDebug('Evento duplicado ignorado:', eventKey);
+    return;
+  }
+
+  // Adicionar ao cache de deduplicação (limite máximo de 500 itens)
+  operationsRealtimeManager.processedRealtimeEventsSet.add(eventKey);
+  if (operationsRealtimeManager.processedRealtimeEventsSet.size > 500) {
+    const firstItem = operationsRealtimeManager.processedRealtimeEventsSet.values().next().value;
+    operationsRealtimeManager.processedRealtimeEventsSet.delete(firstItem);
+  }
+
+  logOpDebug(`Evento Realtime [${table}] ${eventType}:`, record);
+
+  if (table === 'teles') {
+    const teleId = String(record.id);
+    const existing = opTelesStoreMap.get(teleId);
+
+    // Proteção de ordenação: ignorar version menor
+    if (existing && record.version && existing.version && record.version < existing.version) {
+      logOpDebug(`Versão legada ignorada para Tele #${teleId} (recebido v${record.version} < atual v${existing.version})`);
+      return;
+    }
+
+    // Detectar lacuna de versão (ex: pulou mais de 1 versão) -> acionar reconciliação
+    if (existing && record.version && existing.version && record.version > existing.version + 1) {
+      logOpDebug(`Lacuna de versão detectada para Tele #${teleId}. Acionando Full Sync...`);
+      performOperationsFullSync();
+      return;
+    }
+
+    if (eventType === 'DELETE') {
+      opTelesStoreMap.delete(teleId);
+    } else {
+      // INSERT ou UPDATE incremental
+      const isNewTele = !existing && (normalizeTeleStatus(record.status) === 'solicitada' || normalizeTeleStatus(record.status) === 'aguardando_despacho');
+      
+      opTelesStoreMap.set(teleId, {
+        ...(existing || {}),
+        ...record,
+        id: teleId
+      });
+
+      // Disparar alertas apenas para novas entregas reais após o sync inicial
+      if (isNewTele && operationsRealtimeManager.isInitialSyncDone) {
+        triggerOpAlertBanner(`Nova entrega #${teleId} solicitada!`);
+        if (opSoundEnabled) playOpAlertSound();
+      }
+    }
+
+    renderKanbanBoard();
+  } else if (table === 'fleet') {
+    const riderId = String(record.id);
+    const existingRider = opRidersStoreMap.get(riderId);
+
+    if (eventType === 'DELETE') {
+      opRidersStoreMap.delete(riderId);
+    } else {
+      opRidersStoreMap.set(riderId, {
+        ...(existingRider || {}),
+        ...record,
+        id: riderId
+      });
+    }
+
+    renderFleetBar();
+  }
+}
+
+// 6. Reconexão com Backoff Exponencial
+function handleRealtimeDisconnection() {
+  if (operationsRealtimeManager.reconnectAttempt >= operationsRealtimeManager.maxReconnectRetries) {
+    updateConnectionStatusUI('degraded', 'Modo degradado (Falha de reconexão)');
+    return;
+  }
+
+  operationsRealtimeManager.reconnectAttempt++;
+  const backoffMs = Math.min(30000, Math.pow(2, operationsRealtimeManager.reconnectAttempt) * 1000 + Math.random() * 500);
+
+  updateConnectionStatusUI('reconnecting', `Reconectando (${operationsRealtimeManager.reconnectAttempt}/${operationsRealtimeManager.maxReconnectRetries})...`);
+
+  clearTimeout(operationsRealtimeManager.reconnectTimer);
+  operationsRealtimeManager.reconnectTimer = setTimeout(() => {
+    if (operationsRealtimeManager.channel) {
+      operationsRealtimeManager.channel.unsubscribe();
+      operationsRealtimeManager.channel = null;
+    }
+    initOperationsRealtimeChannel();
+  }, backoffMs);
+}
+
+// 7. Alertas Visuais e Sonoros Opcionais
+function toggleOpSoundAlerts() {
+  opSoundEnabled = !opSoundEnabled;
+  localStorage.setItem('opSoundEnabled', String(opSoundEnabled));
+
+  const icon = document.getElementById('op-sound-icon');
+  const text = document.getElementById('op-sound-text');
+
+  if (icon && text) {
+    if (opSoundEnabled) {
+      icon.setAttribute('data-lucide', 'volume-2');
+      text.innerText = 'Som Ativado';
+      showToastNotification('Alertas sonoros ativados.');
+      playOpAlertSound(); // Som de teste após interação do usuário
+    } else {
+      icon.setAttribute('data-lucide', 'volume-x');
+      text.innerText = 'Som Desativado';
+      showToastNotification('Alertas sonoros desativados.');
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+function playOpAlertSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  } catch (e) {
+    // Ignorar se bloqueado pelo navegador
+  }
+}
+
+function triggerOpAlertBanner(message) {
+  const banner = document.getElementById('op-realtime-alert-banner');
+  const messageEl = document.getElementById('op-alert-banner-message');
+
+  if (banner && messageEl) {
+    messageEl.innerText = message;
+    banner.classList.remove('hidden');
+  }
+}
+
+function dismissOpAlertBanner() {
+  const banner = document.getElementById('op-realtime-alert-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
+// 8. Classificação de Localização GPS do Motoboy
+function getRiderLocationStaleCategory(lastSeenInput) {
+  if (!lastSeenInput) return { category: 'sem_localizacao', text: 'Sem GPS', color: '#6b7280' };
+
+  const lastSeen = new Date(lastSeenInput);
+  if (isNaN(lastSeen.getTime())) return { category: 'sem_localizacao', text: 'Sem GPS', color: '#6b7280' };
+
+  const diffMinutes = (new Date().getTime() - lastSeen.getTime()) / 60000;
+
+  if (diffMinutes <= 2) {
+    return { category: 'recente', text: 'GPS Recente', color: '#10b981' };
+  } else if (diffMinutes <= 5) {
+    return { category: 'atencao', text: `GPS há ${Math.floor(diffMinutes)} min`, color: '#f59e0b' };
+  } else {
+    return { category: 'desatualizada', text: `GPS desatualizado (${Math.floor(diffMinutes)} min)`, color: '#ef4444' };
+  }
+}
+
+// 9. Limpeza de Recursos no Logout ou Navegação
+function cleanupOperationsRealtime() {
+  logOpDebug('Limpando canais Realtime e timers...');
+  clearTimeout(operationsRealtimeManager.reconnectTimer);
+
+  if (operationsRealtimeManager.channel) {
+    operationsRealtimeManager.channel.unsubscribe();
+    operationsRealtimeManager.channel = null;
+  }
+
+  operationsRealtimeManager.processedRealtimeEventsSet.clear();
+  operationsRealtimeManager.opAlertedSLASet.clear();
+  updateConnectionStatusUI('disconnected');
+}
+
+// Eventos de conectividade do navegador e visibilidade da aba
+window.addEventListener('online', () => {
+  logOpDebug('Navegador voltou a ficar online. Executando Full Sync...');
+  performOperationsFullSync();
+});
+
+window.addEventListener('offline', () => {
+  updateConnectionStatusUI('disconnected', 'Sem conexão com a internet');
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && document.getElementById('tab-owner-control-center')?.classList.contains('active')) {
+    logOpDebug('Aba voltou a ficar visível. Verificando integridade dos dados...');
+    performOperationsFullSync();
+  }
+});
+
+// Inicialização da Fase 4 ao abrir a aba
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    if (document.getElementById('tab-owner-control-center')) {
+      initOperationsRealtimeChannel();
+    }
+  }, 1500);
+});

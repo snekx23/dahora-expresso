@@ -1,48 +1,22 @@
-# Backend das integrações (iFood / 99Food)
+# Backend & Banco de Dados (Supabase Dahora Expresso)
 
-Estas são as **Edge Functions** do Supabase que recebem os pedidos do iFood e do
-99Food e gravam na tabela `pending_deliveries` (entram na Gestão de Teles).
+Este diretório contém as migrations versionadas e a estrutura de banco de dados exclusiva do produto Dahora Expresso.
 
-> **Importante:** elas NÃO sobem com o deploy do app (wrangler). O app (frontend)
-> e estas funções (backend) são deployados separadamente.
+## Baseline de Migrations (Timestamped & Purged)
 
-## Projeto Supabase
+A estrutura de banco de dados é mantida na pasta `supabase/migrations/` em uma sequência timestamped sem resíduos de marketplaces:
 
-- ref: `faowxiyxjfogkoynsohj`
-- URL: `https://faowxiyxjfogkoynsohj.supabase.co`
+1. `20260727000100_init_core_schema.sql`: Usuários, perfis administrativas, frotas, cidades e solicitações de entregas.
+2. `20260727000200_commercial_clients.sql`: Clientes comerciais, usuários vinculados (`client_users`), ledger do cliente e auditoria.
+3. `20260727000300_rider_credits_consumables.sql`: Consumíveis e créditos dos motoboys.
+4. `20260727000400_dispatch_concurrency_rpc.sql`: Controle de concorrência otimista e RPC `assign_rider_to_tele`.
+5. `20260727000500_tele_completion_ledger_rpc.sql`: Conclusão idempotente, cancelamento controlado e ledgers do motoboy/empresa.
+6. `20260727000600_security_and_client_rpc.sql`: RPC `create_client_tele`, resolução de frete no backend e idempotência por cliente.
 
-## Funções
+## Diretrizes Obrigatórias de Aplicação
+> **ATENÇÃO:** Nunca execute scripts SQL avulsos no Supabase Editor (como scripts antigos do Garra Delivery). A aplicação do banco deve ocorrer exclusivamente através dos arquivos de migração versionados em `supabase/migrations/`.
+> 
+> As tabelas legadas `pending_deliveries` e `client_history` pertencem a sistemas antigos e foram substituídas pelas tabelas `public.teles` e `public.tele_eventos`.
 
-| Função | Para quê | Auth |
-|--------|----------|------|
-| `food99-webhook` | Recebe pedidos do 99Food (novo/cancelado) | `--no-verify-jwt` (token na URL + assinatura) |
-| `food99-vincular` | Gera o link de conexão self-service da loja | anon JWT |
-| `food99-setup` | Deixa a loja vinculada online + confirmação pelo sistema | anon JWT |
-| `food99-pedido` | Envia status do pedido pro 99Food (confirmar/pronto/entregue/cancelar) | anon JWT |
-| `ifood-conectar` | Conecta a loja no iFood (fluxo userCode) — em homologação | anon JWT |
-| `ifood-polling` | Busca pedidos novos do iFood (cron) — em homologação | anon JWT |
-| `ifood-pedido` | Envia status do pedido pro iFood | anon JWT |
-
-## Como deployar (precisa do Supabase CLI e do access token do projeto)
-
-```bash
-# de dentro da pasta garradelivery/
-export SUPABASE_ACCESS_TOKEN=<access_token_do_supabase>
-
-# o webhook do 99Food precisa do --no-verify-jwt
-npx supabase@latest functions deploy food99-webhook --project-ref faowxiyxjfogkoynsohj --no-verify-jwt
-
-# as demais:
-for fn in food99-vincular food99-setup food99-pedido ifood-conectar ifood-pedido ifood-polling; do
-  npx supabase@latest functions deploy "$fn" --project-ref faowxiyxjfogkoynsohj
-done
-```
-
-## Webhook do 99Food (configurar no portal do 99Food)
-
-```
-https://faowxiyxjfogkoynsohj.supabase.co/functions/v1/food99-webhook?token=<WEBHOOK_99FOOD_TOKEN>
-```
-
-Os segredos (`FOOD99_APP_ID`, `FOOD99_SECRET`, `IFOOD_CLIENT_ID`, etc.) ficam em
-**Supabase → Project Settings → Edge Functions → Secrets**.
+## Entrada de Dados
+O Dahora Expresso opera exclusivamente via entrada direta de Teles pelo Painel do Cliente Comercial e despacho via Centro de Operações.

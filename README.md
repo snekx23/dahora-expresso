@@ -1,17 +1,17 @@
-# Garra Delivery
+# Dahora Expresso
 
 Plataforma de logística de entregas (teles) com painel administrativo, área do
-parceiro/comércio e app do motoboy (PWA). Os pedidos podem ser criados
-manualmente ou chegar automaticamente das integrações **iFood** e **99Food**.
+parceiro/comércio e app do motoboy (PWA). Os pedidos são criados manualmente no painel
+administrativo ou solicitados pelos parceiros em sua área dedicada.
 
-🔗 **App no ar:** https://garradelivery.guigui-couto23.workers.dev
+🔗 **App no ar:** https://dahora-expresso.guigui-couto23.workers.dev
 
 ---
 
 ## Estrutura do projeto
 
 ```
-garradelivery/
+dahora-expresso/
 ├── public/                  # o app (frontend, vanilla JS)
 │   ├── index.html           # painel admin + área do parceiro (login)
 │   ├── app.js               # lógica do painel
@@ -21,11 +21,10 @@ garradelivery/
 │   ├── logo.jpg             # logo
 │   ├── manifest*.json       # PWA (instalável)
 │   └── sw.js                # service worker (offline / cache)
-├── supabase/                # backend (banco + integrações)
-│   ├── functions/           # Edge Functions (iFood / 99Food) — ver supabase/README.md
-│   └── migrations/          # schema do banco
+├── supabase/                # backend (banco + RPCs operacionais)
+│   └── migrations/          # baseline de migrations timestamped
 ├── index.js                 # Cloudflare Worker (serve a pasta public/)
-├── wrangler.jsonc           # config do deploy (worker "garradelivery")
+├── wrangler.jsonc           # config do deploy (worker "dahora-expresso")
 └── vercel.json              # config de fallback (Vercel)
 ```
 
@@ -43,14 +42,7 @@ garradelivery/
 | **Parceiro / Comércio** | Solicita entregas, rastreia o motoboy, vê histórico e avaliações |
 | **Motoboy** | App PWA: recebe teles, navega no mapa e finaliza entregas (login por PIN) |
 
-## Integrações (iFood / 99Food)
 
-Pedidos do iFood e do 99Food entram automaticamente na **Gestão de Teles**
-(tabela `pending_deliveries`). A conexão das lojas é feita pela aba
-**Integrações** no painel do administrador.
-
-O backend dessas integrações fica em [`supabase/`](supabase/README.md) — veja lá
-as instruções de deploy das funções e a configuração do webhook do 99Food.
 
 ---
 
@@ -80,8 +72,8 @@ Depois abra `http://localhost:5599`.
 npx wrangler deploy
 ```
 
-Publica os arquivos de `public/` no worker `garradelivery`
-(https://garradelivery.guigui-couto23.workers.dev). Precisa estar logado na conta
+Publica os arquivos de `public/` no worker `dahora-expresso`
+(https://dahora-expresso.guigui-couto23.workers.dev). Precisa estar logado na conta
 Cloudflare dona do worker.
 
 ### Backend (Edge Functions do Supabase)
@@ -92,7 +84,14 @@ Veja o passo a passo em [`supabase/README.md`](supabase/README.md).
 
 ## Banco de dados (Supabase)
 
-- Projeto ref: `faowxiyxjfogkoynsohj`
-- Tabelas principais: `pending_deliveries` (teles no pool), `fleet` (motoboys),
-  `delivery_bids` (lances), `client_history`, `global_settings`, além das tabelas
-  de apoio das integrações (`lojas`, `ifood_tokens`, `food99_tokens`, `webhook_logs`).
+> **Aviso Importante:** A única fonte oficial de schema do Dahora Expresso é o diretório de migrations versionadas em [`supabase/migrations/`](supabase/migrations/). Nunca execute scripts SQL avulsos ou legados do antigo sistema Garra Delivery.
+
+### Baseline Oficial de Migrations
+1. `20260727000100_init_core_schema.sql` (Estrutura base das tabelas `public.fleet`, `public.teles`, `public.tele_eventos`, `public.cidades`)
+2. `20260727000200_commercial_clients.sql` (`public.commercial_clients`, `public.client_users`, `public.system_audit_logs`)
+3. `20260727000300_rider_credits_consumables.sql` (`public.rider_credits_ledger`, `public.rider_consumable_purchases`)
+4. `20260727000400_dispatch_concurrency_rpc.sql` (Versão otimista e RPC `assign_rider_to_tele`)
+5. `20260727000500_tele_completion_ledger_rpc.sql` (Ledgers imutáveis e RPCs `complete_tele` / `cancel_tele`)
+6. `20260727000600_security_and_client_rpc.sql` (`tele_code_seq`, RPC `create_admin_tele` e autorização centralizada)
+
+*Nota:* As tabelas legadas `pending_deliveries` e `client_history` foram descontinuadas e unificadas em `public.teles`.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Garra Delivery - Entregas Rápidas e Inteligentes para seu Comércio</title>
+  <title>Dahora Expresso - Entregas Rápidas e Inteligentes para seu Comércio</title>
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="logo.png?v=3">
   <link rel="apple-touch-icon" href="logo.png?v=3">
@@ -42,11 +42,11 @@
       <nav class="navbar">
         <div class="nav-container">
           <div class="logo">
-            <img src="logo.png?v=3" class="logo-image" alt="Logo Garra">
-            <span class="logo-text">GARRA<span class="cyan-text"> DELIVERY</span></span>
+            <img src="logo.png?v=3" class="logo-image" alt="Logo Dahora Expresso">
+            <span class="logo-text">DAHORA<span class="cyan-text"> EXPRESSO</span></span>
           </div>
           <div class="nav-badges" style="display: flex; gap: 12px; align-items: center;">
-            <span class="badge badge-soft"><span class="dot"></span> Portal Garra</span>
+            <span class="badge badge-soft"><span class="dot"></span> Portal Dahora</span>
             <button class="btn btn-secondary btn-sm" onclick="showDownloadAppModal()" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; height: 30px; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text);">
               <i data-lucide="download" style="width: 14px; height: 14px;"></i> <span>Baixar App</span>
             </button>
@@ -59,7 +59,7 @@
         <div class="hero-content">
           <span class="hero-tagline"><i data-lucide="shield-check" class="inline-icon"></i> Operação clara do pedido ao repasse</span>
           <h1 class="hero-title">Sua logística de entregas em um <span class="gradient-text">único painel.</span></h1>
-          <p class="hero-subtitle">Um portal direto para controlar pedidos, entregadores, integrações e atendimento sem depender de planilhas ou conversas perdidas.</p>
+          <p class="hero-subtitle">Um portal direto para controlar pedidos, entregadores, faturamento e atendimento sem depender de planilhas ou conversas perdidas.</p>
           
           <div class="hero-pillars">
             <div class="pillar-card">
@@ -73,9 +73,9 @@
               <span>Acompanhe solicitações, histórico e suporte em um só lugar.</span>
             </div>
             <div class="pillar-card">
-              <span class="pillar-kicker">Integrações</span>
-              <strong>iFood e 99Food</strong>
-              <span>Pedidos das plataformas entram no fluxo operacional da Garra.</span>
+              <span class="pillar-kicker">Entregadores</span>
+              <strong>Aplicativo PWA</strong>
+              <span>Seus motoboys recebem as teles e navegam no mapa em tempo real.</span>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@
         <div class="hero-login-wrapper">
           <div class="login-card">
             <div class="login-header" style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 16px;">
-              <img src="logo.png?v=3" alt="Logo Garra" style="height: 60px; border-radius: var(--border-radius-md); margin-bottom: 12px;">
+              <img src="logo.png?v=3" alt="Logo Dahora Expresso" style="height: 60px; border-radius: var(--border-radius-md); margin-bottom: 12px;">
               <h2>Acesse o Portal</h2>
               <p>Selecione seu perfil de acesso rápido para entrar</p>
             </div>
@@ -140,7 +140,7 @@
       
       <!-- Footer -->
       <footer class="landing-footer">
-        <p>© 2026 Garra Delivery Express S.A. Todos os direitos reservados.</p>
+        <p>© 2026 Dahora Expresso S.A. Todos os direitos reservados.</p>
       </footer>
     </main>
 
@@ -150,8 +150,8 @@
       <aside class="sidebar">
         <div class="sidebar-header">
           <div class="logo">
-            <img src="logo.png?v=3" class="logo-image" alt="Logo Garra">
-            <span class="logo-text">GARRA<span class="cyan-text"> DELIVERY</span></span>
+            <img src="logo.png?v=3" class="logo-image" alt="Logo Dahora Expresso">
+            <span class="logo-text">DAHORA<span class="cyan-text"> EXPRESSO</span></span>
           </div>
           <span class="sidebar-role" id="display-role">Painel do Dono</span>
         </div>
@@ -159,8 +159,14 @@
         <nav class="sidebar-nav">
           <!-- Navigation elements are injected dynamically or hidden based on user role -->
           <div class="nav-group" id="nav-owner-group">
-            <button class="nav-item active" data-tab="owner-overview" onclick="switchDashboardTab('owner-overview')">
+            <button class="nav-item hidden" data-tab="owner-overview" onclick="switchDashboardTab('owner-overview')">
               <i data-lucide="layout-dashboard"></i> Visão Geral
+            </button>
+
+            <!-- 1. Operação -->
+            <div class="nav-section-title">Operação</div>
+            <button class="nav-item active" data-tab="owner-control-center" onclick="switchDashboardTab('owner-control-center')">
+              <i data-lucide="layout-grid"></i> Centro de Operações
             </button>
             <button class="nav-item" data-tab="owner-fleet-map" onclick="switchDashboardTab('owner-fleet-map')">
               <i data-lucide="map"></i> Mapa da Frota
@@ -168,27 +174,50 @@
             <button class="nav-item" data-tab="owner-teles" onclick="switchDashboardTab('owner-teles')">
               <i data-lucide="list-checks"></i> Gestão de Teles
             </button>
-            <button class="nav-item" data-tab="owner-integracoes" onclick="switchDashboardTab('owner-integracoes')">
-              <i data-lucide="plug-zap"></i> Integrações
-            </button>
             <button class="nav-item" data-tab="owner-fleet" onclick="switchDashboardTab('owner-fleet')">
               <i data-lucide="bike"></i> Frota & Motoboys
             </button>
+            <button class="nav-item" data-tab="owner-commercial-clients" onclick="switchDashboardTab('owner-commercial-clients')">
+              <i data-lucide="store"></i> Clientes Comerciais
+            </button>
+
+            <!-- 2. Financeiro -->
+            <div class="nav-section-title">Financeiro</div>
             <button class="nav-item" data-tab="owner-financials" onclick="switchDashboardTab('owner-financials')">
-              <i data-lucide="dollar-sign"></i> Financeiro
+              <i data-lucide="dollar-sign"></i> Resumo Financeiro
             </button>
             <button class="nav-item" data-tab="owner-rider-payments" onclick="switchDashboardTab('owner-rider-payments')">
               <i data-lucide="receipt"></i> Repasse Semanal
             </button>
-            <button class="nav-item" data-tab="owner-rider-extract" onclick="switchDashboardTab('owner-rider-extract')">
-              <i data-lucide="file-text"></i> Extrato dos Profissionais
-            </button>
+
+            <!-- 3. Extratos (Accordion) -->
+            <div class="nav-section-title">Extratos</div>
+            <div class="nav-accordion" id="extratos-accordion">
+              <button class="nav-item nav-accordion-toggle" onclick="toggleNavAccordion('extratos-accordion')">
+                <span style="display: flex; align-items: center; gap: 12px;"><i data-lucide="file-text"></i> Extratos</span>
+                <i data-lucide="chevron-down" class="accordion-chevron"></i>
+              </button>
+              <div class="nav-accordion-content">
+                <button class="nav-item nav-sub-item" data-tab="owner-rider-extract" onclick="switchDashboardTab('owner-rider-extract')">
+                  <i data-lucide="user"></i> Motoboys
+                </button>
+                <button class="nav-item nav-sub-item" data-tab="owner-client-extract" onclick="switchDashboardTab('owner-client-extract')">
+                  <i data-lucide="store"></i> Clientes
+                </button>
+              </div>
+            </div>
+
+            <!-- 4. Financeiro Operacional -->
+            <div class="nav-section-title">Financeiro Operacional</div>
             <button class="nav-item" data-tab="owner-consumables" onclick="switchDashboardTab('owner-consumables')">
               <i data-lucide="shopping-bag"></i> Consumíveis
             </button>
             <button class="nav-item" data-tab="owner-credits" onclick="switchDashboardTab('owner-credits')">
               <i data-lucide="plus-circle"></i> Créditos / Ajustes
             </button>
+
+            <!-- 5. Suporte -->
+            <div class="nav-section-title">Suporte</div>
             <button class="nav-item" data-tab="owner-support" style="position: relative;" onclick="switchDashboardTab('owner-support')">
               <i data-lucide="message-square"></i> Suporte do Cliente
               <span class="pulse-dot hidden" id="admin-chat-dot" style="position: absolute; top: 12px; right: 16px; width: 8px; height: 8px; border-radius: 50%; background: #ffb700; box-shadow: 0 0 8px #ffb700;"></span>
@@ -197,6 +226,9 @@
               <i data-lucide="message-square"></i> Suporte dos Motoboys
               <span class="pulse-dot hidden" id="admin-rider-chat-dot" style="position: absolute; top: 12px; right: 16px; width: 8px; height: 8px; border-radius: 50%; background: #ffb700; box-shadow: 0 0 8px #ffb700;"></span>
             </button>
+
+            <!-- 6. Sistema -->
+            <div class="nav-section-title">Sistema</div>
             <button class="nav-item" data-tab="owner-settings" onclick="switchDashboardTab('owner-settings')">
               <i data-lucide="settings"></i> Configurações
             </button>
@@ -204,28 +236,26 @@
 
           <div class="nav-group" id="nav-client-group">
             <button class="nav-item active" data-tab="client-overview" onclick="switchDashboardTab('client-overview')">
-              <i data-lucide="home"></i> Meu Comércio
+              <i data-lucide="home"></i> Início
             </button>
-            <button class="nav-item" data-tab="client-teles" onclick="switchDashboardTab('client-teles')">
-              <i data-lucide="list-checks"></i> Teles
+            <button class="nav-item" data-tab="client-request-delivery" onclick="switchDashboardTab('client-request-delivery')">
+              <i data-lucide="package-plus"></i> Solicitar Entrega
             </button>
-            <button class="nav-item" data-tab="order-tracking" id="nav-tracking-tab" onclick="switchDashboardTab('order-tracking')" disabled>
-              <i data-lucide="map-pin"></i> Rastrear Motoboy <span class="pulse-dot hidden"></span>
+            <button class="nav-item" data-tab="client-deliveries" onclick="switchDashboardTab('client-deliveries')">
+              <i data-lucide="list-checks"></i> Entregas
             </button>
-            <button class="nav-item" data-tab="client-fleet-map" onclick="switchDashboardTab('client-fleet-map')">
-              <i data-lucide="map"></i> Mapa da Frota
+            <button class="nav-item" data-tab="client-financials" onclick="switchDashboardTab('client-financials')">
+              <i data-lucide="dollar-sign"></i> Financeiro
             </button>
-            <button class="nav-item" data-tab="client-history" onclick="switchDashboardTab('client-history')">
-              <i data-lucide="list-ordered"></i> Histórico Entregas
+            <button class="nav-item" data-tab="client-extract" onclick="switchDashboardTab('client-extract')">
+              <i data-lucide="file-text"></i> Extrato
             </button>
-            <!-- Hidden as requested
-            <button class="nav-item" data-tab="client-ratings" onclick="switchDashboardTab('client-ratings')">
-              <i data-lucide="star"></i> Avaliações
-            </button>
-            -->
             <button class="nav-item" data-tab="client-support" style="position: relative;" onclick="switchDashboardTab('client-support')">
               <i data-lucide="message-square"></i> Suporte Chat
               <span class="pulse-dot hidden" id="client-chat-dot" style="position: absolute; top: 12px; right: 16px; width: 8px; height: 8px; border-radius: 50%; background: #ffb700; box-shadow: 0 0 8px #ffb700;"></span>
+            </button>
+            <button class="nav-item" data-tab="client-profile" onclick="switchDashboardTab('client-profile')">
+              <i data-lucide="user"></i> Perfil
             </button>
           </div>
 
@@ -262,8 +292,8 @@
               <i data-lucide="menu"></i>
             </button>
             <div id="topbar-logo" class="topbar-logo" style="display: none; align-items: center; gap: 8px; cursor: pointer;">
-              <img src="logo.png?v=3" class="logo-image" alt="Logo Garra" style="height: 32px; border-radius: 4px;">
-              <span class="logo-text" style="font-family: var(--font-display); font-weight: 800; font-size: 1.25rem;">GARRA<span class="cyan-text"> DELIVERY</span></span>
+              <img src="logo.png?v=3" class="logo-image" alt="Logo Dahora Expresso" style="height: 32px; border-radius: 4px;">
+              <span class="logo-text" style="font-family: var(--font-display); font-weight: 800; font-size: 1.25rem;">DAHORA<span class="cyan-text"> EXPRESSO</span></span>
             </div>
             <div class="topbar-title-wrapper">
               <h2 id="dashboard-title">Painel de Logística</h2>
@@ -299,8 +329,126 @@
         <div class="dashboard-content">
           
           <!-- ================= DONO TABS ================= -->
+          <!-- 0. Centro de Operações (Dashboard Resumo Operacional) -->
+          <div id="tab-owner-control-center" class="dashboard-tab-content">
+            <div class="op-control-center-layout">
+              <!-- Topbar Bar & Actions -->
+              <div class="op-topbar-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--color-text); font-family: var(--font-display);">
+                    <i data-lucide="activity" style="width: 20px; height: 20px; color: var(--primary); vertical-align: middle; margin-right: 6px;"></i>
+                    Centro de Operações — Visão Geral Operacional
+                  </h3>
+                  <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--color-text-muted);">
+                    Síntese em tempo real dos indicadores, frota e alertas operacionais.
+                  </p>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <!-- Indicador Visual do Estado da Conexão Realtime -->
+                  <div id="op-connection-status-badge" class="badge badge-soft" aria-live="polite" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; cursor: pointer;" title="Clique para detalhes da conexão em tempo real" onclick="toggleConnectionDetailsTooltip()">
+                    <span id="op-connection-dot" class="dot" style="background: #10b981;"></span>
+                    <span id="op-connection-text" style="font-size: 0.78rem; font-weight: 600;">Conectado em tempo real</span>
+                  </div>
+
+                  <!-- Botão de Sincronização Manual -->
+                  <button type="button" id="op-btn-manual-sync" class="btn btn-secondary" onclick="triggerManualFullSync()" style="padding: 6px 12px; font-size: 0.78rem; display: flex; align-items: center; gap: 4px;" title="Recarregar dados do banco de dados agora">
+                    <i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i> Sincronizar
+                  </button>
+
+                  <!-- Botão Destaque Principal: Abrir Gestão de Teles -->
+                  <button type="button" class="btn btn-primary" onclick="switchDashboardTab('owner-teles')" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(255,183,0,0.3);">
+                    <i data-lucide="list-checks" style="width: 16px; height: 16px;"></i> Abrir Gestão de Teles
+                  </button>
+                </div>
+              </div>
+
+              <!-- Diagnostic Counter para Status Não Reconhecidos -->
+              <div id="op-diagnostic-box" class="hidden" style="display: flex; align-items: center; gap: 8px; background: rgba(239, 68, 68, 0.1); border: 1px dashed #ef4444; padding: 8px 14px; border-radius: 6px; margin-top: 10px;">
+                <i data-lucide="alert-triangle" style="width: 16px; height: 16px; color: #ef4444;"></i>
+                <span style="font-size: 0.8rem; color: #ef4444; font-weight: 600;">
+                  Status não reconhecidos: <strong id="op-unknown-status-count">0</strong>
+                </span>
+              </div>
+
+              <!-- 7 Cartões KPI Resumidos Operacionais -->
+              <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-top: 14px;">
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Aguardando Despacho</span>
+                  <h3 id="op-kpi-awaiting" style="font-size: 1.4rem; font-weight: 800; color: #f59e0b; margin-top: 4px;">0</h3>
+                </div>
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Em Execução</span>
+                  <h3 id="op-kpi-in-progress" style="font-size: 1.4rem; font-weight: 800; color: #3b82f6; margin-top: 4px;">0</h3>
+                </div>
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">SLA Crítico</span>
+                  <h3 id="op-kpi-sla-critical" style="font-size: 1.4rem; font-weight: 800; color: #ef4444; margin-top: 4px;">0</h3>
+                </div>
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Motoboys Disponíveis</span>
+                  <h3 id="op-kpi-riders-avail" style="font-size: 1.4rem; font-weight: 800; color: #10b981; margin-top: 4px;">0</h3>
+                </div>
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Limite Atingido</span>
+                  <h3 id="op-kpi-riders-max" style="font-size: 1.4rem; font-weight: 800; color: #a855f7; margin-top: 4px;">0</h3>
+                </div>
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Concluídas Hoje</span>
+                  <h3 id="op-kpi-completed-today" style="font-size: 1.4rem; font-weight: 800; color: #10b981; margin-top: 4px;">0</h3>
+                </div>
+                <div class="metric-card" style="padding: 12px 14px;">
+                  <span class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 600;">Canceladas Hoje</span>
+                  <h3 id="op-kpi-cancelled-today" style="font-size: 1.4rem; font-weight: 800; color: #6b7280; margin-top: 4px;">0</h3>
+                </div>
+              </div>
+
+              <!-- 3 Painéis Resumidos em Grid -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 16px;">
+                <!-- A. Prioridades Imediatas (Máx. 5 Teles) -->
+                <div class="card" style="padding: 16px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); display: flex; align-items: center; gap: 6px;">
+                      <i data-lucide="flame" style="width: 16px; height: 16px; color: #ef4444;"></i> Prioridades Imediatas (SLA Urgente)
+                    </h4>
+                    <span style="font-size: 0.72rem; color: var(--color-text-muted);">Máx. 5 Teles</span>
+                  </div>
+                  <div id="op-summary-priorities-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Renderizado dinamicamente via JS -->
+                  </div>
+                </div>
+
+                <!-- B. Frota Disponível & Status -->
+                <div class="card" style="padding: 16px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); display: flex; align-items: center; gap: 6px;">
+                      <i data-lucide="bike" style="width: 16px; height: 16px; color: var(--primary);"></i> Frota Ativa & Capacidade
+                    </h4>
+                    <span id="op-summary-fleet-count" style="font-size: 0.72rem; color: var(--color-text-muted);">0 motoboys</span>
+                  </div>
+                  <div id="op-summary-fleet-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+                    <!-- Renderizado dinamicamente via JS -->
+                  </div>
+                </div>
+
+                <!-- C. Alertas Operacionais -->
+                <div class="card" style="padding: 16px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); display: flex; align-items: center; gap: 6px;">
+                      <i data-lucide="alert-circle" style="width: 16px; height: 16px; color: #f59e0b;"></i> Alertas Operacionais
+                    </h4>
+                    <span style="font-size: 0.72rem; color: var(--color-text-muted);">Eventos de atenção</span>
+                  </div>
+                  <div id="op-summary-alerts-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+                    <!-- Renderizado dinamicamente via JS -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 1. Owner Overview -->
-          <div id="tab-owner-overview" class="dashboard-tab-content active">
+          <div id="tab-owner-overview" class="dashboard-tab-content">
             <!-- Grid of Cards -->
             <div class="metrics-grid">
               <div class="metric-card">
@@ -377,7 +525,7 @@
           </div>
 
           <!-- 1b. Owner Fleet Map (mapa apenas) -->
-          <div id="tab-owner-fleet-map" class="dashboard-tab-content">
+          <div id="tab-owner-fleet-map" class="dashboard-tab-content active">
             <div class="card map-monitor-card">
               <div class="card-header flex-row">
                 <div>
@@ -468,73 +616,6 @@
             </div>
           </div>
 
-          <!-- 1d. Owner Integrações (iFood / 99Food) -->
-          <div id="tab-owner-integracoes" class="dashboard-tab-content">
-            <div class="section-header" style="margin-bottom: 20px;">
-              <h3 class="gradient-text font-display" style="font-size: 1.4rem; font-weight: 700;">Integrações de Pedidos</h3>
-              <p class="text-muted">Conecte os apps de delivery. Os pedidos do iFood e 99Food entram automaticamente na Gestão de Teles.</p>
-            </div>
-
-            <div class="integrations-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; max-width: 920px;">
-
-              <!-- ===== 99Food ===== -->
-              <div class="card" style="border: 1px solid var(--border-color); border-top: 4px solid #ffd100; display: flex; flex-direction: column;">
-                <div class="card-body" style="display: flex; flex-direction: column; gap: 14px;">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 46px; height: 46px; border-radius: 12px; background: #ffd100; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: var(--font-display); font-weight: 800; font-size: 0.8rem; color: #000; letter-spacing: -0.5px;">99</div>
-                    <div>
-                      <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: var(--color-text); margin: 0;">99Food</h3>
-                      <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.82rem;">Conectar uma loja</p>
-                    </div>
-                    <span class="badge" id="status-99food" style="margin-left: auto; background: rgba(255,255,255,0.06); color: var(--color-text-muted);">Não conectada</span>
-                  </div>
-
-                  <p class="text-muted" style="font-size: 0.85rem; line-height: 1.5; margin: 0;">Gere o link e envie ao gerente da loja. Ele autoriza dentro do 99Food. O link vale 7 dias.</p>
-
-                  <button type="button" class="btn btn-primary" id="btn-99food-gerar" onclick="gerarLink99food()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-                    <i data-lucide="link" style="width: 16px; height: 16px;"></i> <span>Gerar link de conexão</span>
-                  </button>
-
-                  <div id="99food-link-wrapper" class="hidden" style="display: flex; gap: 8px;">
-                    <input type="text" id="99food-link-input" readonly onfocus="this.select()" style="flex: 1; min-width: 0; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.78rem; outline: none;">
-                    <button type="button" class="btn btn-secondary" id="btn-99food-copiar" onclick="copiarLink99food()" style="flex-shrink: 0; padding: 0 14px;">Copiar</button>
-                  </div>
-
-                  <p id="99food-erro" class="hidden" style="font-size: 0.82rem; color: #ff5470; margin: 0;"></p>
-
-                  <div style="border-top: 1px solid var(--border-color); padding-top: 14px; display: flex; flex-direction: column; gap: 10px;">
-                    <p class="text-muted" style="font-size: 0.82rem; margin: 0;"><strong style="color: var(--color-text);">Depois que a loja autorizar</strong>, configure (deixa online + confirmação pelo sistema).</p>
-                    <button type="button" class="btn btn-secondary" id="btn-99food-config" onclick="configurar99food()" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-                      <i data-lucide="settings-2" style="width: 16px; height: 16px;"></i> <span>Configurar loja vinculada</span>
-                    </button>
-                    <p id="99food-setup-msg" class="hidden text-muted" style="font-size: 0.82rem; margin: 0;"></p>
-                  </div>
-                </div>
-              </div>
-
-              <!-- ===== iFood ===== -->
-              <div class="card" style="border: 1px solid var(--border-color); border-top: 4px solid #ea1d2c; display: flex; flex-direction: column; opacity: 0.92;">
-                <div class="card-body" style="display: flex; flex-direction: column; gap: 14px;">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 46px; height: 46px; border-radius: 12px; background: #ea1d2c; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                      <i data-lucide="utensils-crossed" style="width: 22px; height: 22px; color: #fff;"></i>
-                    </div>
-                    <div>
-                      <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: var(--color-text); margin: 0;">iFood</h3>
-                      <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.82rem;">Conectar uma loja</p>
-                    </div>
-                    <span class="badge" style="margin-left: auto; background: rgba(255, 170, 0, 0.12); color: #ffaa00;">Em homologação</span>
-                  </div>
-
-                  <div style="display: flex; gap: 10px; align-items: flex-start; padding: 14px; background: rgba(255, 170, 0, 0.05); border: 1px solid rgba(255, 170, 0, 0.2); border-radius: var(--border-radius-sm);">
-                    <i data-lucide="clock" style="color: #ffaa00; width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;"></i>
-                    <p class="text-muted" style="font-size: 0.85rem; line-height: 1.5; margin: 0;">Em processo de homologação no iFood. A conexão de lojas será liberada automaticamente assim que o app for aprovado.</p>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
 
           <!-- 2. Owner Fleet -->
           <div id="tab-owner-fleet" class="dashboard-tab-content">
@@ -651,7 +732,7 @@
                         <th>Motoboy</th>
                         <th>Teles Concluídas</th>
                         <th>Faturamento Bruto</th>
-                        <th>Taxa Garra (10%)</th>
+                        <th>Taxa Dahora (10%)</th>
                         <th>Consumíveis</th>
                         <th>Créditos / Ajustes</th>
                         <th>Valor Líquido (A Pagar)</th>
@@ -662,6 +743,400 @@
                     <tbody id="rider-payments-table-body"></tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Extrato de Motoboys -->
+          <div id="tab-owner-rider-extract" class="dashboard-tab-content">
+            <!-- Filter Bar -->
+            <div class="card" style="margin-bottom: 20px; overflow: visible;">
+              <div class="card-body" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 16px; overflow: visible;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Período</label>
+                  <select id="rider-extract-period-preset" onchange="handleRiderExtractPeriodPresetChange()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 140px; cursor: pointer;">
+                    <option value="today">Hoje</option>
+                    <option value="week" selected>Esta Semana</option>
+                    <option value="month">Este Mês</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </div>
+                <div id="rider-extract-custom-dates" style="display: none; gap: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">De</label>
+                    <input type="date" id="rider-extract-start-date" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none;">
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Até</label>
+                    <input type="date" id="rider-extract-end-date" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none;">
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Motoboy</label>
+                  <select id="rider-extract-rider-select" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 200px; cursor: pointer;">
+                    <option value="">Todos os Motoboys</option>
+                    <!-- Populated dynamically -->
+                  </select>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Status da Tele</label>
+                  <select id="rider-extract-status-select" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 140px; cursor: pointer;">
+                    <option value="">Todos os Status</option>
+                    <option value="Entregue">Concluído / Entregue</option>
+                    <option value="Em Rota">Em Rota</option>
+                    <option value="Pendente">Pendente</option>
+                    <option value="Cancelado">Cancelado</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-primary" onclick="loadRiderExtract()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
+                    <i data-lucide="filter" style="width: 16px; height: 16px;"></i> <span>Filtrar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Resumo Superior (7 Cards) -->
+            <div class="metrics-grid-7" style="margin-bottom: 20px;">
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Qtd. Teles</span>
+                  <i data-lucide="list-ordered" class="text-blue"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-count">—</h3>
+                  <p class="growth-text neutral">No período</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Valor Bruto</span>
+                  <i data-lucide="dollar-sign" class="text-yellow"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-gross">R$ 0,00</h3>
+                  <p class="growth-text neutral">Total de corridas</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Comissão Empresa</span>
+                  <i data-lucide="percent" class="text-purple"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-commission">R$ 0,00</h3>
+                  <p class="growth-text neutral">Taxa da plataforma</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Consumíveis</span>
+                  <i data-lucide="shopping-bag" class="text-red"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-consumables" style="color: #ef4444;">R$ 0,00</h3>
+                  <p class="growth-text neutral">Vales e itens</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Créditos</span>
+                  <i data-lucide="plus-circle" class="text-green"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-credits" style="color: #10b981;">R$ 0,00</h3>
+                  <p class="growth-text neutral">Adicionais</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Ajustes</span>
+                  <i data-lucide="sliders" class="text-orange"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-adjustments">R$ 0,00</h3>
+                  <p class="growth-text neutral">Bônus / Descontos</p>
+                </div>
+              </div>
+              <div class="metric-card" style="background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.3);">
+                <div class="metric-card-header">
+                  <span style="color: #10b981; font-weight: 700;">Valor Líquido</span>
+                  <i data-lucide="wallet" style="color: #10b981;"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-extract-net" style="color: #10b981; font-size: 1.4rem;">R$ 0,00</h3>
+                  <p class="growth-text neutral">A pagar ao profissional</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela Principal -->
+            <div class="card">
+              <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
+                <div>
+                  <h3>Detalhamento de Corridas do Motoboy</h3>
+                  <p class="text-muted">Histórico completo de entregas e remuneração no período.</p>
+                </div>
+              </div>
+              <div class="card-body no-padding">
+                <div class="table-responsive">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Data</th>
+                        <th>Hora</th>
+                        <th>Cliente</th>
+                        <th>Origem</th>
+                        <th>Destino</th>
+                        <th>Valor Tele</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rider-extract-table-body">
+                      <!-- Rendered by JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Demonstrativo Consolidado de Fechamento -->
+            <div class="card" style="margin-top: 20px; background: var(--bg-card); border: 1px solid var(--border-color);">
+              <div class="card-header">
+                <h3>Demonstrativo Consolidado do Período</h3>
+              </div>
+              <div class="card-body" id="rider-extract-summary-box">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Clientes Comerciais (Gestão pelo Administrador) -->
+          <div id="tab-owner-commercial-clients" class="dashboard-tab-content">
+            <div class="card" style="margin-bottom: 20px;">
+              <div class="card-body" style="display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 16px;">
+                <div style="display: flex; gap: 12px; align-items: center; flex: 1; min-width: 280px;">
+                  <div class="input-wrapper" style="width: 100%; max-width: 360px;">
+                    <i data-lucide="search" class="input-icon"></i>
+                    <input type="text" id="search-commercial-clients" oninput="renderCommercialClientsTable()" placeholder="Buscar cliente por nome, código, email ou telefone..." style="width: 100%; padding-left: 36px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); height: 40px; font-size: 0.85rem;">
+                  </div>
+                  <select id="filter-client-lifecycle" onchange="renderCommercialClientsTable()" style="padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); height: 40px; font-size: 0.85rem; outline: none; cursor: pointer;">
+                    <option value="all">Todos os Status Operacionais</option>
+                    <option value="ativo">Ativo</option>
+                    <option value="teste">Em Teste</option>
+                    <option value="suspenso">Suspenso</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary" onclick="openAddCommercialClientModal()" style="display: flex; align-items: center; gap: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; height: 40px;">
+                  <i data-lucide="plus" style="width: 18px; height: 18px;"></i> <span>Novo Cliente</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Métricas Rápidas -->
+            <div class="metrics-grid" style="margin-bottom: 20px;">
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Clientes Ativos</span>
+                  <i data-lucide="store" class="text-green"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="comm-metric-active-count">0</h3>
+                  <p class="growth-text neutral">Estabelecimentos operando</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Em Teste</span>
+                  <i data-lucide="clock" class="text-blue"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="comm-metric-test-count">0</h3>
+                  <p class="growth-text neutral">Período de homologação</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Total de Entregas</span>
+                  <i data-lucide="package" class="text-yellow"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="comm-metric-total-teles">0</h3>
+                  <p class="growth-text neutral">Teles acumuladas</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Saldo a Receber</span>
+                  <i data-lucide="dollar-sign" class="text-yellow"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="comm-metric-open-balance">R$ 0,00</h3>
+                  <p class="growth-text neutral">Saldo em aberto</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de Clientes Comerciais -->
+            <div class="card">
+              <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
+                <div>
+                  <h3>Clientes Comerciais Cadastrados</h3>
+                  <p class="text-muted">Gestão de acessos, status operacionais, endereços e contas correntes dos parceiros.</p>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th>Estabelecimento</th>
+                      <th>Responsável</th>
+                      <th>Contato</th>
+                      <th>Status Operacional</th>
+                      <th>Status Financeiro</th>
+                      <th>Total Teles</th>
+                      <th>Saldo em Aberto</th>
+                      <th>Data Cadastro</th>
+                      <th style="text-align: right;">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="commercial-clients-table-body">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Extrato de Clientes / Conta Corrente -->
+          <div id="tab-owner-client-extract" class="dashboard-tab-content">
+            <!-- Filter Bar -->
+            <div class="card" style="margin-bottom: 20px; overflow: visible;">
+              <div class="card-body" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 16px; overflow: visible;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Estabelecimento / Cliente</label>
+                  <select id="client-extract-client-select" onchange="loadClientExtract()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 220px; cursor: pointer;">
+                    <option value="">Todos os Estabelecimentos</option>
+                    <!-- Populated dynamically -->
+                  </select>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Período</label>
+                  <select id="client-extract-period-preset" onchange="handleClientExtractPeriodPresetChange()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 140px; cursor: pointer;">
+                    <option value="month" selected>Este Mês</option>
+                    <option value="week">Esta Semana</option>
+                    <option value="today">Hoje</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </div>
+                <div id="client-extract-custom-dates" style="display: none; gap: 12px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">De</label>
+                    <input type="date" id="client-extract-start-date" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none;">
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Até</label>
+                    <input type="date" id="client-extract-end-date" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none;">
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-primary" onclick="loadClientExtract()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
+                    <i data-lucide="filter" style="width: 16px; height: 16px;"></i> <span>Filtrar</span>
+                  </button>
+                  <button class="btn btn-secondary" onclick="openRegisterReceiptModal()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">
+                    <i data-lucide="dollar-sign" style="width: 16px; height: 16px;"></i> <span>Registrar Recebimento</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Resumo Superior (4 Cards + Status Financeiro) -->
+            <div class="metrics-grid" style="margin-bottom: 20px;">
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Qtd. Teles</span>
+                  <i data-lucide="list-checks" class="text-blue"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="client-extract-count">—</h3>
+                  <p class="growth-text neutral">Teles faturadas</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Valor Faturado</span>
+                  <i data-lucide="file-text" class="text-yellow"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="client-extract-billed">R$ 0,00</h3>
+                  <p class="growth-text neutral">Total em serviços</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Valor Pago</span>
+                  <i data-lucide="check-circle" class="text-green"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="client-extract-paid" style="color: #10b981;">R$ 0,00</h3>
+                  <p class="growth-text neutral">Créditos quitados</p>
+                </div>
+              </div>
+              <div class="metric-card" id="client-extract-balance-card">
+                <div class="metric-card-header flex-row" style="justify-content: space-between;">
+                  <span>Saldo em Aberto</span>
+                  <span class="badge badge-status-ok" id="client-extract-status-badge">Em dia</span>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="client-extract-balance" style="font-size: 1.4rem;">R$ 0,00</h3>
+                  <p class="growth-text neutral" id="client-extract-status-desc">Conta sem pendências</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela Conta Corrente (Razão) -->
+            <div class="card">
+              <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
+                <div>
+                  <h3>Extrato de Conta Corrente do Cliente</h3>
+                  <p class="text-muted">Lançamentos de débito (teles realizadas) e crédito (pagamentos e ajustes). Clique na linha para detalhes.</p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn btn-secondary btn-sm" onclick="exportClientExtractPDF()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="file-down" style="width: 14px; height: 14px;"></i> PDF</button>
+                  <button class="btn btn-secondary btn-sm" onclick="exportClientExtractExcel()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="sheet" style="width: 14px; height: 14px;"></i> Excel</button>
+                  <button class="btn btn-secondary btn-sm" onclick="exportClientExtractCSV()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i> CSV</button>
+                </div>
+              </div>
+              <div class="card-body no-padding">
+                <div class="table-responsive">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Data / Hora</th>
+                        <th>Documento</th>
+                        <th>Tipo Lançamento</th>
+                        <th>Descrição</th>
+                        <th>Referência</th>
+                        <th>Origem</th>
+                        <th>Débito (R$)</th>
+                        <th>Crédito (R$)</th>
+                        <th>Saldo (R$)</th>
+                      </tr>
+                    </thead>
+                    <tbody id="client-extract-table-body">
+                      <!-- Rendered by JS -->
+                    </tbody>
+                  </table>
+                </div>
+                <div id="client-extract-pagination" class="pagination-container"></div>
               </div>
             </div>
           </div>
@@ -1095,7 +1570,7 @@
               </div>
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Comissão Garra</span>
+                  <span>Comissão Plataforma</span>
                   <i data-lucide="percent" class="text-green"></i>
                 </div>
                 <div class="metric-card-body">
@@ -1175,7 +1650,7 @@
               <button type="button" class="ops-card" onclick="switchDashboardTab('client-support')">
                 <span class="ops-card-icon"><i data-lucide="message-square"></i></span>
                 <h3>Suporte Chat</h3>
-                <p>Fale com a Garra e acompanhe as respostas em uma conversa única.</p>
+                <p>Fale com a Dahora Expresso e acompanhe as respostas em uma conversa única.</p>
               </button>
               <button type="button" class="ops-card" onclick="switchDashboardTab('client-ratings')">
                 <span class="ops-card-icon"><i data-lucide="star"></i></span>
@@ -1861,7 +2336,7 @@
               <div class="chat-header-pane" style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; background: var(--secondary);">
                 <div style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></div>
                 <div>
-                  <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0;">Suporte Garra Delivery</h3>
+                  <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0;">Suporte Dahora Expresso</h3>
                   <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0; margin-top: 2px;">Envie mensagens em tempo real para nossa central administrativa</p>
                 </div>
               </div>
@@ -2194,19 +2669,31 @@
         <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow-y: auto; padding-right: 4px;">
           
           <div class="form-group">
-            <label for="manual-delivery-id" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Código / Número da Tele</label>
-            <input type="text" id="manual-delivery-id" required placeholder="Ex: #TELE-0050" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            <label for="manual-delivery-id" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Código da Tele (Gerado no Envio)</label>
+            <input type="text" id="manual-delivery-id" readonly value="Gerado automaticamente" style="padding: 10px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text-muted); font-size: 0.85rem; outline: none; width: 100%;">
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div class="form-group">
-              <label for="manual-delivery-client" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Estabelecimento (Cliente)</label>
-              <input type="text" id="manual-delivery-client" required value="Parceiro Garra" placeholder="Ex: Lancheria Garra" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          <!-- Seletor Pesquisável de Cliente Comercial -->
+          <div class="form-group" style="position: relative;">
+            <label for="admin-client-search" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">
+              Estabelecimento (Cliente Comercial) *
+            </label>
+            <div id="admin-client-select-wrapper" class="custom-select-wrapper" style="position: relative;">
+              <input type="text" id="admin-client-search" placeholder="Selecione um cliente cadastrado" autocomplete="off" style="width: 100%; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; cursor: pointer;">
+              <input type="hidden" id="selectedClientId" value="">
+              <div id="admin-client-dropdown" class="custom-select-dropdown hidden" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #1e293b; border: 1px solid var(--border-color); border-radius: 6px; z-index: 1000; box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 0.82rem;"></div>
             </div>
-            <div class="form-group">
-              <label for="manual-delivery-dest-name" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Destinatário</label>
-              <input type="text" id="manual-delivery-dest-name" required value="Cliente informado" placeholder="Ex: João da Silva" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+              <small id="admin-client-select-hint" style="color: var(--color-text-muted); font-size: 0.72rem;">Exibindo apenas clientes ativos.</small>
+              <label style="font-size: 0.72rem; color: var(--color-text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                <input type="checkbox" id="show-inactive-clients-cb" onchange="fetchCommercialClientsForSelect()"> Mostrar inativos
+              </label>
             </div>
+          </div>
+
+          <div class="form-group">
+            <label for="manual-delivery-dest-name" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Destinatário *</label>
+            <input type="text" id="manual-delivery-dest-name" required placeholder="Nome de quem receberá a entrega" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
           </div>
 
           <div class="form-group" style="position: relative;">
@@ -2284,6 +2771,98 @@
     </div>
   </div>
 
+  <!-- Modal: Cadastrar Novo Cliente Comercial -->
+  <div id="modal-add-commercial-client" class="modal-overlay hidden" onclick="closeAddCommercialClientModal(event)">
+    <div class="modal-card" style="max-width: 650px; width: 90%; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i data-lucide="store" class="inline-icon text-yellow"></i> Novo Cliente Comercial</h3>
+        <button class="modal-close-btn" onclick="closeAddCommercialClientModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form onsubmit="submitAddCommercialClient(event)">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Nome do Estabelecimento *</label>
+              <input type="text" id="comm-establishment-name" required placeholder="Ex: Lanchonete Modelo" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Nome do Responsável *</label>
+              <input type="text" id="comm-responsible-name" required placeholder="Ex: João Silva" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Telefone / WhatsApp *</label>
+              <input type="tel" id="comm-phone" required placeholder="(11) 99999-8888" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">CNPJ ou CPF (Opcional)</label>
+              <input type="text" id="comm-document" placeholder="00.000.000/0001-00" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Email de Acesso *</label>
+              <input type="email" id="comm-email" required placeholder="contato@estabelecimento.com" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Senha Inicial * (mínimo 6 caracteres)</label>
+              <input type="password" id="comm-password" required minlength="6" placeholder="••••••••" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Endereço Principal *</label>
+            <input type="text" id="comm-address" required placeholder="Rua / Avenida, Número" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Complemento</label>
+              <input type="text" id="comm-complement" placeholder="Sala, Bloco..." style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Bairro</label>
+              <input type="text" id="comm-neighborhood" placeholder="Bairro" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Cidade</label>
+              <input type="text" id="comm-city" placeholder="Cidade" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Cor de Identificação no Mapa</label>
+              <input type="color" id="comm-map-color" value="#ffb700" style="padding: 2px 4px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); height: 40px; width: 100%; cursor: pointer;">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Status Inicial</label>
+              <select id="comm-lifecycle-status" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+                <option value="ativo" selected>Ativo</option>
+                <option value="teste">Em Teste</option>
+                <option value="suspenso">Suspenso</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Observações / Instruções Internas</label>
+            <textarea id="comm-notes" placeholder="Notas operacionais, horários de atendimento..." style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%; min-height: 60px; resize: vertical;"></textarea>
+          </div>
+
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary" onclick="closeAddCommercialClientModal()" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Cancelar</button>
+          <button type="submit" class="btn btn-primary" style="padding: 10px 18px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Cadastrar Cliente & Criar Acesso</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal: Adicionar Novo Comércio -->
   <div id="modal-add-commerce" class="modal-overlay hidden" onclick="closeAddCommerceModal(event)">
     <div class="modal-card" style="max-width: 400px;" onclick="event.stopPropagation()">
@@ -2350,6 +2929,167 @@
   <button id="owner-fab-btn" class="fab-btn-fixed hidden" onclick="showRequestDeliveryModal()" title="Chamar Tele Manual">
     <i data-lucide="plus" style="width: 24px; height: 24px; stroke-width: 2.5;"></i>
   </button>
+
+  <!-- Side Drawer Component for Transaction Details -->
+  <div id="drawer-transaction-details" class="drawer-backdrop" onclick="closeTransactionDrawer(event)">
+    <div class="drawer-panel" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <h3><i data-lucide="file-text" class="inline-icon text-yellow"></i> Detalhes do Lançamento</h3>
+        <button class="drawer-close-btn" onclick="closeTransactionDrawer()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="drawer-body" id="drawer-transaction-content">
+        <!-- Rendered dynamically via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Side Drawer Component for Tele Operations Read-Only Details -->
+  <div id="drawer-tele-op-details" class="drawer-backdrop" onclick="closeTeleOpDrawer(event)">
+    <div class="drawer-panel" style="max-width: 500px;" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <h3><i data-lucide="eye" class="inline-icon text-yellow"></i> Detalhes da Tele <span id="op-drawer-code" style="color: var(--cyan-text); font-family: monospace;"></span></h3>
+        <button class="drawer-close-btn" onclick="closeTeleOpDrawer()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="drawer-body" id="op-drawer-content" style="padding: 20px;">
+        <!-- Rendered dynamically via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Despacho & Troca de Motoboy -->
+  <div id="modal-assign-rider" class="modal-backdrop hidden" onclick="closeAssignRiderModal(event)">
+    <div class="modal-card" style="max-width: 460px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modal-assign-rider-title"><i data-lucide="send" class="inline-icon text-yellow"></i> Despachar Motoboy</h3>
+        <button type="button" class="modal-close-btn" onclick="closeAssignRiderModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="form-assign-rider" onsubmit="submitAssignRider(event)">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <input type="hidden" id="assign-tele-id">
+          <input type="hidden" id="assign-tele-version">
+
+          <div style="background: rgba(255, 255, 255, 0.03); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem;">
+            <div>Tele Selecionada: <strong id="assign-tele-code" style="color: var(--cyan-text);">#—</strong></div>
+            <div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 2px;" id="assign-tele-info">—</div>
+          </div>
+
+          <div class="form-group">
+            <label for="assign-rider-select" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Selecione o Motoboy da Frota *</label>
+            <select id="assign-rider-select" onchange="handleAssignRiderSelectChange()" required style="width: 100%; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; cursor: pointer;">
+              <!-- Options populated dynamically -->
+            </select>
+          </div>
+
+          <!-- Campo Obrigatório para Troca de Motoboy -->
+          <div class="form-group hidden" id="group-reassign-reason">
+            <label for="assign-reassign-reason" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #ef4444;">
+              Motivo da Troca de Motoboy *
+            </label>
+            <textarea id="assign-reassign-reason" placeholder="Informe o motivo da reatribuição (ex: Pneu furado, atraso no trajeto, solicitação do operador)..." style="width: 100%; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; min-height: 70px; resize: vertical;"></textarea>
+          </div>
+
+          <div id="assign-rider-feedback-box" class="hidden" style="padding: 10px 12px; border-radius: 6px; font-size: 0.8rem;"></div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary" onclick="closeAssignRiderModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-assign">Confirmar Despacho</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Conclusão Segura da Tele -->
+  <div id="modal-complete-tele" class="modal-backdrop hidden" onclick="closeCompleteTeleModal(event)">
+    <div class="modal-card" style="max-width: 480px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i data-lucide="check-circle-2" class="inline-icon text-yellow"></i> Concluir Entrega</h3>
+        <button type="button" class="modal-close-btn" onclick="closeCompleteTeleModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="form-complete-tele" onsubmit="submitCompleteTele(event)">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <input type="hidden" id="complete-tele-id">
+          <input type="hidden" id="complete-tele-version">
+
+          <div style="background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 6px;">
+            <div>Tele: <strong id="complete-tele-code" style="color: var(--cyan-text);">#—</strong></div>
+            <div style="font-size: 0.78rem; color: var(--color-text-muted);" id="complete-tele-client-rider">—</div>
+          </div>
+
+          <div style="background: rgba(16, 185, 129, 0.05); border: 1px dashed #10b981; border-radius: 6px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
+            <div>
+              <span style="font-size: 0.7rem; color: var(--color-text-muted); display: block;">Valor Cliente</span>
+              <strong id="complete-preview-client-val" style="font-size: 0.95rem; color: var(--color-text);">R$ 0,00</strong>
+            </div>
+            <div>
+              <span style="font-size: 0.7rem; color: var(--color-text-muted); display: block;">Repasse Motoboy (80%)</span>
+              <strong id="complete-preview-rider-val" style="font-size: 0.95rem; color: #10b981;">R$ 0,00</strong>
+            </div>
+            <div>
+              <span style="font-size: 0.7rem; color: var(--color-text-muted); display: block;">Taxa Empresa (20%)</span>
+              <strong id="complete-preview-company-val" style="font-size: 0.95rem; color: var(--primary);">R$ 0,00</strong>
+            </div>
+          </div>
+
+          <div style="font-size: 0.75rem; color: var(--color-text-muted); font-style: italic;">
+            * Nota: Os valores finais e os lançamentos nos ledgers serão validados e consolidados atomicamente pelo servidor.
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <input type="checkbox" id="complete-confirm-checkbox" required style="width: 16px; height: 16px; cursor: pointer;">
+            <label for="complete-confirm-checkbox" style="font-size: 0.8rem; cursor: pointer;">Confirmo a entrega realizada e a geração dos lançamentos no ledger.</label>
+          </div>
+
+          <div id="complete-tele-feedback-box" class="hidden" style="padding: 10px; border-radius: 6px; font-size: 0.8rem;"></div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary" onclick="closeCompleteTeleModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-complete" style="background: #10b981; border-color: #10b981;">Confirmar Conclusão</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Cancelamento Controlado da Tele -->
+  <div id="modal-cancel-tele" class="modal-backdrop hidden" onclick="closeCancelTeleModal(event)">
+    <div class="modal-card" style="max-width: 460px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i data-lucide="x-circle" class="inline-icon text-yellow"></i> Cancelar Entrega</h3>
+        <button type="button" class="modal-close-btn" onclick="closeCancelTeleModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="form-cancel-tele" onsubmit="submitCancelTele(event)">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <input type="hidden" id="cancel-tele-id">
+          <input type="hidden" id="cancel-tele-version">
+
+          <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem;">
+            <div>Tele: <strong id="cancel-tele-code" style="color: #ef4444;">#—</strong></div>
+            <div style="font-size: 0.78rem; color: var(--color-text-muted);" id="cancel-tele-info">—</div>
+          </div>
+
+          <div class="form-group">
+            <label for="cancel-tele-reason" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: #ef4444;">
+              Motivo do Cancelamento *
+            </label>
+            <textarea id="cancel-tele-reason" required placeholder="Descreva o motivo (ex: Pedido duplicado pelo cliente, estabelecimento fechado, desistência)..." style="width: 100%; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; min-height: 80px; resize: vertical;"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="cancel-charge-policy" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Política de Cobrança</label>
+            <select id="cancel-charge-policy" style="width: 100%; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; cursor: pointer;">
+              <option value="sem_cobranca">Sem Cobrança (Isento)</option>
+              <option value="taxa_deslocamento" disabled>Taxa de Deslocamento (Fase futura)</option>
+            </select>
+          </div>
+
+          <div id="cancel-tele-feedback-box" class="hidden" style="padding: 10px; border-radius: 6px; font-size: 0.8rem;"></div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary" onclick="closeCancelTeleModal()">Voltar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-cancel" style="background: #ef4444; border-color: #ef4444;">Confirmar Cancelamento</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="config.js"></script>
   <script src="app.js?v=20260709_v3"></script>

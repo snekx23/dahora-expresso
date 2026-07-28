@@ -1,8 +1,8 @@
-// Garra Delivery — Configurações do Supabase
+// Dahora Expresso — Configurações do Supabase
 // Para separar os bancos de dados, altere os valores abaixo para as credenciais do seu novo projeto Supabase.
 const SUPABASE_CONFIG = {
-  url: 'https://faowxiyxjfogkoynsohj.supabase.co',
-  key: 'sb_publishable_UFy_HB0JaKUVCvHUlHSQ0Q_2HFOk4_V'
+  url: 'https://fajkqyapnycnnumpdwrr.supabase.co',
+  key: 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a'
 };
 
 if (typeof window !== 'undefined') {

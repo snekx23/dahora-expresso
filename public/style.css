@@ -13,16 +13,16 @@
   --bg-topbar: #0d0d11;
 
   --color-text: #f4f4f5;
-  --color-text-muted: #8e8e9f;
-  --color-text-dark: #09090b;
+  --color-text-muted: #C0C0C0;
+  --color-text-dark: #000000;
 
-  --primary: #ffb700;
-  --primary-hover: #e0a300;
-  --primary-glow: rgba(255, 183, 0, 0.15);
+  --primary: #CC0000;
+  --primary-hover: #FF9900;
+  --primary-glow: rgba(204, 0, 0, 0.15);
   
-  --accent-cyan: #f97316;
-  --accent-cyan-hover: #ea580c;
-  --accent-cyan-glow: rgba(249, 115, 22, 0.15);
+  --accent-cyan: #00CCFF;
+  --accent-cyan-hover: #0099FF;
+  --accent-cyan-glow: rgba(0, 204, 255, 0.15);
   
   --secondary: #272730;
   --secondary-hover: #353542;
@@ -31,7 +31,7 @@
   --success-glow: rgba(16, 185, 129, 0.15);
   --error: #ef4444;
   --warning: #f59e0b;
-  --info: #f97316;
+  --info: #00CCFF;
 
   /* Borders & Shadows */
   --border-color: #272732;
@@ -65,6 +65,15 @@ html, body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover {
+  color: var(--primary-hover);
 }
 
 /* Custom Scrollbar */
@@ -297,6 +306,7 @@ svg {
   font-weight: 800;
   font-size: 1.5rem;
   letter-spacing: -0.5px;
+  color: var(--primary);
 }
 
 .yellow-text {
@@ -304,7 +314,7 @@ svg {
 }
 
 .cyan-text {
-  color: var(--accent-cyan);
+  color: #C0C0C0;
 }
 
 /* Hero Section Layout */
@@ -725,10 +735,215 @@ select {
   flex: 1;
 }
 
-.nav-group {
+.nav-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  padding: 12px 16px 4px 16px;
+  margin-top: 6px;
+}
+
+.nav-accordion {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  width: 100%;
+}
+
+.nav-accordion-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.accordion-chevron {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  transition: transform var(--transition-fast);
+}
+
+.nav-accordion.open .accordion-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-accordion-content {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
+  margin-top: 4px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.nav-accordion.open .nav-accordion-content {
+  display: flex;
+}
+
+.nav-sub-item {
+  font-size: 0.9rem;
+  padding: 10px 14px;
+}
+
+/* Financial Status Badges */
+.badge-status-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-status-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-status-blocked {
+  background: rgba(147, 51, 234, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(147, 51, 234, 0.3);
+}
+
+/* Clickable Table Rows */
+.clickable-row {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.clickable-row:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Side Drawer Component */
+.drawer-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.drawer-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer-panel {
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform var(--transition-normal);
+}
+
+.drawer-backdrop.active .drawer-panel {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  padding: 24px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drawer-header h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.drawer-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.drawer-close-btn:hover {
+  color: var(--color-text);
+}
+
+.drawer-body {
+  padding: 24px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawer-field label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.drawer-field span {
+  font-size: 0.95rem;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+/* Pagination Controls */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Financial Ledger Entries */
+.financial-debit {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.financial-credit {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.metrics-grid-7 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
 }
 
 .nav-item {
@@ -3328,4 +3543,236 @@ input:checked + .slider:before {
 #toggle-password:hover {
   color: var(--primary);
 }
+
+/* =====================================================================
+   CENTRO DE OPERAÇÕES (CONTROL TOWER & REALTIME KANBAN)
+   ===================================================================== */
+.op-control-center-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: calc(100vh - 110px);
+}
+
+.op-topbar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kanban-board-container {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(260px, 1fr));
+  gap: 12px;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+}
+
+.kanban-column {
+  background: rgba(22, 24, 29, 0.7);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.kanban-column-header {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kanban-column-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.kanban-column-count {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.kanban-cards-list {
+  padding: 10px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tele-card-op {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 12px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+
+.tele-card-op:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.tele-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tele-card-code {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--accent-cyan);
+}
+
+/* Badges SLA */
+.sla-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sla-badge-normal {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.sla-badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.sla-badge-critical {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  animation: pulseCritical 1.5s infinite;
+}
+
+@keyframes pulseCritical {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.sla-estimated-tag {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-left: 4px;
+}
+
+.diagnostic-badge-unknown {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px dashed #ef4444;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Fleet Bar & Rider Pill Cards */
+.op-fleet-bar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 12px 16px;
+}
+
+.op-fleet-riders-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.op-rider-pill-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 8px 12px;
+  min-width: 170px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  user-select: none;
+}
+
+.op-rider-pill-card:hover {
+  border-color: var(--primary);
+  background: rgba(255, 183, 0, 0.05);
+}
+
+.op-rider-pill-card.drag-over {
+  border: 2px dashed var(--primary) !important;
+  background: rgba(255, 183, 0, 0.15) !important;
+  transform: scale(1.04);
+}
+
+.op-rider-pill-card.capacity-full {
+  opacity: 0.7;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.op-rider-pill-card.unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.rider-capacity-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.capacity-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.capacity-full-badge {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+
 

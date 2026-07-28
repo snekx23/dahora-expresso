@@ -1,7 +1,7 @@
 {
-  "name": "Garra Delivery — Painel",
-  "short_name": "Garra Painel",
-  "description": "Painel de Logística Garra. Controle de faturamento, frotas e despachos.",
+  "name": "Dahora Expresso — Painel",
+  "short_name": "Dahora Painel",
+  "description": "Painel de Logística Dahora Expresso. Controle de faturamento, frotas e despachos.",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",

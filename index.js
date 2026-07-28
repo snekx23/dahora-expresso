@@ -11,8 +11,8 @@ export default {
       const configScript = `
   <script>
     window.SUPABASE_CONFIG = {
-      url: "${env.SUPABASE_URL || 'https://faowxiyxjfogkoynsohj.supabase.co'}",
-      key: "${env.SUPABASE_ANON_KEY || 'sb_publishable_UFy_HB0JaKUVCvHUlHSQ0Q_2HFOk4_V'}"
+      url: "${env.SUPABASE_URL || 'https://fajkqyapnycnnumpdwrr.supabase.co'}",
+      key: "${env.SUPABASE_ANON_KEY || 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a'}"
     };
     window.MAPBOX_ACCESS_TOKEN = "${env.MAPBOX_ACCESS_TOKEN || ''}";
   </script>

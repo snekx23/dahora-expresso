@@ -1,19 +1,20 @@
-// Garra Delivery - Service Worker Otimizado
-const CACHE_NAME = 'garra-delivery-cache-v1';
+// Dahora Expresso - Service Worker Otimizado
+const CACHE_NAME = 'dahora-expresso-cache-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
-  '/manifest.json',
-  '/download-app'
+  '/motoboy.html',
+  '/motoboy.js',
+  '/manifest.json'
 ];
 
 // Instalação do Service Worker e Cache Inicial
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 [Service Worker] Fazendo cache dos arquivos estáticos');
+      console.log('📦 [Service Worker] Fazendo cache dos arquivos estáticos v3');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
@@ -40,7 +41,7 @@ self.addEventListener('activate', (event) => {
 // Interceptação de Requisições de Rede (Fetch)
 self.addEventListener('fetch', (event) => {
   // 🔥 CORREÇÃO DO BUG CRÍTICO: 
-  // APIs de cache só suportam o método GET. Se for POST (como as requisições do Supabase, iFood e 99Food),
+  // APIs de cache só suportam o método GET. Se for POST (como as requisições do Supabase),
   // nós ignoramos o Service Worker e deixamos a requisição passar direto para a internet.
   if (event.request.method !== 'GET') {
     return; 

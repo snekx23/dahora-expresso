@@ -1,6 +1,6 @@
-// Garra Delivery — Motoboy PWA Logic
-const SUPABASE_URL = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.url : 'https://faowxiyxjfogkoynsohj.supabase.co';
-const SUPABASE_KEY = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.key : 'sb_publishable_UFy_HB0JaKUVCvHUlHSQ0Q_2HFOk4_V';
+// Dahora Expresso — Motoboy PWA Logic
+const SUPABASE_URL = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.url : 'https://fajkqyapnycnnumpdwrr.supabase.co';
+const SUPABASE_KEY = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.key : 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a';
 
 let db = null;
 if (typeof window !== 'undefined' && window.supabase) {
@@ -306,7 +306,7 @@ async function toggleConnectionState() {
     
     // Check if there are active deliveries for this motoboy
     const { data, error: countError } = await db
-      .from('client_history')
+      .from('teles')
       .select('id')
       .eq('rider', currentRider.name)
       .neq('status', 'Entregue');
@@ -422,7 +422,7 @@ async function loadMyDeliveries() {
   if (!db || !currentRider) return;
 
   const { data, error } = await db
-    .from('client_history')
+    .from('teles')
     .select('*')
     .eq('rider', currentRider.name)
     .neq('status', 'Entregue')
@@ -519,7 +519,7 @@ function renderTeleCards(deliveries) {
       } else if (order.pickup_lat !== null && order.pickup_lng !== null && !isNaN(order.pickup_lat) && !isNaN(order.pickup_lng)) {
         mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${order.pickup_lat},${order.pickup_lng}&travelmode=driving`;
       } else {
-        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.client || 'Parceiro Garra')}`;
+        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.client || 'Cliente Comercial')}`;
       }
     } else {
       if (order.address) {
@@ -532,16 +532,14 @@ function renderTeleCards(deliveries) {
     }
 
     const paymentMethod = getPaymentMethod(order);
-    const isIntegration = paymentMethod.toLowerCase().includes('ifood') || paymentMethod.toLowerCase().includes('99food');
+    const isIntegration = false;
     
-    // Format payment status text
-    const isOnline = paymentMethod.toLowerCase().includes('pago');
-    let paymentBadge = 'A combinar';
+    // Formatos Comerciais Padronizados (Dinheiro, PIX, Cartão, Faturado)
+    const isOnline = paymentMethod.toLowerCase().includes('pago') || paymentMethod.toLowerCase().includes('faturado');
+    let paymentBadge = 'Faturado';
     if (paymentMethod.toLowerCase().includes('dinheiro')) paymentBadge = 'Dinheiro';
     else if (paymentMethod.toLowerCase().includes('cartão') || paymentMethod.toLowerCase().includes('cartao')) paymentBadge = 'Cartão';
     else if (paymentMethod.toLowerCase().includes('pix')) paymentBadge = 'PIX';
-    else if (paymentMethod.toLowerCase().includes('ifood')) paymentBadge = 'iFood';
-    else if (paymentMethod.toLowerCase().includes('99food')) paymentBadge = '99Food';
 
     const cleanDist = getCleanDistance(order.dist);
     const cleanTotalAmount = order.total_order_amount || order.price || 'R$ 0,00';
@@ -683,7 +681,7 @@ async function confirmPickup(deliveryId) {
 
     if (!bypass) {
       const { data: order, error: orderErr } = await db
-        .from('client_history')
+        .from('teles')
         .select('pickup_lat, pickup_lng')
         .eq('id', deliveryId)
         .single();
@@ -721,7 +719,7 @@ async function confirmPickup(deliveryId) {
   }
 
   const { error } = await db
-    .from('client_history')
+    .from('teles')
     .update({ status: 'Em rota de entrega', status_class: 'status-progress' })
     .eq('id', deliveryId);
 
@@ -751,7 +749,7 @@ async function confirmDelivery(deliveryId) {
 
   const order = activeDeliveriesList.find(d => d.id === deliveryId);
   const paymentMethod = getPaymentMethod(order || {});
-  const isIntegration = paymentMethod.toLowerCase().includes('ifood') || paymentMethod.toLowerCase().includes('99food');
+  const isIntegration = false;
 
   if (isIntegration) {
     const cardElement = btn ? btn.closest('.pwa-tele-card') : null;
@@ -780,7 +778,7 @@ async function confirmDelivery(deliveryId) {
 
     if (!bypass) {
       const { data: order, error: orderErr } = await db
-        .from('client_history')
+        .from('teles')
         .select('dest_lat, dest_lng')
         .eq('id', deliveryId)
         .single();
@@ -818,7 +816,7 @@ async function confirmDelivery(deliveryId) {
   }
 
   const { error: histErr } = await db
-    .from('client_history')
+    .from('teles')
     .update({ status: 'Entregue', status_class: 'status-success' })
     .eq('id', deliveryId);
 
@@ -850,7 +848,7 @@ function subscribeRealtime() {
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
-      table: 'client_history'
+      table: 'teles'
     }, (payload) => {
       const riderName = currentRider.name;
       
@@ -1426,7 +1424,7 @@ async function loadWeeklyBalance() {
   if (!db || !currentRider) return;
 
   const { data, error } = await db
-    .from('client_history')
+    .from('teles')
     .select('price, date, address')
     .eq('rider', currentRider.name)
     .eq('status', 'Entregue');
@@ -1687,7 +1685,7 @@ async function loadReportsData() {
   if (!db || !currentRider) return;
 
   const { data, error } = await db
-    .from('client_history')
+    .from('teles')
     .select('*')
     .eq('rider', currentRider.name)
     .eq('status', 'Entregue')
@@ -1851,19 +1849,23 @@ async function loadWeeklyClosures() {
 
   try {
     const { data: deliveries, error: deliveriesErr } = await db
-      .from('client_history')
+      .from('teles')
       .select('*')
       .eq('rider', currentRider.name)
       .or('status.eq.Entregue,status.eq.Concluído');
 
     if (deliveriesErr) throw deliveriesErr;
 
-    const { data: consumables, error: consumablesErr } = await db
-      .from('rider_consumables')
-      .select('*')
-      .eq('rider_id', currentRider.id);
-
-    if (consumablesErr) throw consumablesErr;
+    let consumables = [];
+    try {
+      const { data: cData, error: cErr } = await db
+        .from('rider_consumable_purchases')
+        .select('*')
+        .eq('motoboy_id', currentRider.id);
+      if (!cErr && cData) consumables = cData;
+    } catch (e) {
+      console.warn("Aviso ao buscar rider_consumable_purchases:", e.message);
+    }
 
     const { data: credits, error: creditsErr } = await db
       .from('rider_credits')
@@ -2083,18 +2085,21 @@ async function loadConsumablesData() {
   if (!db || !currentRider) return;
 
   try {
-    const { data, error } = await db
-      .from('rider_consumables')
+    let { data, error } = await db
+      .from('rider_consumable_purchases')
       .select('*')
-      .eq('rider_id', currentRider.id)
+      .eq('motoboy_id', currentRider.id)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn("Aviso ao buscar rider_consumable_purchases:", error.message);
+      data = [];
+    }
 
     renderConsumablesList(data || []);
   } catch (err) {
-    console.error("Error loading consumables:", err);
-    if (container) container.innerHTML = '<p class="pwa-empty-msg">Erro ao carregar consumíveis.</p>';
+    console.warn("Aviso ao carregar consumíveis:", err.message);
+    if (container) container.innerHTML = '<p class="pwa-empty-msg">Nenhum consumível registrado.</p>';
   }
 }
 
@@ -2199,7 +2204,7 @@ function triggerAppInstall() {
 
 // Listen for successful installation
 window.addEventListener('appinstalled', () => {
-  showPWAToast('Aplicativo Garra instalado com sucesso!');
+  showPWAToast('Aplicativo Dahora Expresso instalado com sucesso!');
   deferredPrompt = null;
   
   const loginInstallBtn = document.getElementById('pwa-install-app-btn');

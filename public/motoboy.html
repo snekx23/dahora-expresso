@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#ffb700">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Garra Moto">
-  <title>Garra Motoboy</title>
+  <meta name="apple-mobile-web-app-title" content="Dahora Moto">
+  <title>Dahora Expresso - Motoboy</title>
 
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" href="logo.png?v=3">
@@ -18,7 +18,7 @@
   <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 
   <!-- Google Maps API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBkwbG65d17USn4PLxNzyPN7QODNaWWZ0k&libraries=geometry,places"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBkwbG65d17USn4PLxNzyPN7QODNaWWZ0k&libraries=geometry,places"></script>
 
   <!-- Lucide & Supabase -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -78,10 +78,9 @@
     }
 
     .login-logo img {
-      width: 48px;
       height: 48px;
+      width: auto;
       border-radius: 10px;
-      object-fit: cover;
     }
 
     .login-logo-text {
@@ -89,9 +88,10 @@
       font-size: 2rem;
       font-weight: 800;
       letter-spacing: -0.5px;
+      color: #CC0000;
     }
 
-    .login-logo-text span { color: var(--primary); }
+    .login-logo-text span { color: #C0C0C0; }
 
     .login-tagline {
       font-size: 0.85rem;
@@ -216,11 +216,12 @@
 
     .pwa-header-logo {
       font-family: var(--font-display);
-      font-size: 1.1rem;
+      font-size: 1.3rem;
       font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #CC0000;
     }
-
-    .pwa-header-logo span { color: var(--primary); }
+    .pwa-header-logo span { color: #C0C0C0; }
 
     .pwa-rider-info {
       display: flex;
@@ -806,7 +807,7 @@
       font-weight: 800;
     }
     .pwa-map-status-capsule span.status-val.online {
-      color: #16a34a;
+      color: #FF9900;
     }
     .pwa-map-status-capsule span.status-val.offline {
       color: #ef4444;
@@ -948,8 +949,8 @@
       color: #1c1917;
     }
     .pwa-btn-connect-pill.online {
-      background: #ef4444; /* red as screenshot */
-      color: #ffffff;
+      background: #FF9900;
+      color: #000000;
     }
 
     /* ── NEW PAGES: PROFILE AND REPORTS ── */
@@ -1005,8 +1006,8 @@
   <!-- ── LOGIN SCREEN ── -->
   <div id="pwa-login">
     <div class="login-logo">
-      <img src="logo.png?v=3" alt="Logo Garra">
-      <span class="login-logo-text">GARRA<span> DELIVERY</span></span>
+      <img src="logo.png?v=3" alt="Logo Dahora Expresso">
+      <span class="login-logo-text">DAHORA<span> EXPRESSO</span></span>
     </div>
     <p class="login-tagline">Portal exclusivo para entregadores</p>
 
@@ -1046,7 +1047,7 @@
     <!-- Header -->
     <header class="pwa-header">
       <div class="pwa-header-left">
-        <span class="pwa-header-logo">GARRA<span> DELIVERY</span></span>
+        <span class="pwa-header-logo">DAHORA<span> EXPRESSO</span></span>
         <div class="pwa-rider-info">
           <span id="pwa-rider-name">Motoboy</span>
           <span id="pwa-rider-status" class="pwa-status-badge badge-available">Disponível</span>
@@ -1389,7 +1390,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary); flex-shrink: 0; margin-top: 2px;"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
           <div>
             <span style="font-size: 0.72rem; color: var(--muted); display: block;">Comércio / Retirada</span>
-            <strong style="font-size: 0.88rem;" id="pending-tele-client">Parceiro Garra</strong>
+            <strong style="font-size: 0.88rem;" id="pending-tele-client">Cliente Comercial</strong>
           </div>
         </div>
         <div style="display: flex; align-items: flex-start; gap: 8px;">

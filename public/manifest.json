@@ -1,7 +1,7 @@
 {
-  "name": "Garra Delivery",
-  "short_name": "Garra",
-  "description": "App do entregador Garra Delivery. Veja suas teles e acompanhe o mapa.",
+  "name": "Dahora Expresso",
+  "short_name": "Dahora",
+  "description": "App do entregador Dahora Expresso. Veja suas teles e acompanhe o mapa.",
   "start_url": "/motoboy.html",
   "scope": "/",
   "display": "standalone",

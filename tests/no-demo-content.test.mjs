@@ -30,6 +30,7 @@ test('production UI does not expose demo metrics or fake restaurant names', asyn
     'Subway Grill',
     'Cantina di Lucca',
     'Selo Garra Premium',
+    'Garra Delivery',
     'Carlos Oliveira',
     'ABC-1234',
     'Cliente Express',
