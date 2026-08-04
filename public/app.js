@@ -12657,11 +12657,51 @@ function renderAdminRiderWeeklySettlements(settlements) {
     const periodStr = (s.period_start && s.period_end) ? 
       `${new Date(s.period_start).toLocaleDateString('pt-BR')} a ${new Date(s.period_end).toLocaleDateString('pt-BR')}` : '—';
 
+    // Matriz de Ações por Estado Autoritativo
     let actionBtn = '';
+    const safeRiderName = (s.rider_name || 'Motoboy').replace(/'/g, "\\'");
+
     if (isNotCalculated) {
-      actionBtn = `<button type="button" class="btn btn-secondary btn-sm" disabled title="Disponível no próximo bloco" style="opacity: 0.65; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">
+      actionBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="handleCalculateRiderSettlement('${s.rider_id}', '${s.period_start}', '${s.period_end}')" style="display: inline-flex; align-items: center; gap: 4px;">
         <i data-lucide="calculator" style="width: 14px; height: 14px;"></i> Calcular fechamento
       </button>`;
+    } else if (s.status === 'open' || s.status === 'reopened') {
+      actionBtn = `<div style="display: flex; gap: 4px; justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="handleCalculateRiderSettlement('${s.rider_id}', '${s.period_start}', '${s.period_end}')" title="Recalcular no banco">
+          <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Recalcular
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openRiderSettlementDrawer('${s.settlement_id}')">
+          <i data-lucide="eye" style="width: 14px; height: 14px;"></i> Detalhes
+        </button>
+      </div>`;
+    } else if (s.status === 'calculated') {
+      actionBtn = `<div style="display: flex; gap: 4px; justify-content: flex-end;">
+        <button type="button" class="btn btn-warning btn-sm" onclick="openCloseSettlementModal('${s.settlement_id}', ${s.version || 1}, '${safeRiderName}', '${formatRiderSettlementCurrency(s.net_amount)}', '${formatRiderSettlementCurrency(s.eligible_amount)}', '${formatRiderSettlementCurrency(s.blocked_amount)}', '${periodStr}')">
+          <i data-lucide="lock" style="width: 14px; height: 14px;"></i> Encerrar
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="handleCalculateRiderSettlement('${s.rider_id}', '${s.period_start}', '${s.period_end}')">
+          <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Recalcular
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openRiderSettlementDrawer('${s.settlement_id}')">
+          <i data-lucide="eye" style="width: 14px; height: 14px;"></i> Detalhes
+        </button>
+      </div>`;
+    } else if (s.status === 'pending' || s.status === 'partially_blocked') {
+      const hasEligible = Number(s.unpaid_eligible_amount || s.eligible_amount) > 0;
+      const payBtn = hasEligible ? 
+        `<button type="button" class="btn btn-success btn-sm" onclick="openPaySettlementModal('${s.settlement_id}', ${s.version || 1}, '${safeRiderName}', '${formatRiderSettlementCurrency(s.unpaid_eligible_amount || s.eligible_amount)}', '${formatRiderSettlementCurrency(s.blocked_amount)}')">
+          <i data-lucide="credit-card" style="width: 14px; height: 14px;"></i> Pagar repasse
+        </button>` : '';
+
+      actionBtn = `<div style="display: flex; gap: 4px; justify-content: flex-end;">
+        ${payBtn}
+        <button type="button" class="btn btn-warning btn-sm" onclick="openReopenSettlementModal('${s.settlement_id}', ${s.version || 1}, '${safeRiderName}')">
+          <i data-lucide="unlock" style="width: 14px; height: 14px;"></i> Reabrir
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openRiderSettlementDrawer('${s.settlement_id}')">
+          <i data-lucide="eye" style="width: 14px; height: 14px;"></i> Detalhes
+        </button>
+      </div>`;
     } else {
       actionBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="openRiderSettlementDrawer('${s.settlement_id}')" style="display: inline-flex; align-items: center; gap: 4px;">
         <i data-lucide="eye" style="width: 14px; height: 14px;"></i> Ver detalhes
@@ -12689,6 +12729,9 @@ function renderAdminRiderWeeklySettlements(settlements) {
 
   tbody.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
+
+  // Verificar se há recuperação pendente
+  checkPendingPaymentRecovery();
 }
 
 async function openRiderSettlementDrawer(settlementId) {
@@ -12769,7 +12812,7 @@ function handleRiderDrawerKeyDown(e) {
 }
 
 function renderRiderSettlementDetail(detailData) {
-  const { settlement, summary, items, batches, latest_payment } = detailData;
+  const { settlement, summary, items, batches } = detailData;
   const drawerBody = document.getElementById('rider-drawer-body');
   const subtitleEl = document.getElementById('rider-drawer-subtitle');
 
@@ -12871,7 +12914,7 @@ function renderRiderSettlementDetail(detailData) {
             <th>Responsável</th>
             <th>Pagamento</th>
             <th>Estorno</th>
-            <th>Integridade</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>`;
@@ -12880,9 +12923,12 @@ function renderRiderSettlementDetail(detailData) {
     html += `<tr><td colspan="10" style="text-align: center; color: var(--color-text-muted);">Nenhum lote registrado.</td></tr>`;
   } else {
     batches.forEach(b => {
-      const integrityBadge = b.integrity_status === 'valid' ? 
-        `<span class="badge badge-success">Válido</span>` : 
-        `<span class="badge badge-danger">${b.integrity_status}</span>`;
+      let batchActionBtn = '—';
+      if (b.status === 'paid') {
+        batchActionBtn = `<button type="button" class="btn btn-danger btn-sm" onclick="openReverseBatchModal('${b.id}', ${b.version || 1}, '${settlement.id}', '${formatRiderSettlementCurrency(b.total_paid_amount)}')">
+          <i data-lucide="rotate-ccw" style="width: 12px; height: 12px;"></i> Estornar
+        </button>`;
+      }
 
       html += `<tr>
         <td>${b.batch_type_label || b.batch_type}</td>
@@ -12894,7 +12940,7 @@ function renderRiderSettlementDetail(detailData) {
         <td>${b.paid_by_name || '—'}</td>
         <td>${b.paid_at ? new Date(b.paid_at).toLocaleString('pt-BR') : '—'}</td>
         <td>${b.reversed_at ? new Date(b.reversed_at).toLocaleString('pt-BR') : '—'}</td>
-        <td>${integrityBadge}</td>
+        <td>${batchActionBtn}</td>
       </tr>`;
     });
   }
@@ -12923,3 +12969,544 @@ function closeRiderSettlementDrawer() {
   }
   activeElementBeforeDrawer = null;
 }
+
+// =====================================================================
+// Dahora Expresso — Fase 3B.2A.2: Operações Financeiras Autoritativas
+// =====================================================================
+
+let activeSettlementOperationalState = {
+  settlementId: null,
+  settlementVersion: null,
+  batchId: null,
+  batchVersion: null,
+  riderName: '',
+  createIdempotencyKey: null,
+  payIdempotencyKey: null,
+  reverseIdempotencyKey: null
+};
+
+// 1. Calcular Fechamento (usando period_start e period_end autoritativos do Postgres)
+async function handleCalculateRiderSettlement(riderId, periodStartIso, periodEndIso) {
+  if (!riderId || !periodStartIso || !periodEndIso) {
+    alert("Dados autoritativos do período ausentes para calcular o fechamento.");
+    return;
+  }
+
+  if (!confirm("Deseja executar o cálculo autoritativo deste fechamento semanal no banco de dados?")) return;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_calculate_rider_weekly_settlement', {
+      p_rider_id: riderId,
+      p_period_start: periodStartIso,
+      p_period_end: periodEndIso
+    });
+
+    if (error || !data || data.success === false) {
+      alert(`Erro ao calcular fechamento: ${error?.message || data?.message || 'Falha na RPC'}`);
+      return;
+    }
+
+    await fetchAdminRiderWeeklySettlements(false);
+
+    if (data.settlement_id) {
+      openRiderSettlementDrawer(data.settlement_id);
+    }
+  } catch (err) {
+    console.error("[RPC admin_calculate_rider_weekly_settlement] Exceção:", err);
+  }
+}
+
+// 2. Encerrar Fechamento
+function openCloseSettlementModal(settlementId, expectedVersion, riderName, netStr, eligibleStr, blockedStr, periodStr) {
+  activeSettlementOperationalState.settlementId = settlementId;
+  activeSettlementOperationalState.settlementVersion = expectedVersion;
+
+  const modal = document.getElementById('modal-close-settlement');
+  const nameEl = document.getElementById('close-modal-rider-name');
+  const periodEl = document.getElementById('close-modal-period');
+  const netEl = document.getElementById('close-modal-net-amount');
+  const eligEl = document.getElementById('close-modal-eligible-amount');
+  const blockEl = document.getElementById('close-modal-blocked-amount');
+  const versionEl = document.getElementById('close-modal-version');
+  const noticeEl = document.getElementById('close-settlement-notice');
+
+  if (nameEl) nameEl.textContent = riderName;
+  if (periodEl) periodEl.textContent = periodStr;
+  if (netEl) netEl.textContent = netStr;
+  if (eligEl) eligEl.textContent = eligibleStr;
+  if (blockEl) blockEl.textContent = blockedStr;
+  if (versionEl) versionEl.textContent = `v${expectedVersion}`;
+  if (noticeEl) { noticeEl.textContent = ''; noticeEl.classList.add('hidden'); }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeRiderCloseSettlementModal() {
+  const modal = document.getElementById('modal-close-settlement');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitCloseRiderSettlement() {
+  const { settlementId, settlementVersion } = activeSettlementOperationalState;
+  if (!settlementId || settlementVersion === null) return;
+
+  const btn = document.getElementById('btn-confirm-close-settlement');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Processando...'; }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_close_rider_weekly_settlement', {
+      p_settlement_id: settlementId,
+      p_expected_version: settlementVersion
+    });
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="check-circle"></i> Confirmar Encerramento'; }
+
+    if (error || !data || data.success === false) {
+      const errCode = data?.error_code || error?.code;
+      if (errCode === 'VERSION_CONFLICT') {
+        alert("O fechamento foi alterado por outra operação. Os dados autoritativos foram atualizados.");
+      } else {
+        alert(`Erro ao encerrar fechamento: ${error?.message || data?.message || 'Falha na RPC'}`);
+      }
+      closeRiderCloseSettlementModal();
+      await fetchAdminRiderWeeklySettlements(false);
+      return;
+    }
+
+    closeRiderCloseSettlementModal();
+    await fetchAdminRiderWeeklySettlements(false);
+    if (document.getElementById('rider-settlement-drawer')?.classList.contains('hidden') === false) {
+      openRiderSettlementDrawer(settlementId);
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="check-circle"></i> Confirmar Encerramento'; }
+    console.error("[RPC admin_close_rider_weekly_settlement] Exceção:", err);
+  }
+}
+
+// 3. Reabrir Fechamento
+function openReopenSettlementModal(settlementId, expectedVersion, riderName) {
+  activeSettlementOperationalState.settlementId = settlementId;
+  activeSettlementOperationalState.settlementVersion = expectedVersion;
+
+  const modal = document.getElementById('modal-reopen-settlement');
+  const nameEl = document.getElementById('reopen-modal-rider-name');
+  const versionEl = document.getElementById('reopen-modal-version');
+  const reasonInput = document.getElementById('reopen-settlement-reason-input');
+  const noticeEl = document.getElementById('reopen-settlement-notice');
+
+  if (nameEl) nameEl.textContent = riderName;
+  if (versionEl) versionEl.textContent = `v${expectedVersion}`;
+  if (reasonInput) reasonInput.value = '';
+  if (noticeEl) { noticeEl.textContent = ''; noticeEl.classList.add('hidden'); }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeRiderReopenSettlementModal() {
+  const modal = document.getElementById('modal-reopen-settlement');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitReopenRiderSettlement() {
+  const { settlementId, settlementVersion } = activeSettlementOperationalState;
+  const reasonInput = document.getElementById('reopen-settlement-reason-input');
+  const reason = reasonInput ? reasonInput.value.trim() : '';
+
+  if (!reason) {
+    const noticeEl = document.getElementById('reopen-settlement-notice');
+    if (noticeEl) {
+      noticeEl.textContent = 'O motivo da reabertura é obrigatório.';
+      noticeEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-reopen-settlement');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Reabrindo...'; }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_reopen_rider_weekly_settlement', {
+      p_settlement_id: settlementId,
+      p_expected_version: settlementVersion,
+      p_reason: reason
+    });
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="unlock"></i> Confirmar Reabertura'; }
+
+    if (error || !data || data.success === false) {
+      const errCode = data?.error_code || error?.code;
+      if (errCode === 'CANNOT_REOPEN_PAID') {
+        alert("Não é possível reabrir um repasse já pago sem o estorno formal dos lotes.");
+      } else if (errCode === 'VERSION_CONFLICT') {
+        alert("O fechamento foi modificado por outro operador. Os dados foram recarregados.");
+      } else {
+        alert(`Erro ao reabrir fechamento: ${error?.message || data?.message || 'Falha na RPC'}`);
+      }
+      closeRiderReopenSettlementModal();
+      await fetchAdminRiderWeeklySettlements(false);
+      return;
+    }
+
+    closeRiderReopenSettlementModal();
+    await fetchAdminRiderWeeklySettlements(false);
+    if (document.getElementById('rider-settlement-drawer')?.classList.contains('hidden') === false) {
+      openRiderSettlementDrawer(settlementId);
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="unlock"></i> Confirmar Reabertura'; }
+    console.error("[RPC admin_reopen_rider_weekly_settlement] Exceção:", err);
+  }
+}
+
+// 4. Pagamento Manual em 2 Etapas
+function openPaySettlementModal(settlementId, expectedVersion, riderName, unpaidEligibleStr, blockedStr) {
+  activeSettlementOperationalState.settlementId = settlementId;
+  activeSettlementOperationalState.settlementVersion = expectedVersion;
+  activeSettlementOperationalState.batchId = null;
+  activeSettlementOperationalState.batchVersion = null;
+
+  const storageKey = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_${settlementId}`;
+  const existingPending = sessionStorage.getItem(storageKey);
+  if (existingPending) {
+    try {
+      const parsed = JSON.parse(existingPending);
+      if (parsed.create_idempotency_key) {
+        activeSettlementOperationalState.createIdempotencyKey = parsed.create_idempotency_key;
+      }
+      if (parsed.pay_idempotency_key) {
+        activeSettlementOperationalState.payIdempotencyKey = parsed.pay_idempotency_key;
+      }
+    } catch(e) {}
+  } else {
+    const timestamp = Date.now();
+    activeSettlementOperationalState.createIdempotencyKey = `rps_create_${settlementId}_${timestamp}`;
+    activeSettlementOperationalState.payIdempotencyKey = `rps_pay_${settlementId}_${timestamp}`;
+  }
+
+  const modal = document.getElementById('modal-pay-settlement');
+  const nameEl = document.getElementById('pay-modal-rider-name');
+  const versionEl = document.getElementById('pay-modal-settlement-version');
+  const unpaidEl = document.getElementById('pay-modal-unpaid-eligible');
+  const blockedEl = document.getElementById('pay-modal-blocked');
+  const step1Box = document.getElementById('pay-settlement-step1-box');
+  const step2Box = document.getElementById('pay-settlement-step2-box');
+  const btnCreate = document.getElementById('btn-create-pay-batch');
+  const btnConfirm = document.getElementById('btn-confirm-mark-batch-paid');
+  const noticeEl = document.getElementById('pay-settlement-notice');
+
+  if (nameEl) nameEl.textContent = riderName;
+  if (versionEl) versionEl.textContent = `v${expectedVersion}`;
+  if (unpaidEl) unpaidEl.textContent = unpaidEligibleStr;
+  if (blockedEl) blockedEl.textContent = blockedStr;
+
+  if (step1Box) step1Box.classList.remove('hidden');
+  if (step2Box) step2Box.classList.add('hidden');
+  if (btnCreate) btnCreate.classList.remove('hidden');
+  if (btnConfirm) btnConfirm.classList.add('hidden');
+  if (noticeEl) { noticeEl.textContent = ''; noticeEl.classList.add('hidden'); }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeRiderPaySettlementModal() {
+  const modal = document.getElementById('modal-pay-settlement');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitCreateRiderPayBatch() {
+  const { settlementId, settlementVersion, createIdempotencyKey } = activeSettlementOperationalState;
+  if (!settlementId || settlementVersion === null) return;
+
+  const btnCreate = document.getElementById('btn-create-pay-batch');
+  if (btnCreate) { btnCreate.disabled = true; btnCreate.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Criando Lote...'; }
+
+  try {
+    // Etapa 1: Criar lote
+    const { data, error } = await supabaseClient.rpc('admin_create_rider_payment_batch', {
+      p_settlement_id: settlementId,
+      p_expected_version: settlementVersion,
+      p_idempotency_key: createIdempotencyKey
+    });
+
+    if (error || !data || data.success === false) {
+      if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
+      alert(`Erro ao criar lote de pagamento: ${error?.message || data?.message || 'Falha na RPC'}`);
+      return;
+    }
+
+    const batchId = data.batch_id;
+    activeSettlementOperationalState.batchId = batchId;
+
+    // EXIGÊNCIA OBRIGATÓRIA: Re-fetch autoritativo de get_admin_rider_weekly_settlement_detail para obter a batch.version real!
+    const { data: detailData, error: detailErr } = await supabaseClient.rpc('get_admin_rider_weekly_settlement_detail', {
+      p_settlement_id: settlementId
+    });
+
+    if (detailErr || !detailData || detailData.success === false) {
+      if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
+      alert("Erro ao buscar versão autoritativa do lote. A confirmação foi interrompida para segurança.");
+      return;
+    }
+
+    const realBatch = (detailData.batches || []).find(b => b.id === batchId);
+    if (!realBatch || realBatch.version === undefined || realBatch.version === null) {
+      if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
+      alert("Inconsistência: Lote criado não foi localizado no detalhe autoritativo. Etapa 2 interrompida.");
+      return;
+    }
+
+    activeSettlementOperationalState.batchVersion = realBatch.version;
+
+    // Salvar no sessionStorage para suporte a F5
+    const storageKey = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_${settlementId}`;
+    sessionStorage.setItem(storageKey, JSON.stringify({
+      workspace_id: currentActiveSession?.user?.id || 'admin',
+      settlement_id: settlementId,
+      settlement_version: settlementVersion,
+      batch_id: batchId,
+      batch_version: realBatch.version,
+      create_idempotency_key: createIdempotencyKey,
+      pay_idempotency_key: activeSettlementOperationalState.payIdempotencyKey,
+      stage: 'batch_created',
+      created_at: new Date().toISOString()
+    }));
+
+    // Transicionar modal para Etapa 2
+    const step1Box = document.getElementById('pay-settlement-step1-box');
+    const step2Box = document.getElementById('pay-settlement-step2-box');
+    const btnConfirm = document.getElementById('btn-confirm-mark-batch-paid');
+
+    if (step1Box) step1Box.classList.add('hidden');
+    if (step2Box) step2Box.classList.remove('hidden');
+    if (btnCreate) btnCreate.classList.add('hidden');
+    if (btnConfirm) { btnConfirm.classList.remove('hidden'); btnConfirm.disabled = false; }
+
+  } catch (err) {
+    if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
+    console.error("[RPC admin_create_rider_payment_batch] Exceção:", err);
+  }
+}
+
+async function submitMarkRiderBatchPaid() {
+  const { settlementId, batchId, batchVersion, payIdempotencyKey } = activeSettlementOperationalState;
+  const methodSelect = document.getElementById('pay-modal-method-select');
+  const refInput = document.getElementById('pay-modal-reference-input');
+  const notesInput = document.getElementById('pay-modal-notes-input');
+
+  const method = methodSelect ? methodSelect.value : 'PIX';
+  const reference = refInput ? refInput.value.trim() : '';
+  const notes = notesInput ? notesInput.value.trim() : '';
+
+  if (!reference) {
+    alert("O código de referência / E2E do comprovante de pagamento é obrigatório.");
+    return;
+  }
+
+  const btnConfirm = document.getElementById('btn-confirm-mark-batch-paid');
+  if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Confirmando...'; }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_mark_rider_payment_batch_paid', {
+      p_batch_id: batchId,
+      p_expected_version: batchVersion,
+      p_payment_method: method,
+      p_payment_reference: reference,
+      p_notes: notes || null,
+      p_idempotency_key: payIdempotencyKey
+    });
+
+    if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i data-lucide="check-check"></i> Confirmar Pagamento Realizado'; }
+
+    if (error || !data || data.success === false) {
+      const errCode = data?.error_code || error?.code;
+      if (errCode === 'VERSION_CONFLICT') {
+        alert("O lote de pagamento foi alterado por outra operação. Dados recarregados.");
+      } else {
+        alert(`Erro ao marcar lote como pago: ${error?.message || data?.message || 'Falha na RPC'}`);
+      }
+      return;
+    }
+
+    // Sucesso! Limpar sessionStorage
+    const storageKey = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_${settlementId}`;
+    sessionStorage.removeItem(storageKey);
+
+    closeRiderPaySettlementModal();
+    dismissRiderPaymentRecoveryBanner();
+
+    await fetchAdminRiderWeeklySettlements(false);
+    if (document.getElementById('rider-settlement-drawer')?.classList.contains('hidden') === false) {
+      openRiderSettlementDrawer(settlementId);
+    }
+  } catch (err) {
+    if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i data-lucide="check-check"></i> Confirmar Pagamento Realizado'; }
+    console.error("[RPC admin_mark_rider_payment_batch_paid] Exceção:", err);
+  }
+}
+
+// 5. Estorno Auditado de Lote
+function openReverseBatchModal(batchId, batchVersion, settlementId, amountStr) {
+  activeSettlementOperationalState.batchId = batchId;
+  activeSettlementOperationalState.batchVersion = batchVersion;
+  activeSettlementOperationalState.settlementId = settlementId;
+  activeSettlementOperationalState.reverseIdempotencyKey = `rps_reverse_${batchId}_${Date.now()}`;
+
+  const modal = document.getElementById('modal-reverse-batch');
+  const amountEl = document.getElementById('reverse-modal-batch-amount');
+  const versionEl = document.getElementById('reverse-modal-batch-version');
+  const reasonInput = document.getElementById('reverse-batch-reason-input');
+  const noticeEl = document.getElementById('reverse-batch-notice');
+
+  if (amountEl) amountEl.textContent = amountStr;
+  if (versionEl) versionEl.textContent = `v${batchVersion}`;
+  if (reasonInput) reasonInput.value = '';
+  if (noticeEl) { noticeEl.textContent = ''; noticeEl.classList.add('hidden'); }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeRiderReverseBatchModal() {
+  const modal = document.getElementById('modal-reverse-batch');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitReverseRiderBatch() {
+  const { batchId, batchVersion, settlementId, reverseIdempotencyKey } = activeSettlementOperationalState;
+  const reasonInput = document.getElementById('reverse-batch-reason-input');
+  const reason = reasonInput ? reasonInput.value.trim() : '';
+
+  if (!reason) {
+    const noticeEl = document.getElementById('reverse-batch-notice');
+    if (noticeEl) {
+      noticeEl.textContent = 'O motivo do estorno é obrigatório.';
+      noticeEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-reverse-batch');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Estornando...'; }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_reverse_rider_payment_batch', {
+      p_batch_id: batchId,
+      p_expected_version: batchVersion,
+      p_reason: reason,
+      p_idempotency_key: reverseIdempotencyKey
+    });
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="rotate-ccw"></i> Confirmar Estorno Auditado'; }
+
+    if (error || !data || data.success === false) {
+      alert(`Erro ao estornar lote: ${error?.message || data?.message || 'Falha na RPC'}`);
+      return;
+    }
+
+    closeRiderReverseBatchModal();
+    await fetchAdminRiderWeeklySettlements(false);
+    if (document.getElementById('rider-settlement-drawer')?.classList.contains('hidden') === false) {
+      openRiderSettlementDrawer(settlementId);
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="rotate-ccw"></i> Confirmar Estorno Auditado'; }
+    console.error("[RPC admin_reverse_rider_payment_batch] Exceção:", err);
+  }
+}
+
+// 6. Recuperação e Reconciliação do sessionStorage
+async function checkPendingPaymentRecovery() {
+  if (typeof sessionStorage === 'undefined') return;
+  const prefix = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_`;
+
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      try {
+        const item = JSON.parse(sessionStorage.getItem(key));
+        if (item && item.settlement_id && item.batch_id) {
+          const banner = document.getElementById('rider-payment-recovery-banner');
+          if (banner) banner.classList.remove('hidden');
+          return item;
+        }
+      } catch (e) {}
+    }
+  }
+}
+
+function dismissRiderPaymentRecoveryBanner() {
+  const banner = document.getElementById('rider-payment-recovery-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
+async function resumePendingRiderPayment() {
+  const pending = await checkPendingPaymentRecovery();
+  if (!pending) return;
+
+  const { settlement_id, batch_id, create_idempotency_key, pay_idempotency_key } = pending;
+
+  try {
+    const { data: detailData, error } = await supabaseClient.rpc('get_admin_rider_weekly_settlement_detail', {
+      p_settlement_id: settlement_id
+    });
+
+    if (error || !detailData || detailData.success === false) {
+      alert("Não foi possível buscar o estado autoritativo do lote para recuperação.");
+      return;
+    }
+
+    const batch = (detailData.batches || []).find(b => b.id === batch_id);
+    const storageKey = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_${settlement_id}`;
+
+    if (!batch) {
+      alert("Inconsistência: Lote pendente não foi encontrado no banco de dados.");
+      return;
+    }
+
+    if (batch.status === 'paid') {
+      alert("O lote de pagamento já foi marcado como PAGO anteriormente por outro operador.");
+      sessionStorage.removeItem(storageKey);
+      dismissRiderPaymentRecoveryBanner();
+      await fetchAdminRiderWeeklySettlements(false);
+      return;
+    }
+
+    if (batch.status === 'reversed') {
+      alert("O lote de pagamento foi estornado.");
+      sessionStorage.removeItem(storageKey);
+      dismissRiderPaymentRecoveryBanner();
+      await fetchAdminRiderWeeklySettlements(false);
+      return;
+    }
+
+    if (batch.status === 'pending') {
+      activeSettlementOperationalState.settlementId = settlement_id;
+      activeSettlementOperationalState.settlementVersion = detailData.settlement?.version || 1;
+      activeSettlementOperationalState.batchId = batch_id;
+      activeSettlementOperationalState.batchVersion = batch.version;
+      activeSettlementOperationalState.createIdempotencyKey = create_idempotency_key;
+      activeSettlementOperationalState.payIdempotencyKey = pay_idempotency_key;
+
+      openPaySettlementModal(
+        settlement_id,
+        detailData.settlement?.version || 1,
+        detailData.settlement?.rider_name || 'Motoboy',
+        formatRiderSettlementCurrency(detailData.summary?.unpaid_eligible_amount || 0),
+        formatRiderSettlementCurrency(detailData.summary?.blocked_amount || 0)
+      );
+
+      const step1Box = document.getElementById('pay-settlement-step1-box');
+      const step2Box = document.getElementById('pay-settlement-step2-box');
+      const btnCreate = document.getElementById('btn-create-pay-batch');
+      const btnConfirm = document.getElementById('btn-confirm-mark-batch-paid');
+
+      if (step1Box) step1Box.classList.add('hidden');
+      if (step2Box) step2Box.classList.remove('hidden');
+      if (btnCreate) btnCreate.classList.add('hidden');
+      if (btnConfirm) { btnConfirm.classList.remove('hidden'); btnConfirm.disabled = false; }
+    }
+  } catch (err) {
+    console.error("[RECOVERY EXCEPTION]", err);
+  }
+}
+

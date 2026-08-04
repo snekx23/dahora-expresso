@@ -3569,6 +3569,163 @@
     </div>
   </div>
 
+  <!-- Banner de Recuperação de Pagamento Pendente em 2 Etapas -->
+  <div id="rider-payment-recovery-banner" class="integrity-alert-banner hidden" style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #f59e0b; margin: 16px 24px; padding: 14px 18px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <i data-lucide="alert-triangle" style="width: 22px; height: 22px; flex-shrink: 0;"></i>
+      <div>
+        <strong style="display: block; font-size: 0.9rem;">Pagamento Iniciado e Aguardando Confirmação</strong>
+        <span style="font-size: 0.82rem; opacity: 0.9;" id="rider-payment-recovery-text">Um lote de pagamento foi gerado no banco de dados e está aguardando confirmação.</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="btn btn-warning btn-sm" id="btn-resume-rider-payment" onclick="resumePendingRiderPayment()">
+        <i data-lucide="play-circle" style="width: 14px; height: 14px;"></i> Continuar Pagamento
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="dismissRiderPaymentRecoveryBanner()">
+        Ocultar
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal Interno: Encerrar Fechamento Semanal -->
+  <div id="modal-close-settlement" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-close-settlement-title">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 id="modal-close-settlement-title"><i data-lucide="lock" style="width: 18px; height: 18px; display: inline-block; vertical-align: text-bottom; margin-right: 6px;"></i> Encerrar Fechamento Semanal</h3>
+        <button type="button" class="modal-close-btn" onclick="closeRiderCloseSettlementModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Confira os valores autoritativos abaixo antes de encerrar o repasse. Após encerrado, o repasse estará liberado para quitação.</p>
+        <div id="close-settlement-details-box" style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; font-size: 0.85rem; margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div><span style="color: var(--color-text-muted);">Motoboy:</span> <strong id="close-modal-rider-name">—</strong></div>
+          <div><span style="color: var(--color-text-muted);">Período:</span> <span id="close-modal-period">—</span></div>
+          <div><span style="color: var(--color-text-muted);">Valor Líquido:</span> <strong id="close-modal-net-amount" style="color: #3b82f6;">R$ 0,00</strong></div>
+          <div><span style="color: var(--color-text-muted);">Liberado Elegível:</span> <strong id="close-modal-eligible-amount" style="color: #10b981;">R$ 0,00</strong></div>
+          <div><span style="color: var(--color-text-muted);">Bloqueado Clientes:</span> <strong id="close-modal-blocked-amount" style="color: #ef4444;">R$ 0,00</strong></div>
+          <div><span style="color: var(--color-text-muted);">Versão Atual:</span> <code id="close-modal-version">v1</code></div>
+        </div>
+        <div id="close-settlement-notice" class="modal-notice warning hidden" style="margin-top: 12px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRiderCloseSettlementModal()">Cancelar</button>
+        <button type="button" id="btn-confirm-close-settlement" class="btn btn-primary" onclick="submitCloseRiderSettlement()">
+          <i data-lucide="check-circle" style="width: 14px; height: 14px;"></i> Confirmar Encerramento
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Interno: Reabrir Fechamento Semanal -->
+  <div id="modal-reopen-settlement" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-reopen-settlement-title">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 id="modal-reopen-settlement-title"><i data-lucide="unlock" style="width: 18px; height: 18px; display: inline-block; vertical-align: text-bottom; margin-right: 6px;"></i> Reabrir Fechamento Semanal</h3>
+        <button type="button" class="modal-close-btn" onclick="closeRiderReopenSettlementModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">A reabertura retornará o repasse ao estado aberto. Informe o motivo obrigatório para registro na auditoria.</p>
+        <div id="reopen-settlement-details" style="font-size: 0.85rem; margin-bottom: 12px; font-weight: 600; color: var(--color-text);">
+          Entregador: <span id="reopen-modal-rider-name">—</span> | Versão Atual: <code id="reopen-modal-version">v1</code>
+        </div>
+        <div id="reopen-settlement-notice" class="modal-notice warning hidden"></div>
+        <div class="form-group" style="margin-top: 8px;">
+          <label for="reopen-settlement-reason-input" class="form-label">Motivo da Reabertura (Obrigatório) *</label>
+          <textarea id="reopen-settlement-reason-input" rows="3" class="form-textarea" placeholder="Descreva o motivo detalhado para reabrir este repasse..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRiderReopenSettlementModal()">Cancelar</button>
+        <button type="button" id="btn-confirm-reopen-settlement" class="btn btn-warning" onclick="submitReopenRiderSettlement()">
+          <i data-lucide="unlock" style="width: 14px; height: 14px;"></i> Confirmar Reabertura
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Interno: Pagar Repasse Semanal (2 Etapas) -->
+  <div id="modal-pay-settlement" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-pay-settlement-title">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3 id="modal-pay-settlement-title"><i data-lucide="credit-card" style="width: 18px; height: 18px; display: inline-block; vertical-align: text-bottom; margin-right: 6px;"></i> Quitação de Repasse Semanal</h3>
+        <button type="button" class="modal-close-btn" onclick="closeRiderPaySettlementModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="pay-settlement-step1-box">
+          <p class="modal-hint">Etapa 1: Confirmação e geração do Lote de Pagamento Integral sobre o saldo elegível disponível.</p>
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; font-size: 0.85rem; margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div><span style="color: var(--color-text-muted);">Motoboy:</span> <strong id="pay-modal-rider-name">—</strong></div>
+            <div><span style="color: var(--color-text-muted);">Versão Repasse:</span> <code id="pay-modal-settlement-version">v1</code></div>
+            <div><span style="color: var(--color-text-muted);">Elegível Não Pago:</span> <strong id="pay-modal-unpaid-eligible" style="color: #10b981; font-size: 1.05rem;">R$ 0,00</strong></div>
+            <div><span style="color: var(--color-text-muted);">Bloqueado Clientes:</span> <strong id="pay-modal-blocked" style="color: #ef4444;">R$ 0,00</strong></div>
+          </div>
+          <div id="pay-settlement-notice" class="modal-notice warning hidden" style="margin-top: 12px;"></div>
+        </div>
+
+        <div id="pay-settlement-step2-box" class="hidden" style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+          <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 0.82rem; color: #10b981; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i>
+            <span>Lote criado com sucesso! Preencha as informações do comprovante para marcar como <strong>PAGO</strong>.</span>
+          </div>
+          <div class="form-group" style="margin-bottom: 10px;">
+            <label for="pay-modal-method-select" class="form-label">Método de Pagamento *</label>
+            <select id="pay-modal-method-select" class="form-select">
+              <option value="PIX" selected>PIX</option>
+              <option value="TED">TED / DOC</option>
+              <option value="TRANSFERENCIA_BANCARIA">Transferência Bancária</option>
+              <option value="DINHEIRO">Espécie / Dinheiro</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom: 10px;">
+            <label for="pay-modal-reference-input" class="form-label">Referência / Código E2E do Comprovante *</label>
+            <input type="text" id="pay-modal-reference-input" class="form-input" placeholder="Ex: E1234567820260804..." />
+          </div>
+          <div class="form-group">
+            <label for="pay-modal-notes-input" class="form-label">Observações Opcionais</label>
+            <input type="text" id="pay-modal-notes-input" class="form-input" placeholder="Ex: Comprovante enviado via WhatsApp" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRiderPaySettlementModal()">Cancelar</button>
+        <button type="button" id="btn-create-pay-batch" class="btn btn-primary" onclick="submitCreateRiderPayBatch()">
+          <i data-lucide="layers" style="width: 14px; height: 14px;"></i> Criar Lote de Pagamento
+        </button>
+        <button type="button" id="btn-confirm-mark-batch-paid" class="btn btn-success hidden" onclick="submitMarkRiderBatchPaid()">
+          <i data-lucide="check-check" style="width: 14px; height: 14px;"></i> Confirmar Pagamento Realizado
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Interno: Estornar Pagamento de Lote -->
+  <div id="modal-reverse-batch" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-reverse-batch-title">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 id="modal-reverse-batch-title"><i data-lucide="rotate-ccw" style="width: 18px; height: 18px; display: inline-block; vertical-align: text-bottom; margin-right: 6px;"></i> Estorno de Lote de Pagamento</h3>
+        <button type="button" class="modal-close-btn" onclick="closeRiderReverseBatchModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">O estorno marcará o lote como <strong>reversed</strong>, restaurando os itens como elegíveis no banco de dados. O lote estornado permanecerá no histórico de auditoria.</p>
+        <div style="font-size: 0.85rem; margin-bottom: 12px; background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px;">
+          <div>Valor do Lote: <strong id="reverse-modal-batch-amount" style="color: #ef4444;">R$ 0,00</strong></div>
+          <div>Versão do Lote: <code id="reverse-modal-batch-version">v1</code></div>
+        </div>
+        <div id="reverse-batch-notice" class="modal-notice warning hidden"></div>
+        <div class="form-group" style="margin-top: 8px;">
+          <label for="reverse-batch-reason-input" class="form-label">Motivo Formal do Estorno (Obrigatório) *</label>
+          <textarea id="reverse-batch-reason-input" rows="3" class="form-textarea" placeholder="Informe o motivo formal do estorno de pagamento..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeRiderReverseBatchModal()">Cancelar</button>
+        <button type="button" id="btn-confirm-reverse-batch" class="btn btn-danger" onclick="submitReverseRiderBatch()">
+          <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i> Confirmar Estorno Auditado
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="runtime-config.js"></script>
   <script src="config.local.js"></script>
   <script src="config.js"></script>
