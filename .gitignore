@@ -24,3 +24,5 @@ public/config.local.js
 
 # Dependencies
 node_modules/
+
+scratch/
