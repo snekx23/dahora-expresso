@@ -120,8 +120,9 @@ test('15. Mapa não exige tecla Ctrl para aplicar zoom', async () => {
   const html = await readFile(htmlPath, 'utf8');
   const appJs = await readFile(appJsPath, 'utf8');
   assert.doesNotMatch(html, /Pressione Ctrl e role a tela simultaneamente/i);
-  assert.match(appJs, /scrollZoom:\s*true/);
+  assert.match(appJs, /gestureHandling:\s*['"]greedy['"]/);
 });
+
 
 test('16. Concorrência e Realtime usam canal único realtime:operations sem loop de reconexão por erro secundário', async () => {
   const appJs = await readFile(appJsPath, 'utf8');

@@ -2,48 +2,149 @@
 const SUPABASE_URL = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.url : 'https://fajkqyapnycnnumpdwrr.supabase.co';
 const SUPABASE_KEY = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.key : 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a';
 
+// Instância Única do Supabase Client
 let db = null;
-if (typeof window !== 'undefined' && window.supabase) {
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+if (typeof window !== 'undefined' && window.supabase && !db) {
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
 }
+const supabaseClient = db;
+if (typeof window !== 'undefined') window.supabaseClient = db;
 
-if (typeof mapboxgl !== 'undefined') {
-  mapboxgl.accessToken = ['pk', 'eyJ1Ijoic25la3giLCJhIjoiY21xc3g5eXEzMGQweTJzb2xoemg1YzQwZCJ9', 'SyNFqkGgDnkuvY2wRpFDhg'].join('.');
-}
+let currentRider = null;   // fleet row do motoboy logado
+let currentRiderId = null; // UUID real (public.fleet.id)
+let riderMap = null;       // Instância do Google Maps
 
-let currentRider = null;  // fleet row of logged-in motoboy
-let riderMap = null;      // Mapbox map instance
 let realtimeChannel = null;
-let watchId = null;       // geolocation watch ID
+let watchId = null;       // ID de monitoramento de geolocalização
 let lastPosition = null;  // { lat, lng }
 let currentBatteryLevel = null;
 let hasCenteredOnce = false;
-let knownActiveTeleIds = null; // IDs of active deliveries to play chime on new arrivals
-let activeRiderDeliveryMarkers = {}; // Cache active markers by order ID to avoid recreating them and closing popups
-let activeDeliveriesList = [];  // Cache list of active deliveries
-let lastActiveTeleId = null;    // Track changes to fit map bounds once
+let knownActiveTeleIds = null;
+let activeRiderDeliveryMarkers = {};
+let activeDeliveriesList = [];
+let lastActiveTeleId = null;
 
-// ─── INIT ────────────────────────────────────────────────────────────────────
+// ─── CONTROLADOR DE ÁUDIO ───────────────────────────────────────────────────
+const AudioController = {
+  unlocked: false,
+  teleAudio: null,
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (window.supabase) {
-    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  init() {
+    if (typeof window === 'undefined') return;
+    try {
+      this.teleAudio = new Audio('data:audio/wav;base64,UklGRl9vAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU...');
+    } catch (e) {}
+  },
+
+  unlock() {
+    if (this.unlocked) return;
+    try {
+      if (this.teleAudio) {
+        this.teleAudio.play().then(() => {
+          this.teleAudio.pause();
+          this.teleAudio.currentTime = 0;
+          this.unlocked = true;
+        }).catch(() => {});
+      }
+    } catch (e) {}
+  },
+
+  playTeleAlert() {
+    try {
+      if (this.teleAudio) {
+        this.teleAudio.currentTime = 0;
+        this.teleAudio.play().catch(err => {
+          console.warn("Áudio em primeiro plano bloqueado pelo navegador:", err.message);
+        });
+      }
+    } catch (e) {}
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([600, 250, 600, 250, 900]); } catch (e) {}
+    }
+  },
+
+  playMessageAlert() {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([250, 120, 250]); } catch (e) {}
+    }
+  }
+};
+
+AudioController.init();
+
+function logSafeError(op, err) {
+  if (!err) return;
+  console.error(`[PWA ${op}]`, {
+    operation: op,
+    code: err.code || 'UNKNOWN_ERROR',
+    message: err.message || String(err),
+    details: err.details || null,
+    hint: err.hint || null
+  });
+}
+
+// ─── RESOLVER MOTOBOY AUTENTICADO POR AUTH.UID() ─────────────────────────────
+async function resolveCurrentRider() {
+  if (!db) return currentRider;
+  try {
+    const { data: { session }, error: sessionErr } = await db.auth.getSession();
+    if (sessionErr) logSafeError('getSession', sessionErr);
+
+    if (session?.user?.id) {
+      const { data: fleetRow, error: fleetErr } = await db
+        .from('fleet')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (fleetErr) logSafeError('resolveCurrentRiderFleetQuery', fleetErr);
+
+      if (fleetRow) {
+        currentRider = fleetRow;
+        currentRiderId = fleetRow.id;
+        localStorage.setItem('speedMotoSession', JSON.stringify(fleetRow));
+        return fleetRow;
+      } else {
+        showLoginError("Seu usuário não está vinculado a um motoboy ativo.");
+        return null;
+      }
+    }
+  } catch (e) {
+    logSafeError('resolveCurrentRiderException', e);
   }
 
-  lucide.createIcons();
-  registerSW();
-
-  // Check for persisted session
   const saved = localStorage.getItem('speedMotoSession');
   if (saved) {
     try {
       currentRider = JSON.parse(saved);
-      showApp();
-      loadMyDeliveries();
-      startGeolocation();
+      currentRiderId = currentRider ? currentRider.id : null;
+      return currentRider;
     } catch {
       localStorage.removeItem('speedMotoSession');
     }
+  }
+  return null;
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', async () => {
+  lucide.createIcons();
+  registerSW();
+
+  await resolveCurrentRider();
+  if (currentRider) {
+    showApp();
+  } else {
+    document.getElementById('pwa-login')?.classList.remove('hidden');
+    document.getElementById('pwa-app')?.classList.add('hidden');
   }
 });
 
@@ -52,32 +153,223 @@ function registerSW() {
     navigator.serviceWorker.register('/sw.js')
       .then(reg => {
         reg.update();
-        reg.addEventListener('updatefound', () => {
-          const sw = reg.installing;
-          if (sw) sw.addEventListener('statechange', () => {
-            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-              sw.postMessage?.('skip-waiting');
-            }
-          });
-        });
       })
       .catch(() => {});
   }
 }
 
-function requestNotificationPermission() {
-  if (!('Notification' in window)) {
-    console.log('Notification API not supported by browser.');
-    return;
+function urlBase64ToUint8Array(base64String) {
+  if (!base64String || typeof base64String !== 'string' || base64String.trim() === '') {
+    return new Uint8Array(0);
   }
-  if (Notification.permission === 'default') {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        showPWAToast('Notificações ativadas! 🔔');
-      }
-    });
+  const cleanStr = base64String.trim().replace(/^["']|["']$/g, '');
+  const padding = '='.repeat((4 - (cleanStr.length % 4)) % 4);
+  const base64 = (cleanStr + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  try {
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  } catch (e) {
+    console.warn("⚠️ urlBase64ToUint8Array failed to decode base64 string:", e.message);
+    return new Uint8Array(0);
   }
 }
+
+function updatePushAlertCardUI(statusText, buttonText, buttonState = 'normal') {
+  const badge = document.getElementById('pwa-push-status-badge');
+  const btn = document.getElementById('pwa-push-toggle-btn') || document.querySelector('#pwa-push-alert-card button');
+
+  if (badge && statusText) {
+    badge.innerText = statusText;
+  }
+
+  if (btn) {
+    if (buttonText) btn.innerText = buttonText;
+    if (buttonState === 'loading') {
+      btn.disabled = true;
+      btn.style.background = 'var(--primary)';
+      btn.style.color = '#000000';
+    } else if (buttonState === 'active') {
+      btn.disabled = true;
+      btn.style.background = 'var(--success)';
+      btn.style.color = '#ffffff';
+    } else if (buttonState === 'error') {
+      btn.disabled = false;
+      btn.style.background = 'var(--primary)';
+      btn.style.color = '#000000';
+    } else {
+      btn.disabled = false;
+      btn.style.background = 'var(--primary)';
+      btn.style.color = '#000000';
+    }
+  }
+}
+
+async function enableRiderNotifications() {
+  updatePushAlertCardUI('Status: Solicitando...', 'Ativando...', 'loading');
+
+  try {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      updatePushAlertCardUI('Status: Não suportado neste navegador', 'Navegador não suporta alertas', 'error');
+      throw new Error('Notificações Push não são suportadas neste navegador.');
+    }
+
+    // Desbloqueio do AudioContext no gesto explícito do usuário
+    AudioController.unlock();
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      updatePushAlertCardUI('Status: Permissão negada', 'Permissão de notificações negada', 'error');
+      throw new Error('Permissão de notificações negada pelo usuário.');
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+
+    // Buscar chave VAPID pública no backend
+    let vapidPublicKey = null;
+    try {
+      const res = await fetch('/api/vapid-public-key');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.publicKey) {
+          vapidPublicKey = data.publicKey;
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ Não foi possível obter VAPID key do backend:", e.message);
+    }
+
+    if (!vapidPublicKey) {
+      updatePushAlertCardUI('Status: Servidor de notificações não configurado', 'Servidor de notificações não configurado', 'error');
+      throw new Error('Servidor de notificações não configurado.');
+    }
+
+    // Criar ou obter subscription
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey
+      });
+    }
+
+    if (!subscription) {
+      updatePushAlertCardUI('Status: Não foi possível registrar este aparelho', 'Não foi possível registrar este aparelho', 'error');
+      throw new Error('Não foi possível criar a subscrição no navegador.');
+    }
+
+    // Registrar no backend Supabase via RPC
+    const subObj = subscription.toJSON();
+    const p256dh = subObj.keys?.p256dh || '';
+    const auth = subObj.keys?.auth || '';
+
+    if (db && (currentRiderId || (currentRider && currentRider.id))) {
+      const riderId = currentRiderId || currentRider.id;
+      const { error: rpcErr } = await db.rpc('register_my_push_subscription', {
+        p_endpoint: subscription.endpoint,
+        p_p256dh: p256dh,
+        p_auth: auth,
+        p_user_agent: navigator.userAgent
+      });
+
+      if (rpcErr) {
+        console.warn("Aviso na RPC de push subscription:", rpcErr.message);
+        await db.from('rider_push_subscriptions').upsert([{
+          rider_id: riderId,
+          endpoint: subscription.endpoint,
+          p256dh: p256dh,
+          auth: auth,
+          user_agent: navigator.userAgent,
+          is_active: true
+        }], { onConflict: 'endpoint' });
+      }
+    }
+
+    // SOMENTE DEPOIS DE TODAS AS ETAPAS CONCLUÍDAS
+    updatePushAlertCardUI('Status: Alertas ativados neste aparelho', 'Alertas ativados neste aparelho', 'active');
+    
+    // Ocultar card da tela e expandir área do mapa
+    const pushCard = document.getElementById('pwa-push-alert-card');
+    if (pushCard) {
+      pushCard.style.display = 'none';
+    }
+    if (riderMap && typeof window.google !== 'undefined' && window.google.maps) {
+      window.google.maps.event.trigger(riderMap, 'resize');
+    }
+
+    showPWAToast('Alertas ativados neste aparelho.');
+    return { success: true };
+
+  } catch (err) {
+    console.warn("⚠️ Erro no fluxo de notificações:", err.message);
+    showPWAToast(err.message, 'error');
+    return { success: false, error: err.message };
+  }
+}
+
+async function checkExistingPushSubscription() {
+  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) return;
+
+  if (Notification.permission === 'granted') {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        updatePushAlertCardUI('Status: Alertas ativados neste aparelho', 'Alertas ativados neste aparelho', 'active');
+      } else {
+        updatePushAlertCardUI('Status: Não ativado neste aparelho', 'Ativar alertas de novas Teles', 'normal');
+      }
+    } catch (e) {
+      updatePushAlertCardUI('Status: Não ativado', 'Ativar alertas de novas Teles', 'normal');
+    }
+  } else if (Notification.permission === 'denied') {
+    updatePushAlertCardUI('Status: Permissão de notificações negada', 'Permissão de notificações negada', 'error');
+  } else {
+    updatePushAlertCardUI('Status: Não ativado', 'Ativar alertas de novas Teles', 'normal');
+  }
+}
+
+// Exposição explícita para o escopo global do navegador
+if (typeof window !== 'undefined') {
+  window.enableRiderNotifications = enableRiderNotifications;
+  window.requestPushNotificationPermission = enableRiderNotifications;
+  window.requestNotificationPermission = enableRiderNotifications;
+  window.checkExistingPushSubscription = checkExistingPushSubscription;
+}
+
+function updatePushBadgeStatus(text) {
+  const badge = document.getElementById('pwa-push-status-badge');
+  if (badge) badge.innerText = text;
+}
+
+
+function showHighPriorityNewTeleModal(tele) {
+  AudioController.playTeleAlert();
+
+  const clientEl = document.getElementById('high-priority-client');
+  const pickupEl = document.getElementById('high-priority-pickup');
+  const addrEl   = document.getElementById('high-priority-address');
+  const priceEl  = document.getElementById('high-priority-price');
+
+  if (clientEl) clientEl.innerText = tele.client || 'Cliente Comercial';
+  if (pickupEl) pickupEl.innerText = tele.pickup_address || 'Endereço de Coleta';
+  if (addrEl)   addrEl.innerText   = tele.address || 'Endereço de Entrega';
+  if (priceEl)  priceEl.innerText  = tele.price || 'R$ 8,00';
+
+  const modal = document.getElementById('modal-high-priority-tele');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeHighPriorityModal() {
+  const modal = document.getElementById('modal-high-priority-tele');
+  if (modal) modal.classList.add('hidden');
+  switchPWATab('teles');
+}
+
 
 function sendWebNotification(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') {
@@ -110,7 +402,7 @@ function sendWebNotification(title, body) {
 async function handleMotoLogin(e) {
   e.preventDefault();
 
-  const rawId  = document.getElementById('moto-id').value.trim().toUpperCase();
+  const rawId  = document.getElementById('moto-id').value.trim();
   const pin    = document.getElementById('moto-pin').value.trim();
   const btn    = document.getElementById('login-btn');
   const errEl  = document.getElementById('login-error');
@@ -126,9 +418,8 @@ async function handleMotoLogin(e) {
     return;
   }
 
-  // The ID stored in Supabase is like "#MB-5123" — extract only digits and format
   const digits = rawId.replace(/\D/g, '');
-  const motoboyId = `#MB-${digits}`;
+  const inputCode = rawId.replace('#', '').trim();
 
   try {
     const timeoutPromise = new Promise((_, reject) =>
@@ -138,8 +429,7 @@ async function handleMotoLogin(e) {
     const queryPromise = db
       .from('fleet')
       .select('*')
-      .eq('id', motoboyId)
-      .eq('pin', pin)
+      .or(`motoboy_code.eq.${inputCode},motoboy_code.eq.MB-${digits},motoboy_code.eq.${digits}`)
       .maybeSingle();
 
     const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
@@ -149,14 +439,12 @@ async function handleMotoLogin(e) {
 
     if (error) {
       console.error("Database query error during login:", error);
-      console.error("FULL LOGIN ERROR DETAILS (PostgreSQL/Supabase):", error);
-      alert("Erro Supabase/Query: " + JSON.stringify(error));
       showLoginError('Erro de conexão ou sistema. Verifique a internet.');
       return;
     }
 
     if (!data) {
-      showLoginError('ID ou PIN incorreto. Contate o administrador.');
+      showLoginError('Código de Acesso incorreto. Contate o administrador.');
       return;
     }
 
@@ -165,6 +453,7 @@ async function handleMotoLogin(e) {
     showApp();
     loadMyDeliveries();
     startGeolocation();
+
   } catch (err) {
     console.error("Unhandled login exception:", err);
     console.error("FULL LOGIN ERROR DETAILS (exception):", err);
@@ -181,8 +470,17 @@ function showLoginError(msg) {
   el.classList.remove('hidden');
 }
 
-function handleMotoLogout() {
+async function handleMotoLogout() {
   if (!confirm('Sair do aplicativo?')) return;
+  if ('serviceWorker' in navigator && db) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await db.rpc('deactivate_my_push_subscription', { p_endpoint: sub.endpoint }).catch(() => null);
+      }
+    } catch (e) {}
+  }
   localStorage.removeItem('speedMotoSession');
   localStorage.removeItem('activePWATab');
   if (realtimeChannel) db.removeChannel(realtimeChannel);
@@ -194,49 +492,56 @@ function handleMotoLogout() {
   document.getElementById('pwa-login').classList.remove('hidden');
   document.getElementById('moto-id').value = '';
   document.getElementById('moto-pin').value = '';
-  // Close drawer if open
   togglePWADrawer(false);
   lucide.createIcons();
 }
 
+
 // ─── SCREEN TRANSITIONS ───────────────────────────────────────────────────────
 
 function showApp() {
-  document.getElementById('pwa-login').classList.add('hidden');
-  document.getElementById('pwa-app').classList.remove('hidden');
+  document.getElementById('pwa-login')?.classList.add('hidden');
+  document.getElementById('pwa-app')?.classList.remove('hidden');
 
   // Fill header info
-  document.getElementById('pwa-rider-name').innerText = currentRider.name || 'Motoboy';
-  setRiderStatusBadge(currentRider.status || 'Disponível');
+  if (currentRider) {
+    const nameEl = document.getElementById('pwa-rider-name');
+    if (nameEl) nameEl.innerText = currentRider.name || 'Motoboy';
+    setRiderStatusBadge(currentRider.status || 'Disponível');
 
-  // Fill drawer info
-  const drawerName = document.getElementById('drawer-rider-name');
-  const drawerId = document.getElementById('drawer-rider-id');
-  if (drawerName) drawerName.innerText = currentRider.name || 'Motoboy';
-  if (drawerId) drawerId.innerText = currentRider.id || '#MB-0000';
+    // Fill drawer info
+    const drawerName = document.getElementById('drawer-rider-name');
+    const drawerId = document.getElementById('drawer-rider-id');
+    if (drawerName) drawerName.innerText = currentRider.name || 'Motoboy';
+    if (drawerId) drawerId.innerText = currentRider.motoboy_code || currentRider.id || '#MB-0000';
 
-  // Initialize connection button state
-  updateConnectionButtonState(currentRider.status || 'Disponível');
+    updateConnectionButtonState(currentRider.status || 'Disponível');
+  }
 
-  // Load profile details (email and photo), weekly earnings balance and consumables
-  loadLocalProfile();
-  loadWeeklyBalance();
-  loadConsumablesData();
-
-  // Request notification permissions
-  requestNotificationPermission();
-
-  // Switch to saved tab or fallback to map
   const savedTab = localStorage.getItem('activePWATab');
   const targetTab = savedTab ? savedTab : 'map';
   hasCenteredOnce = false;
   switchPWATab(targetTab);
-  subscribeRealtime();
-  lucide.createIcons();
+
+  // Execução por ordem estrita de serviços principais isolados
+  try { if (!riderMap) initRiderMap(); } catch (e) { logSafeError('showApp:initRiderMap', e); }
+  try { loadMyDeliveries(); } catch (e) { logSafeError('showApp:loadMyDeliveries', e); }
+  try { initRiderDeviceTelemetry(); } catch (e) { logSafeError('showApp:telemetry', e); }
+  try { startGeolocation(); } catch (e) { logSafeError('showApp:geolocation', e); }
+  try { subscribeRealtime(); } catch (e) { logSafeError('showApp:subscribeRealtime', e); }
+
+  // Execução independente de dados secundários
+  try { loadLocalProfile(); } catch (e) {}
+  try { loadWeeklyBalance(); } catch (e) {}
+  try { loadConsumablesData(); } catch (e) {}
+  try { checkExistingPushSubscription(); } catch (e) {}
+  try { lucide.createIcons(); } catch (e) {}
 }
+
 
 function setRiderStatusBadge(status) {
   const el = document.getElementById('pwa-rider-status');
+  if (!el) return;
   el.innerText = status;
   el.className = 'pwa-status-badge';
   if (status === 'Disponível') el.classList.add('badge-available');
@@ -244,24 +549,63 @@ function setRiderStatusBadge(status) {
   else el.classList.add('badge-busy');
 }
 
-// ─── CONNECTION / STATUS TOGGLING ───────────────────────────────────────────
+// ─── CONNECTION / STATUS TOGGLING (DATABASE AS SINGLE SOURCE OF TRUTH) ────────
+
+async function fetchAndUpdateRiderStatusFromDB() {
+  if (!db) return;
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session?.user?.id) return;
+
+    const { data, error } = await db
+      .from('fleet')
+      .select('id, name, status, motoboy_code, lat, lng')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    if (error) {
+      logSafeError('fetchAndUpdateRiderStatusFromDB', error);
+      return;
+    }
+
+    if (data) {
+      currentRider = { ...currentRider, ...data };
+      localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
+      setRiderStatusBadge(data.status || 'Disponível');
+      updateConnectionButtonState(data.status || 'Disponível');
+    }
+  } catch (e) {
+    logSafeError('fetchAndUpdateRiderStatusFromDBException', e);
+  }
+}
 
 function updateConnectionButtonState(status) {
-  const btn = document.getElementById('pwa-connect-btn');
+  const mapBtn = document.getElementById('pwa-map-connect-btn');
+  const mapTextEl = document.getElementById('pwa-map-connect-btn-text');
+  const mapIconEl = document.getElementById('pwa-map-connect-btn-icon');
+
+  const drawerBtn = document.getElementById('pwa-connect-btn');
+  const drawerTextEl = document.getElementById('pwa-connect-btn-text') || drawerBtn;
   const statusVal = document.getElementById('map-status-val');
-  
-  if (!btn) return;
 
   if (status === 'Em Descanso') {
-    btn.innerText = 'Conectar';
-    btn.className = 'pwa-btn-connect-pill offline';
+    if (mapBtn) {
+      mapBtn.className = 'pwa-map-connect-btn main-connect-btn offline';
+      if (mapTextEl) mapTextEl.innerText = 'Conectar';
+      if (mapIconEl) mapIconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
+    }
+    if (drawerTextEl) drawerTextEl.innerText = 'Conectar';
     if (statusVal) {
       statusVal.innerText = 'OFFLINE';
       statusVal.className = 'status-val offline';
     }
   } else {
-    btn.innerText = 'Desconectar';
-    btn.className = 'pwa-btn-connect-pill online';
+    if (mapBtn) {
+      mapBtn.className = 'pwa-map-connect-btn main-connect-btn online';
+      if (mapTextEl) mapTextEl.innerText = 'Desconectar';
+      if (mapIconEl) mapIconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
+    }
+    if (drawerTextEl) drawerTextEl.innerText = 'Desconectar';
     if (statusVal) {
       statusVal.innerText = 'ONLINE';
       statusVal.className = 'status-val online';
@@ -269,79 +613,183 @@ function updateConnectionButtonState(status) {
   }
 }
 
+// ─── MODAL ACESSÍVEL DE ALERTA DE TELES ATIVAS (PARTE 3) ─────────────────────
+
+let lastFocusedElementBeforeModal = null;
+
+function openActiveTelesModal() {
+  const modal = document.getElementById('modal-active-teles-warning');
+  if (!modal || !modal.classList.contains('hidden')) return;
+
+  lastFocusedElementBeforeModal = document.activeElement;
+  modal.classList.remove('hidden');
+  modal.focus();
+
+  document.addEventListener('keydown', handleActiveTelesModalKeyDown);
+}
+
+function closeModalActiveTelesWarning() {
+  const modal = document.getElementById('modal-active-teles-warning');
+  if (modal) modal.classList.add('hidden');
+  document.removeEventListener('keydown', handleActiveTelesModalKeyDown);
+
+  if (lastFocusedElementBeforeModal && typeof lastFocusedElementBeforeModal.focus === 'function') {
+    lastFocusedElementBeforeModal.focus();
+  }
+}
+
+function closeModalAndGoToTeles() {
+  closeModalActiveTelesWarning();
+  switchPWATab('teles');
+}
+
+function handleActiveTelesModalKeyDown(e) {
+  const modal = document.getElementById('modal-active-teles-warning');
+  if (!modal || modal.classList.contains('hidden')) return;
+
+  if (e.key === 'Escape') {
+    closeModalActiveTelesWarning();
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    const focusableElements = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === firstElement || document.activeElement === modal) {
+        e.preventDefault();
+        lastElement.focus();
+      }
+    } else {
+      if (document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    }
+  }
+}
+
 async function toggleConnectionState() {
-  if (!db || !currentRider) return;
-  const btn = document.getElementById('pwa-connect-btn');
-  if (!btn) return;
+  if (!db) return;
+  const { data: { session } } = await db.auth.getSession();
+  if (!session?.user?.id) {
+    showPWAToast('Sessão expirada. Faça login novamente.');
+    return;
+  }
+
+  // Sincronizar estado real do banco antes de alterar
+  await fetchAndUpdateRiderStatusFromDB();
+  if (!currentRider) return;
+
+  const mapBtn = document.getElementById('pwa-map-connect-btn');
+  const mapTextEl = document.getElementById('pwa-map-connect-btn-text');
+  const drawerBtn = document.getElementById('pwa-connect-btn');
+  const drawerTextEl = document.getElementById('pwa-connect-btn-text') || drawerBtn;
 
   const currentStatus = currentRider.status || 'Disponível';
-  
+
+  // Desativar botões para prevenir clique duplo durante a transação
+  if (mapBtn) mapBtn.disabled = true;
+  if (drawerBtn) drawerBtn.disabled = true;
+
   if (currentStatus === 'Em Descanso') {
-    // Connect -> change status to 'Disponível'
-    btn.disabled = true;
-    btn.innerText = 'Conectando...';
-    
+    // CONECTAR: Altera status no Postgres para 'Disponível' restrito a user_id = auth.uid()
+    if (mapTextEl) mapTextEl.innerText = 'Conectando...';
+    if (drawerTextEl) drawerTextEl.innerText = 'Conectando...';
+
     const { error } = await db
       .from('fleet')
-      .update({ status: 'Disponível', status_class: 'status-success' })
-      .eq('id', currentRider.id);
+      .update({ status: 'Disponível' })
+      .eq('user_id', session.user.id);
 
-    btn.disabled = false;
     if (error) {
-      alert('Erro ao conectar. Tente novamente.');
+      showPWAToast('Erro ao conectar. Tente novamente.');
+      if (mapBtn) mapBtn.disabled = false;
+      if (drawerBtn) drawerBtn.disabled = false;
       updateConnectionButtonState(currentStatus);
       return;
     }
 
-    currentRider.status = 'Disponível';
-    localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
-    setRiderStatusBadge('Disponível');
-    updateConnectionButtonState('Disponível');
+    // Confirmação autoritativa do Postgres antes de alterar a UI
+    await fetchAndUpdateRiderStatusFromDB();
+
+    if (mapBtn) mapBtn.disabled = false;
+    if (drawerBtn) drawerBtn.disabled = false;
     showPWAToast('Você está online!');
-    requestNotificationPermission();
+    enableRiderNotifications();
   } else {
-    // Disconnect -> check if there are active deliveries
-    btn.disabled = true;
-    btn.innerText = 'Desconectando...';
-    
-    // Check if there are active deliveries for this motoboy
-    const { data, error: countError } = await db
+    // DESCONECTAR: Verificação prévia de teles ativas
+    if (mapTextEl) mapTextEl.innerText = 'Desconectando...';
+    if (drawerTextEl) drawerTextEl.innerText = 'Desconectando...';
+
+    const activeStatuses = ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega'];
+    const { data: activeTeles, error: countError } = await db
       .from('teles')
       .select('id')
-      .eq('rider', currentRider.name)
-      .neq('status', 'Entregue');
+      .eq('motoboy_id', currentRider.id)
+      .in('status', activeStatuses);
 
     if (countError) {
-      alert('Erro ao verificar status de corridas. Tente novamente.');
-      btn.disabled = false;
+      showPWAToast('Erro ao verificar status de corridas. Tente novamente.');
+      if (mapBtn) mapBtn.disabled = false;
+      if (drawerBtn) drawerBtn.disabled = false;
       updateConnectionButtonState(currentStatus);
       return;
     }
 
-    if (data && data.length > 0) {
-      alert('Você tem uma entrega em andamento! Conclua-a antes de se desconectar.');
-      btn.disabled = false;
+    if (activeTeles && activeTeles.length > 0) {
+      // Exibir modal interno sem alert() nativo
+      if (mapBtn) mapBtn.disabled = false;
+      if (drawerBtn) drawerBtn.disabled = false;
       updateConnectionButtonState(currentStatus);
+      openActiveTelesModal();
       return;
     }
 
-    // Disconnect -> change status to 'Em Descanso'
-    const { error } = await db
+    // Tentar desconectar no Postgres
+    const { error: updateError } = await db
       .from('fleet')
-      .update({ status: 'Em Descanso', status_class: 'status-warning' })
-      .eq('id', currentRider.id);
+      .update({ status: 'Em Descanso' })
+      .eq('user_id', session.user.id);
 
-    btn.disabled = false;
-    if (error) {
-      alert('Erro ao desconectar. Tente novamente.');
+    if (updateError) {
+      showPWAToast('Erro ao desconectar. Tente novamente.');
+      if (mapBtn) mapBtn.disabled = false;
+      if (drawerBtn) drawerBtn.disabled = false;
       updateConnectionButtonState(currentStatus);
       return;
     }
 
-    currentRider.status = 'Em Descanso';
-    localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
-    setRiderStatusBadge('Em Descanso');
-    updateConnectionButtonState('Em Descanso');
+    // Verificação pós-alteração para condição de corrida
+    const { data: postCheckTeles } = await db
+      .from('teles')
+      .select('id')
+      .eq('motoboy_id', currentRider.id)
+      .in('status', activeStatuses);
+
+    if (postCheckTeles && postCheckTeles.length > 0) {
+      // Reverter desconexão!
+      await db
+        .from('fleet')
+        .update({ status: 'Disponível' })
+        .eq('user_id', session.user.id);
+
+      if (mapBtn) mapBtn.disabled = false;
+      if (drawerBtn) drawerBtn.disabled = false;
+      await fetchAndUpdateRiderStatusFromDB();
+      openActiveTelesModal();
+      return;
+    }
+
+    // Confirmação autoritativa do Postgres antes de alterar a UI
+    await fetchAndUpdateRiderStatusFromDB();
+
+    if (mapBtn) mapBtn.disabled = false;
+    if (drawerBtn) drawerBtn.disabled = false;
     showPWAToast('Você está offline.');
   }
 }
@@ -371,8 +819,16 @@ function switchPWATab(tab) {
 
   if (tab === 'map') {
     setTimeout(() => {
-      if (!riderMap) initRiderMap();
-      else riderMap.invalidateSize();
+      if (!riderMap) {
+        initRiderMap();
+      } else {
+        if (window.google && window.google.maps) {
+          window.google.maps.event.trigger(riderMap, 'resize');
+        }
+        if (lastPosition) {
+          riderMap.setCenter({ lat: lastPosition.lat, lng: lastPosition.lng });
+        }
+      }
     }, 100);
   } else if (tab === 'reports') {
     loadReportsData();
@@ -410,39 +866,85 @@ function handleDrawerLogout() {
 
 // ─── LOAD DELIVERIES ─────────────────────────────────────────────────────────
 
+let commercialClientsMapCache = new Map();
+let activeTeleDetailsMap = new Map();
+let currentModalActionTele = null;
+let currentModalActionType = null;
+
 async function loadMyDeliveries() {
   const container = document.getElementById('pwa-teles-container');
-  container.innerHTML = `
-    <div class="pwa-loading">
-      <div class="pwa-spinner"></div>
-      <p>Carregando teles...</p>
-    </div>
-  `;
+  if (container) {
+    container.innerHTML = `
+      <div class="pwa-loading">
+        <div class="pwa-spinner"></div>
+        <p>Carregando teles...</p>
+      </div>
+    `;
+  }
 
-  if (!db || !currentRider) return;
-
-  const { data, error } = await db
-    .from('teles')
-    .select('*')
-    .eq('rider', currentRider.name)
-    .neq('status', 'Entregue')
-    .order('id', { ascending: false });
-
-  if (error) {
-    container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
+  if (!db || !currentRiderId) {
+    if (container) renderEmptyStateCard();
     return;
   }
 
-  const activeDeliveries = (data || []).map(item => {
-    const fixedPrice = getFixedPriceByAddress(item.address);
-    return {
+  const { data: telesData, error } = await db
+    .from('teles')
+    .select('id, tele_code, client_id, motoboy_id, status, version, pickup_address, pickup_latitude, pickup_longitude, delivery_address, delivery_reference, delivery_latitude, delivery_longitude, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_postal_code, recipient_name, recipient_phone, notes, total_order_amount, delivery_charge, payment_method, created_at, updated_at, completed_at')
+    .eq('motoboy_id', currentRiderId)
+    .in('status', ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega'])
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    logSafeError('loadMyDeliveries', error);
+    if (container) container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
+    return;
+  }
+
+  const telesList = telesData || [];
+
+  const clientIds = [...new Set(telesList.map(t => t.client_id).filter(Boolean))];
+  if (clientIds.length > 0) {
+    try {
+      const { data: clientsData } = await db
+        .from('commercial_clients')
+        .select('id, establishment_name, responsible_name, phone')
+        .in('id', clientIds);
+
+      (clientsData || []).forEach(c => {
+        commercialClientsMapCache.set(String(c.id), c);
+      });
+    } catch (e) {
+      logSafeError('loadCommercialClients', e);
+    }
+  }
+
+  const activeDeliveries = await Promise.all(telesList.map(async (item) => {
+    let riderEarning = null;
+    try {
+      const { data: earningRes } = await db.rpc('get_tele_rider_earning', { p_tele_id: item.id });
+      if (earningRes !== null && earningRes !== undefined) {
+        riderEarning = parseFloat(earningRes);
+      }
+    } catch (e) {}
+
+    const clientInfo = item.client_id ? commercialClientsMapCache.get(String(item.client_id)) : null;
+
+    const formattedTele = {
       ...item,
-      price: `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`
+      establishment_name: clientInfo?.establishment_name || 'Cliente Comercial',
+      client_phone: clientInfo?.phone || null,
+      rider_earning: riderEarning,
+      rider_earning_display: (riderEarning !== null && !isNaN(riderEarning))
+        ? `R$ ${riderEarning.toFixed(2).replace('.', ',')}`
+        : 'Valor do motoboy ainda não calculado'
     };
-  });
+
+    activeTeleDetailsMap.set(String(item.id), formattedTele);
+    return formattedTele;
+  }));
+
   const currentIds = activeDeliveries.map(t => t.id);
 
-  // If this is not the first check and we have newly assigned teles, play sound notification
   if (knownActiveTeleIds !== null) {
     const newTeles = currentIds.filter(id => !knownActiveTeleIds.includes(id));
     if (newTeles.length > 0) {
@@ -452,9 +954,20 @@ async function loadMyDeliveries() {
   knownActiveTeleIds = currentIds;
   activeDeliveriesList = activeDeliveries;
 
-  // Update map floating badges and action buttons
-  updateMapOverlays(activeDeliveries);
+  // Sincronizar badge de Minhas Teles (#map-teles-badge)
+  const activeCount = activeDeliveries.length;
+  const mapBadgeEl = document.getElementById('map-teles-badge');
+  if (mapBadgeEl) {
+    if (activeCount > 0) {
+      mapBadgeEl.innerText = activeCount;
+      mapBadgeEl.classList.remove('hidden');
+    } else {
+      mapBadgeEl.innerText = '0';
+      mapBadgeEl.classList.add('hidden');
+    }
+  }
 
+  updateMapOverlays(activeDeliveries);
   renderTeleCards(activeDeliveries);
 }
 
@@ -465,7 +978,7 @@ function formatOrderDateForPWA(dateText, createdAt) {
   const mins = String(ts.getMinutes()).padStart(2, '0');
   const day = String(ts.getDate()).padStart(2, '0');
   const month = String(ts.getMonth() + 1).padStart(2, '0');
-  
+
   const now = new Date();
   if (ts.getDate() === now.getDate() && ts.getMonth() === now.getMonth() && ts.getFullYear() === now.getFullYear()) {
     return `${hrs}:${mins}`;
@@ -481,361 +994,413 @@ function getFixedPriceByAddress(address) {
   return 8.00;
 }
 
+function renderEmptyStateCard() {
+  const container = document.getElementById('pwa-teles-container');
+  if (!container) return;
+
+  const bLvl = currentBatteryLevel !== null ? `${currentBatteryLevel}%` : 'Indisponível';
+  const isChargingTxt = (window._batteryManagerRef && window._batteryManagerRef.charging) ? ' (Carregando)' : '';
+  const batteryInfo = `${bLvl}${isChargingTxt}`;
+
+  const posTxt = lastPosition ? `Ativo (${lastPosition.lat.toFixed(4)}, ${lastPosition.lng.toFixed(4)})` : 'Buscando GPS...';
+  const notifState = ('Notification' in window && Notification.permission === 'granted') ? 'Ativados' : 'Não ativados';
+  const lastSync = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const statusRider = (currentRider && currentRider.status === 'Em Descanso') ? 'Offline' : 'Online';
+
+  container.innerHTML = `
+    <div class="pwa-empty-state" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 10px;">
+      <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(16, 185, 129, 0.12); display: flex; align-items: center; justify-content: center;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: var(--text);">Você está disponível</h3>
+      <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 8px;">Aguardando uma nova entrega</p>
+
+      <div style="width: 100%; border-top: 1px solid var(--border); padding-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.76rem; text-align: left;">
+        <div><span style="color: var(--muted);">Status:</span> <strong style="color: ${statusRider === 'Online' ? '#10b981' : '#ef4444'};">${statusRider}</strong></div>
+        <div><span style="color: var(--muted);">Bateria:</span> <strong>${batteryInfo}</strong></div>
+        <div><span style="color: var(--muted);">GPS:</span> <strong>${posTxt}</strong></div>
+        <div><span style="color: var(--muted);">Alertas:</span> <strong>${notifState}</strong></div>
+        <div style="grid-column: span 2;"><span style="color: var(--muted);">Última Sincronização:</span> <strong>${lastSync}</strong></div>
+      </div>
+    </div>
+  `;
+}
+
+function getCommercialPaymentBadge(paymentMethod) {
+  const paymentBadge = 'Faturado';
+  if (!paymentMethod) return paymentBadge;
+  const pm = paymentMethod.toLowerCase();
+  if (pm.includes('dinheiro')) return 'Dinheiro';
+  if (pm.includes('cartão') || pm.includes('cartao')) return 'Cartão';
+  if (pm.includes('pix')) return 'PIX';
+  return paymentBadge;
+}
+
 function renderTeleCards(deliveries) {
   const container = document.getElementById('pwa-teles-container');
+  if (!container) return;
 
-  if (deliveries.length === 0) {
-    container.innerHTML = `
-      <div class="pwa-empty-state">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        <p>Nenhuma tele ativa no momento.</p>
-        <span>Aguardando despacho do administrador.</span>
-      </div>
-    `;
+  if (!deliveries || deliveries.length === 0) {
+    renderEmptyStateCard();
     return;
   }
 
   container.innerHTML = '';
-  deliveries.forEach(order => {
-    const isPickup   = order.status === 'A caminho da coleta';
-    const isTransit  = order.status === 'Em rota de entrega';
 
-    const fixedPrice = getFixedPriceByAddress(order.address);
-    const valorRepasseLiquido = fixedPrice * 0.90;
+  const currentTele = deliveries[0];
+  const upcomingTeles = deliveries.slice(1);
 
-    // Rule 2: Address Flow on UI
-    const displayAddress = isPickup 
-      ? 'Rua Ana Rosa 221, Ipiranga - Sapucaia' 
-      : (order.address || 'Sem endereço');
+  const currentSection = document.createElement('div');
+  currentSection.className = 'pwa-tele-section';
+  currentSection.style.marginBottom = '20px';
+  currentSection.innerHTML = `
+    <div style="font-size: 0.75rem; color: var(--primary); font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--primary); display: inline-block;"></span>
+      Tele Atual (Em Fila)
+    </div>
+  `;
 
-    let mapsUrl = '';
-    if (isPickup) {
-      const isCentral = order.pickup_lat !== null && order.pickup_lng !== null &&
-        Math.abs(order.pickup_lat - (-29.842173)) < 0.005 &&
-        Math.abs(order.pickup_lng - (-51.126764)) < 0.005;
+  const currentCard = createSingleTeleCard(currentTele, true);
+  currentSection.appendChild(currentCard);
+  container.appendChild(currentSection);
 
-      if (isCentral) {
-        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('Rua Ana Rosa 221, Ipiranga, Sapucaia do Sul')}&travelmode=driving`;
-      } else if (order.pickup_lat !== null && order.pickup_lng !== null && !isNaN(order.pickup_lat) && !isNaN(order.pickup_lng)) {
-        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${order.pickup_lat},${order.pickup_lng}&travelmode=driving`;
-      } else {
-        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.client || 'Cliente Comercial')}`;
-      }
-    } else {
-      if (order.address) {
-        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}&travelmode=driving`;
-      } else if (order.dest_lat !== null && order.dest_lng !== null && !isNaN(order.dest_lat) && !isNaN(order.dest_lng)) {
-        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${order.dest_lat},${order.dest_lng}&travelmode=driving`;
-      } else {
-        mapsUrl = `https://www.google.com/maps/search/?api=1&query=Entregador`;
-      }
-    }
-
-    const paymentMethod = getPaymentMethod(order);
-    const isIntegration = false;
-    
-    // Formatos Comerciais Padronizados (Dinheiro, PIX, Cartão, Faturado)
-    const isOnline = paymentMethod.toLowerCase().includes('pago') || paymentMethod.toLowerCase().includes('faturado');
-    let paymentBadge = 'Faturado';
-    if (paymentMethod.toLowerCase().includes('dinheiro')) paymentBadge = 'Dinheiro';
-    else if (paymentMethod.toLowerCase().includes('cartão') || paymentMethod.toLowerCase().includes('cartao')) paymentBadge = 'Cartão';
-    else if (paymentMethod.toLowerCase().includes('pix')) paymentBadge = 'PIX';
-
-    const cleanDist = getCleanDistance(order.dist);
-    const cleanTotalAmount = order.total_order_amount || order.price || 'R$ 0,00';
-    
-    const paymentText = isOnline
-      ? `${paymentBadge} - ${order.client || 'Plataforma'} Pago: ${cleanTotalAmount}`
-      : `${paymentBadge} - Cobrar na Entrega: ${cleanTotalAmount}`;
-
-    // Parse items count from cargo
-    let itemsCount = 1;
-    if (order.cargo) {
-      const cargoClean = order.cargo.replace(/🍔 Itens:\s*/g, '');
-      const parts = cargoClean.split('+').map(p => p.trim()).filter(Boolean);
-      let count = 0;
-      for (const part of parts) {
-        const match = part.match(/^(\d+)x?/i);
-        if (match) {
-          count += parseInt(match[1]) || 1;
-        } else {
-          count += 1;
-        }
-      }
-      if (count > 0) itemsCount = count;
-    }
-
-    const card = document.createElement('div');
-    card.className = 'pwa-tele-card';
-    card.innerHTML = `
-      <div class="pwa-tele-header">
-        <strong class="pwa-tele-id">${order.id}</strong>
-        <span class="pwa-tele-status ${order.status_class || 'status-progress'}">${order.status}</span>
-      </div>
-      <div class="pwa-tele-body" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
-        
-        <!-- Customer Details -->
-        <div>
-          <span style="color: var(--muted); font-size: 0.8rem;">Nome do Cliente</span>
-          <div style="font-weight: 600; color: var(--text); margin-top: 2px;">Nome: ${order.destName || order.dest_name || 'Cliente'}</div>
-        </div>
-
-        <!-- Destination Address (Bold Highlighted) -->
-        <div style="margin-top: 4px;">
-          <span style="color: var(--muted); font-size: 0.8rem;">Endereço de Entrega</span>
-          <div style="font-weight: 700; color: #fff; font-size: 0.95rem; line-height: 1.4; margin-top: 2px; display: flex; align-items: flex-start; gap: 6px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>${displayAddress}</span>
-          </div>
-        </div>
-
-        <!-- Order Metadata -->
-        <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: var(--muted);">Horário do Pedido:</span>
-            <span style="color: var(--text); font-weight: 500;">Pedido feito em: ${formatOrderDateForPWA(order.date, order.created_at)}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: var(--muted);">Quantidade de Itens:</span>
-            <span style="color: var(--text); font-weight: 500;">Itens: ${itemsCount} itens</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: var(--muted);">Distância da Rota:</span>
-            <span style="color: var(--text); font-weight: 600;">${cleanDist}</span>
-          </div>
-        </div>
-
-        <!-- Financial Summary -->
-        <div class="pwa-tele-financials" style="margin: 10px 0; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-direction: column; gap: 4px;">
-            <span style="color: var(--muted); font-size: 0.8rem;">Forma de Pagamento</span>
-            <strong style="font-size: 0.9rem;">${paymentText}</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-            <span style="color: var(--muted);">Valor total do pedido:</span>
-            <strong style="color: var(--text); font-size: 1rem;">${cleanTotalAmount}</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-            <span style="color: var(--success); font-weight: 600;">Recebido da Tele:</span>
-            <strong style="font-size: 1.15rem; color: var(--primary); font-family: var(--font-display);">${formatMoney(valorRepasseLiquido)}</strong>
-          </div>
-        </div>
-
-        <!-- Google Maps Link -->
-        <div style="margin-top: 4px;">
-          <a href="${mapsUrl}" target="_blank" class="pwa-btn pwa-btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; font-size: 0.8rem; padding: 8px 12px; background: rgba(255, 255, 255, 0.05); color: #fff; border: 1px solid var(--border); border-radius: var(--radius); font-weight: 600; cursor: pointer;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb700" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg>
-            Abrir no Google Maps
-          </a>
-        </div>
-        
-        <!-- PWA Code Verification Trava -->
-        ${isTransit && isIntegration ? `
-          <div class="pwa-code-verification-container" style="margin-top: 10px; padding: 12px; background: rgba(255, 183, 0, 0.04); border: 1px solid rgba(255, 183, 0, 0.15); border-radius: var(--radius); width: 100%;">
-            <label style="display: block; font-size: 0.8rem; font-weight: 700; color: var(--primary); margin-bottom: 8px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px;">
-              Código de confirmação do cliente (4 dígitos)
-            </label>
-            <input type="number" id="confirmation_code" placeholder="Insira o código de confirmação do cliente" style="width: 100%; height: 42px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: #fff; text-align: center; font-size: 1.1rem; font-weight: 800; outline: none; transition: border-color 0.2s;" oninput="if(this.value.length > 4) this.value = this.value.slice(0, 4);" />
-          </div>
-        ` : ''}
-      </div>
-      <div class="pwa-tele-footer">
-        ${isPickup ? `
-          <button class="pwa-btn pwa-btn-primary" onclick="confirmPickup('${order.id}')">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7H4a2 2 0 0 0-2 2v6c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-            Confirmar Coleta
-          </button>
-        ` : ''}
-        ${isTransit ? `
-          <button class="pwa-btn pwa-btn-success" onclick="confirmDelivery('${order.id}')">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
-            Confirmar Entrega
-          </button>
-        ` : ''}
-        ${!isPickup && !isTransit ? `
-          <span class="pwa-tele-waiting">Aguardando início...</span>
-        ` : ''}
+  if (upcomingTeles.length > 0) {
+    const upcomingSection = document.createElement('div');
+    upcomingSection.className = 'pwa-tele-section';
+    upcomingSection.innerHTML = `
+      <div style="font-size: 0.75rem; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;">
+        Próximas Teles (${upcomingTeles.length})
       </div>
     `;
-    container.appendChild(card);
-  });
+
+    upcomingTeles.forEach(tele => {
+      const card = createSingleTeleCard(tele, false);
+      upcomingSection.appendChild(card);
+    });
+
+    container.appendChild(upcomingSection);
+  }
 }
 
-// ─── DELIVERY ACTIONS ─────────────────────────────────────────────────────────
+function createSingleTeleCard(order, isMain) {
+  const isCollected = order.status === 'coletada';
+  const isInTransit = order.status === 'em_entrega';
+  const isAssigned = order.status === 'motoboy_designado' || order.status === 'indo_coletar' || order.status === 'aguardando_coleta';
 
-async function confirmPickup(deliveryId) {
-  if (!db) return;
-  const btn = event.target.closest('button');
-  if (btn) { btn.disabled = true; btn.innerText = 'Confirmando...'; }
+  let statusBadgeClass = 'badge-busy';
+  let statusText = order.status;
+
+  if (isAssigned) statusText = 'Aguardando Coleta';
+  else if (isCollected) statusText = 'Coletada';
+  else if (isInTransit) statusText = 'Em Entrega';
+
+  const card = document.createElement('div');
+  card.className = 'pwa-tele-card';
+  card.style.cssText = `
+    background: var(--bg-card);
+    border: 1px solid ${isMain ? 'var(--primary)' : 'var(--border)'};
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+  `;
+
+  const orderCode = order.tele_code || order.id;
+  const shortDest = [order.delivery_neighborhood, order.delivery_city].filter(Boolean).join(', ') || order.delivery_address || 'Endereço de Entrega';
+
+  let actionButtonHtml = '';
+  if (isAssigned) {
+    actionButtonHtml = `
+      <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'collect')" style="width: 100%; padding: 10px; font-weight: 700; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
+        Marcar como coletada
+      </button>
+    `;
+  } else if (isCollected) {
+    actionButtonHtml = `
+      <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'start')" style="width: 100%; padding: 10px; font-weight: 700; background: #3b82f6; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+        Iniciar entrega
+      </button>
+    `;
+  } else if (isInTransit) {
+    actionButtonHtml = `
+      <button class="pwa-btn pwa-btn-success" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'complete')" style="width: 100%; padding: 10px; font-weight: 700; background: #10b981; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+        Finalizar entrega
+      </button>
+    `;
+  }
+
+  card.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center;" onclick="showTeleDetailsModal('${order.id}')">
+      <strong style="font-family: var(--font-display); font-size: 1.05rem; color: var(--text);">${orderCode}</strong>
+      <span class="pwa-tele-status ${statusBadgeClass}" style="padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; background: rgba(255,183,0,0.12); color: var(--primary);">${statusText}</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;" onclick="showTeleDetailsModal('${order.id}')">
+      <div><span style="color: var(--muted);">Estabelecimento:</span> <strong style="color: var(--text);">${escapeHtml(order.establishment_name)}</strong></div>
+      <div><span style="color: var(--muted);">Destino:</span> <strong style="color: var(--text);">${escapeHtml(shortDest)}</strong></div>
+      <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+        <span style="color: var(--muted);">Solicitado às: ${formatOrderDateForPWA(null, order.created_at)}</span>
+        <strong style="color: #10b981; font-weight: 700;">${order.rider_earning_display}</strong>
+      </div>
+    </div>
+
+    <div style="margin-top: 4px;">
+      ${actionButtonHtml}
+    </div>
+  `;
+
+  return card;
+}
+
+// ─── TELE DETAILS MODAL ───────────────────────────────────────────────────────
+
+function showTeleDetailsModal(teleId) {
+  const tele = activeTeleDetailsMap.get(String(teleId));
+  if (!tele) return;
+
+  const modal = document.getElementById('pwa-tele-details-modal');
+  if (!modal) return;
+
+  const orderCode = tele.tele_code || tele.id;
+  document.getElementById('pwa-detail-tele-code').innerText = orderCode;
+
+  // Coleta
+  document.getElementById('pwa-detail-client-name').innerText = tele.establishment_name || 'Cliente Comercial';
+  document.getElementById('pwa-detail-pickup-address').innerText = tele.pickup_address || 'Endereço de Coleta';
+  const clientPhoneEl = document.getElementById('pwa-detail-client-phone-container');
+  if (clientPhoneEl) {
+    clientPhoneEl.innerText = tele.client_phone ? `Contato: ${tele.client_phone}` : '';
+  }
+
+  // Entrega
+  document.getElementById('pwa-detail-recipient-name').innerText = tele.recipient_name || 'Destinatário';
+  document.getElementById('pwa-detail-recipient-phone').innerText = tele.recipient_phone ? `Tel: ${tele.recipient_phone}` : 'Sem telefone registrado';
+
+  const fullDeliveryAddress = [
+    tele.delivery_address,
+    tele.delivery_number ? `nº ${tele.delivery_number}` : '',
+    tele.delivery_neighborhood ? `- ${tele.delivery_neighborhood}` : '',
+    tele.delivery_city ? `/ ${tele.delivery_city}` : ''
+  ].filter(Boolean).join(' ');
+
+  document.getElementById('pwa-detail-delivery-address').innerText = fullDeliveryAddress || 'Endereço não informado';
+
+  const detailsTxt = [
+    tele.delivery_complement ? `Comp: ${tele.delivery_complement}` : '',
+    tele.delivery_reference ? `Ref: ${tele.delivery_reference}` : ''
+  ].filter(Boolean).join(' | ');
+
+  document.getElementById('pwa-detail-delivery-details').innerText = detailsTxt;
+  document.getElementById('pwa-detail-notes').innerText = tele.notes ? `Obs: ${tele.notes}` : '';
+
+  // Valores
+  const orderAmount = parseFloat(tele.total_order_amount) || 0;
+  const chargeAmount = parseFloat(tele.delivery_charge) || 0;
+
+  document.getElementById('pwa-detail-order-amount').innerText = formatMoney(orderAmount);
+  document.getElementById('pwa-detail-delivery-charge').innerText = formatMoney(chargeAmount);
+  document.getElementById('pwa-detail-payment-method').innerText = tele.payment_method || 'Faturado';
+  document.getElementById('pwa-detail-rider-earning').innerText = tele.rider_earning_display;
+
+  // Botão WhatsApp
+  const whatsappBtn = document.getElementById('pwa-detail-whatsapp-btn');
+  if (whatsappBtn) {
+    const normPhone = (tele.recipient_phone || '').replace(/\D/g, '');
+    let finalPhone = normPhone;
+    if (normPhone.length === 10 || normPhone.length === 11) {
+      finalPhone = '55' + normPhone;
+    }
+
+    if (finalPhone.length >= 12 && finalPhone.startsWith('55')) {
+      const msg = encodeURIComponent("Olá, sou o motoboy da Dahora Expresso responsável pela sua entrega.");
+      whatsappBtn.disabled = false;
+      whatsappBtn.style.opacity = '1';
+      whatsappBtn.style.cursor = 'pointer';
+      whatsappBtn.innerText = '💬 WhatsApp Cliente';
+      whatsappBtn.onclick = () => {
+        window.open(`https://wa.me/${finalPhone}?text=${msg}`, '_blank');
+      };
+    } else {
+      whatsappBtn.disabled = true;
+      whatsappBtn.style.opacity = '0.5';
+      whatsappBtn.style.cursor = 'not-allowed';
+      whatsappBtn.innerText = 'Telefone indisponível';
+      whatsappBtn.onclick = null;
+    }
+  }
+
+  // Botão Rota Google Maps
+  const routeBtn = document.getElementById('pwa-detail-route-btn');
+  if (routeBtn) {
+    routeBtn.onclick = () => {
+      let routeUrl = '';
+      if (tele.delivery_latitude !== null && tele.delivery_longitude !== null && !isNaN(tele.delivery_latitude) && !isNaN(tele.delivery_longitude)) {
+        routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.delivery_latitude},${tele.delivery_longitude}&travelmode=driving`;
+      } else {
+        routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullDeliveryAddress)}&travelmode=driving`;
+      }
+      window.open(routeUrl, '_blank');
+    };
+  }
+
+  // Container de Ação Principal no Modal
+  const actionContainer = document.getElementById('pwa-detail-action-container');
+  if (actionContainer) {
+    const isCollected = tele.status === 'coletada';
+    const isInTransit = tele.status === 'em_entrega';
+    const isAssigned = tele.status === 'motoboy_designado' || tele.status === 'indo_coletar' || tele.status === 'aguardando_coleta';
+
+    if (isAssigned) {
+      actionContainer.innerHTML = `
+        <button class="pwa-btn pwa-btn-primary" onclick="requestActionConfirmation('${tele.id}', 'collect')" style="width: 100%; padding: 12px; font-weight: 700; font-size: 0.95rem; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
+          Marcar como coletada
+        </button>
+      `;
+    } else if (isCollected) {
+      actionContainer.innerHTML = `
+        <button class="pwa-btn pwa-btn-primary" onclick="requestActionConfirmation('${tele.id}', 'start')" style="width: 100%; padding: 12px; font-weight: 700; font-size: 0.95rem; background: #3b82f6; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+          Iniciar entrega
+        </button>
+      `;
+    } else if (isInTransit) {
+      actionContainer.innerHTML = `
+        <button class="pwa-btn pwa-btn-success" onclick="requestActionConfirmation('${tele.id}', 'complete')" style="width: 100%; padding: 12px; font-weight: 700; font-size: 0.95rem; background: #10b981; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+          Finalizar entrega
+        </button>
+      `;
+    } else {
+      actionContainer.innerHTML = '';
+    }
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeTeleDetailsModal() {
+  const modal = document.getElementById('pwa-tele-details-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// ─── ACTION CONFIRMATION MODAL & EXECUTION ─────────────────────────────────────
+
+function requestActionConfirmation(teleId, actionType) {
+  const tele = activeTeleDetailsMap.get(String(teleId));
+  if (!tele) return;
+
+  currentModalActionTele = tele;
+  currentModalActionType = actionType;
+
+  const modal = document.getElementById('pwa-action-confirm-modal');
+  const titleEl = document.getElementById('pwa-confirm-title');
+  const msgEl = document.getElementById('pwa-confirm-message');
+  const submitBtn = document.getElementById('pwa-confirm-submit-btn');
+
+  if (!modal || !submitBtn) return;
+
+  if (actionType === 'collect') {
+    titleEl.innerText = 'Confirmar Coleta';
+    msgEl.innerText = 'Confirma que o pedido foi coletado?';
+    submitBtn.style.background = 'var(--primary)';
+    submitBtn.style.color = '#000';
+  } else if (actionType === 'start') {
+    titleEl.innerText = 'Iniciar Entrega';
+    msgEl.innerText = 'Confirma o início do deslocamento para a entrega?';
+    submitBtn.style.background = '#3b82f6';
+    submitBtn.style.color = '#fff';
+  } else if (actionType === 'complete') {
+    titleEl.innerText = 'Finalizar Entrega';
+    msgEl.innerText = 'Confirma que a entrega foi concluída com sucesso?';
+    submitBtn.style.background = '#10b981';
+    submitBtn.style.color = '#fff';
+  }
+
+  submitBtn.onclick = () => executeConfirmedAction();
+  modal.classList.remove('hidden');
+}
+
+function closeActionConfirmModal() {
+  const modal = document.getElementById('pwa-action-confirm-modal');
+  if (modal) modal.classList.add('hidden');
+  currentModalActionTele = null;
+  currentModalActionType = null;
+}
+
+async function executeConfirmedAction() {
+  if (!currentModalActionTele || !currentModalActionType || !db) return;
+
+  const tele = currentModalActionTele;
+  const actionType = currentModalActionType;
+
+  if (!tele.version || !Number.isInteger(Number(tele.version))) {
+    closeActionConfirmModal();
+    closeTeleDetailsModal();
+    showPWAToast('Versão da entrega é inválida. Os dados foram recarregados.');
+    loadMyDeliveries();
+    return;
+  }
+
+  const expectedVersion = parseInt(tele.version, 10);
+
+  const submitBtn = document.getElementById('pwa-confirm-submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Processando...';
+  }
 
   try {
-    const { data: fleetRider, error: fleetErr } = await db
-      .from('fleet')
-      .select('bypass_distance_limit')
-      .eq('name', currentRider.name)
-      .single();
+    let rpcName = '';
+    if (actionType === 'collect') rpcName = 'mark_my_tele_collected';
+    else if (actionType === 'start') rpcName = 'start_my_tele_delivery';
+    else if (actionType === 'complete') rpcName = 'complete_my_tele';
 
-    if (fleetErr) throw fleetErr;
+    const { data: res, error: rpcErr } = await db.rpc(rpcName, {
+      p_tele_id: tele.id,
+      p_expected_version: expectedVersion
+    });
 
-    const bypass = fleetRider ? !!fleetRider.bypass_distance_limit : false;
+    closeActionConfirmModal();
+    closeTeleDetailsModal();
 
-    if (!bypass) {
-      const { data: order, error: orderErr } = await db
-        .from('teles')
-        .select('pickup_lat, pickup_lng')
-        .eq('id', deliveryId)
-        .single();
-
-      if (orderErr) throw orderErr;
-
-      if (!order || order.pickup_lat === null || order.pickup_lng === null) {
-        alert('Coordenadas de coleta não encontradas para validação.');
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Coleta'; }
-        return;
-      }
-
-      if (!lastPosition || lastPosition.lat === null || lastPosition.lng === null) {
-        alert('Aguardando sua localização GPS atual. Certifique-se de que a localização está ativa.');
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Coleta'; }
-        return;
-      }
-
-      const distance = calculateHaversineDistance(
-        lastPosition.lat, lastPosition.lng,
-        parseFloat(order.pickup_lat), parseFloat(order.pickup_lng)
-      );
-
-      if (distance > 3.0) {
-        alert(`Você está a ${distance.toFixed(2)} km do local de coleta. A coleta só pode ser confirmada se você estiver a menos de 3 km do local.`);
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Coleta'; }
-        return;
-      }
-    }
-  } catch (err) {
-    console.error("Erro na validação de distância:", err);
-    alert('Erro ao validar distância de segurança. Tente novamente.');
-    if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Coleta'; }
-    return;
-  }
-
-  const { error } = await db
-    .from('teles')
-    .update({ status: 'Em rota de entrega', status_class: 'status-progress' })
-    .eq('id', deliveryId);
-
-  if (error) {
-    alert('Erro ao confirmar coleta. Tente novamente.');
-    if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Coleta'; }
-    return;
-  }
-
-  // Update fleet rider status
-  await db
-    .from('fleet')
-    .update({ status: 'Em rota de entrega', status_class: 'status-progress' })
-    .eq('name', currentRider.name);
-
-  currentRider.status = 'Em rota de entrega';
-  localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
-  setRiderStatusBadge('Em rota de entrega');
-  showPWAToast('Coleta confirmada! Boa entrega.');
-  loadMyDeliveries();
-}
-
-async function confirmDelivery(deliveryId) {
-  if (!db) return;
-  const btn = event.target.closest('button');
-  if (btn) { btn.disabled = true; btn.innerText = 'Finalizando...'; }
-
-  const order = activeDeliveriesList.find(d => d.id === deliveryId);
-  const paymentMethod = getPaymentMethod(order || {});
-  const isIntegration = false;
-
-  if (isIntegration) {
-    const cardElement = btn ? btn.closest('.pwa-tele-card') : null;
-    const codeInput = cardElement ? cardElement.querySelector('#confirmation_code') : document.getElementById('confirmation_code');
-    const codeValue = codeInput ? codeInput.value.trim() : '';
-
-    const correctCode = String(order?.confirmation_code || '').trim() || '1234';
-
-    if (!codeValue || codeValue !== correctCode) {
-      alert("Código incorreto! Solicite os 4 dígitos corretos ao cliente.");
-      if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Entrega'; }
+    if (rpcErr) {
+      logSafeError(rpcName, rpcErr);
+      showPWAToast('Erro ao processar transição. Tente novamente.');
       return;
     }
-  }
 
-  try {
-    const { data: fleetRider, error: fleetErr } = await db
-      .from('fleet')
-      .select('bypass_distance_limit')
-      .eq('name', currentRider.name)
-      .single();
-
-    if (fleetErr) throw fleetErr;
-
-    const bypass = fleetRider ? !!fleetRider.bypass_distance_limit : false;
-
-    if (!bypass) {
-      const { data: order, error: orderErr } = await db
-        .from('teles')
-        .select('dest_lat, dest_lng')
-        .eq('id', deliveryId)
-        .single();
-
-      if (orderErr) throw orderErr;
-
-      if (!order || order.dest_lat === null || order.dest_lng === null) {
-        alert('Coordenadas de entrega não encontradas para validação.');
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Entrega'; }
-        return;
+    if (res && res.success === false) {
+      if (res.error_code === 'TELE_VERSION_CONFLICT') {
+        showPWAToast('Esta entrega foi atualizada em outro dispositivo. Os dados foram recarregados.');
+        loadMyDeliveries();
+      } else {
+        showPWAToast(res.message || 'Erro operacional.');
       }
-
-      if (!lastPosition || lastPosition.lat === null || lastPosition.lng === null) {
-        alert('Aguardando sua localização GPS atual. Certifique-se de que a localização está ativa.');
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Entrega'; }
-        return;
-      }
-
-      const distance = calculateHaversineDistance(
-        lastPosition.lat, lastPosition.lng,
-        parseFloat(order.dest_lat), parseFloat(order.dest_lng)
-      );
-
-      if (distance > 3.0) {
-        alert(`Você está a ${distance.toFixed(2)} km do local de entrega. A entrega só pode ser finalizada se você estiver a menos de 3 km do local.`);
-        if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Entrega'; }
-        return;
-      }
+      return;
     }
-  } catch (err) {
-    console.error("Erro na validação de distância:", err);
-    alert('Erro ao validar distância de segurança. Tente novamente.');
-    if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Entrega'; }
-    return;
+
+    if (res && res.success === true) {
+      if (actionType === 'complete') {
+        showPWAToast('Entrega concluída com sucesso! 🏍️');
+      } else if (actionType === 'collect') {
+        showPWAToast('Pedido marcado como coletado.');
+      } else if (actionType === 'start') {
+        showPWAToast('Entrega iniciada com sucesso.');
+      }
+      loadMyDeliveries();
+    }
+  } catch (e) {
+    logSafeError('executeConfirmedAction', e);
+    closeActionConfirmModal();
+    showPWAToast('Falha na comunicação com o servidor.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = 'Confirmar';
+    }
   }
-
-  const { error: histErr } = await db
-    .from('teles')
-    .update({ status: 'Entregue', status_class: 'status-success' })
-    .eq('id', deliveryId);
-
-  if (histErr) {
-    alert('Erro ao finalizar entrega. Tente novamente.');
-    if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Entrega'; }
-    return;
-  }
-
-  await db
-    .from('fleet')
-    .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
-    .eq('name', currentRider.name);
-
-  currentRider.status = 'Disponível';
-  localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
-  setRiderStatusBadge('Disponível');
-  showPWAToast(`Entrega ${deliveryId} concluída!`);
-  loadMyDeliveries();
 }
 
 // ─── REALTIME SUBSCRIPTION ────────────────────────────────────────────────────
@@ -850,43 +1415,49 @@ function subscribeRealtime() {
       schema: 'public',
       table: 'teles'
     }, (payload) => {
-      const riderName = currentRider.name;
-      
+      const isMyTele = (row) => {
+        return Boolean(
+          row &&
+          currentRider &&
+          row.motoboy_id === currentRider.id
+        );
+      };
+
+
+
+
       if (payload.eventType === 'INSERT') {
-        if (payload.new.rider === riderName) {
+        if (isMyTele(payload.new)) {
+          showHighPriorityNewTeleModal(payload.new);
           sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.id} foi atribuída a você.`);
-          playNotificationSound();
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
       } else if (payload.eventType === 'DELETE') {
-        const wasMine = payload.old && (payload.old.rider === riderName || (knownActiveTeleIds && knownActiveTeleIds.includes(payload.old.id)));
+        const wasMine = isMyTele(payload.old) || (knownActiveTeleIds && knownActiveTeleIds.includes(payload.old?.id));
         if (wasMine) {
-          sendWebNotification("Tele Removida! ❌", `A tele ${payload.old.id} foi removida de você.`);
-          playNotificationSound();
+          sendWebNotification("Tele Removida! ❌", `A tele ${payload.old?.id} foi removida.`);
+          AudioController.playMessageAlert();
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
       } else if (payload.eventType === 'UPDATE') {
-        const wasMine = payload.old && payload.old.rider === riderName;
-        const isMine = payload.new && payload.new.rider === riderName;
-        
-        // Cache shield against Supabase payload.old column restrictions
-        const isAlreadyKnown = knownActiveTeleIds && knownActiveTeleIds.includes(payload.new.id);
+        const isMine = isMyTele(payload.new);
+        const isAlreadyKnown = knownActiveTeleIds && knownActiveTeleIds.includes(payload.new?.id);
         const isNewAssignment = isMine && !isAlreadyKnown;
         const isRemoval = !isMine && isAlreadyKnown;
 
         if (isNewAssignment) {
+          showHighPriorityNewTeleModal(payload.new);
           sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.id} foi atribuída a você.`);
-          playNotificationSound();
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         } else if (isRemoval) {
-          sendWebNotification("Tele Removida! ❌", `A tele ${payload.new.id} foi removida de você.`);
-          playNotificationSound();
+          sendWebNotification("Tele Removida! ❌", `A tele ${payload.new.id} foi removida.`);
+          AudioController.playMessageAlert();
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
@@ -902,6 +1473,7 @@ function subscribeRealtime() {
       schema: 'public',
       table: 'support_messages'
     }, (payload) => {
+
       const newMsg = payload.new;
       if (newMsg.client_email === currentRider.id) {
         if (newMsg.sender_role !== 'rider') {
@@ -979,41 +1551,155 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-// ─── MAP ─────────────────────────────────────────────────────────────────────
+// ─── MAP (SINGLETON LOADER & REUSABLE INSTANCE) ──────────────────────────────
 
-function initRiderMap() {
+let googleMapsLoaderPromise = null;
+
+function ensureGoogleMapsLoaded() {
+  if (window.google && window.google.maps && window.google.maps.Map) {
+    return Promise.resolve(true);
+  }
+  if (window._googleMapsLoaderPromise) {
+    return window._googleMapsLoaderPromise;
+  }
+
+  const apiKey = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.googleMapsApiKey) ||
+                 (window.LOCAL_SUPABASE_CONFIG && window.LOCAL_SUPABASE_CONFIG.googleMapsApiKey) || '';
+
+  if (!apiKey) {
+    console.warn("⚠️ Google Maps API Key não configurada.");
+    return Promise.resolve(false);
+  }
+
+  const existingScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+  if (existingScript) {
+    window._googleMapsLoaderPromise = new Promise((resolve) => {
+      let checks = 0;
+      const interval = setInterval(() => {
+        checks++;
+        if (window.google && window.google.maps && window.google.maps.Map) {
+          clearInterval(interval);
+          resolve(true);
+        } else if (checks > 100) {
+          clearInterval(interval);
+          resolve(false);
+        }
+      }, 100);
+    });
+    return window._googleMapsLoaderPromise;
+  }
+
+  window._googleMapsLoaderPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve(true);
+    script.onerror = (err) => {
+      console.error("Erro ao carregar script do Google Maps:", err);
+      resolve(false);
+    };
+    document.head.appendChild(script);
+  });
+
+  return window._googleMapsLoaderPromise;
+}
+
+async function initRiderMap() {
   const mapEl = document.getElementById('pwa-map');
   if (!mapEl) return;
 
-  riderMap = new mapboxgl.Map({
-    container: 'pwa-map',
-    style: 'mapbox://styles/mapbox/dark-v11',
-    center: lastPosition ? [lastPosition.lng, lastPosition.lat] : [-51.126764, -29.842173], // [lng, lat] (Sapucaia do Sul Central)
-    zoom: 14
+  const loaded = await ensureGoogleMapsLoaded();
+  if (!loaded || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') {
+    mapEl.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--muted); font-size:0.82rem; text-align:center; padding:16px;">Aguardando chave do Google Maps Platform em window.SUPABASE_CONFIG.googleMapsApiKey</div>`;
+    return;
+  }
+
+  if (riderMap) {
+    // Reutilizar a instância existente sem reinstanciar o mapa
+    window.google.maps.event.trigger(riderMap, 'resize');
+    if (lastPosition) {
+      riderMap.setCenter({ lat: lastPosition.lat, lng: lastPosition.lng });
+    }
+    return;
+  }
+
+  const centerPos = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : { lat: -29.842173, lng: -51.126764 };
+
+let currentMapTheme = localStorage.getItem('pwaMapTheme') || 'dark';
+
+const darkOperationalStyles = [
+  { featureType: 'all', elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'all', elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }, { lightness: 13 }] },
+  { featureType: 'administrative', elementType: 'geometry.fill', stylers: [{ color: '#000000' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#144b53' }, { lightness: 14 }, { weight: 1.4 }] },
+  { featureType: 'landscape', elementType: 'all', stylers: [{ color: '#181820' }] },
+  { featureType: 'poi', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#272732' }] },
+  { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'on' }] },
+  { featureType: 'water', elementType: 'all', stylers: [{ color: '#111827' }] }
+];
+
+const lightOperationalStyles = [
+  { featureType: 'poi', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ visibility: 'on' }] },
+  { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'on' }] },
+  { featureType: 'administrative', elementType: 'labels', stylers: [{ visibility: 'on' }] }
+];
+
+function setMapTheme(theme) {
+  currentMapTheme = theme;
+  localStorage.setItem('pwaMapTheme', theme);
+  applyMapThemeUI(theme);
+  if (riderMap) {
+    const styles = theme === 'dark' ? darkOperationalStyles : lightOperationalStyles;
+    riderMap.setOptions({ styles });
+  }
+  showPWAToast(`Tema do mapa alterado para ${theme === 'dark' ? 'Escuro' : 'Claro'}.`);
+}
+
+function applyMapThemeUI(theme) {
+  const lightBtn = document.getElementById('btn-theme-light');
+  const darkBtn = document.getElementById('btn-theme-dark');
+  if (lightBtn && darkBtn) {
+    if (theme === 'light') {
+      lightBtn.className = 'pwa-filter-pill active';
+      darkBtn.className = 'pwa-filter-pill';
+    } else {
+      darkBtn.className = 'pwa-filter-pill active';
+      lightBtn.className = 'pwa-filter-pill';
+    }
+  }
+}
+
+  const cleanOperationalStyles = currentMapTheme === 'dark' ? darkOperationalStyles : lightOperationalStyles;
+
+  const topRightPos = (window.google && window.google.maps && window.google.maps.ControlPosition)
+    ? window.google.maps.ControlPosition.TOP_RIGHT
+    : 1;
+
+  riderMap = new window.google.maps.Map(mapEl, {
+    center: centerPos,
+    zoom: 14,
+    gestureHandling: 'greedy',
+    zoomControl: true,
+    zoomControlOptions: {
+      position: topRightPos
+    },
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    styles: cleanOperationalStyles
   });
 
-
-
-  // Permanent Collection Central Marker (Rua Ana Rosa 221)
-  const centralEl = document.createElement('div');
-  centralEl.style.width = '24px';
-  centralEl.style.height = '24px';
-  centralEl.style.backgroundColor = '#ffffff';
-  centralEl.style.borderRadius = '50%';
-  centralEl.style.border = '3px solid #ffb700';
-  centralEl.style.boxShadow = '0 0 15px rgba(255, 183, 0, 0.6)';
-  centralEl.style.display = 'flex';
-  centralEl.style.alignItems = 'center';
-  centralEl.style.justifyContent = 'center';
-  centralEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffb700" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`;
-
-  const centralPopup = new mapboxgl.Popup({ offset: 15 })
-    .setHTML(`<div style="font-family:var(--font);color:#fff;padding:2px;"><strong style="font-size:0.88rem;display:block;margin-bottom:2px;">Central de Coleta</strong><span style="font-size:0.78rem;color:var(--muted);">Rua Ana Rosa 221, Ipiranga</span></div>`);
-
-  new mapboxgl.Marker(centralEl)
-    .setLngLat([-51.126764, -29.842173])
-    .setPopup(centralPopup)
-    .addTo(riderMap);
+  // Permanent Collection Central Marker
+  new window.google.maps.Marker({
+    position: { lat: -29.842173, lng: -51.126764 },
+    map: riderMap,
+    title: 'Central de Coleta - Rua Ana Rosa 221'
+  });
 
   if (lastPosition) {
     placeRiderMarker(lastPosition.lat, lastPosition.lng);
@@ -1023,87 +1709,144 @@ function initRiderMap() {
 let riderMarker = null;
 
 function placeRiderMarker(lat, lng) {
-  if (!riderMap) return;
+  if (!riderMap || typeof window.google === 'undefined') return;
 
-  const popupContent = `<strong>${currentRider ? currentRider.name : 'Você'}</strong><br>Sua localização atual`;
+  const pos = { lat, lng };
 
   if (riderMarker) {
-    riderMarker.setLngLat([lng, lat]);
-    riderMarker.getPopup().setHTML(popupContent);
+    riderMarker.setPosition(pos);
   } else {
-    const el = document.createElement('div');
-    el.style.width = '22px';
-    el.style.height = '22px';
-    el.style.backgroundColor = '#ffb700';
-    el.style.borderRadius = '50%';
-    el.style.border = '3px solid #fff';
-    el.style.boxShadow = '0 0 12px rgba(255,183,0,0.7)';
-    el.style.display = 'flex';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center';
-    el.innerHTML = `<div style="width:6px;height:6px;background:#fff;border-radius:50%;"></div>`;
-
-    const popup = new mapboxgl.Popup({ offset: 15 }).setHTML(popupContent);
-
-    riderMarker = new mapboxgl.Marker(el)
-      .setLngLat([lng, lat])
-      .setPopup(popup)
-      .addTo(riderMap);
+    riderMarker = new window.google.maps.Marker({
+      position: pos,
+      map: riderMap,
+      title: currentRider ? currentRider.name : 'Sua Localização'
+    });
   }
 
   if (!hasCenteredOnce) {
-    riderMap.setCenter([lng, lat]);
+    riderMap.setCenter(pos);
     riderMap.setZoom(15);
     hasCenteredOnce = true;
   }
 
-  // Update delivery markers/lines with the new rider position
   updateMapOverlays(activeDeliveriesList || []);
+}
+
+
+let lastBatteryPayloadKey = null;
+let lastBatterySentTime = 0;
+const BATTERY_THROTTLE_MS = 60000;
+
+async function sendDeviceStatus(batteryLevel, isCharging, batterySupported) {
+  if (!db || !currentRider) return;
+
+  const payloadKey = `${batteryLevel}_${isCharging}_${batterySupported}`;
+  const now = Date.now();
+
+  if (lastBatteryPayloadKey === payloadKey && (now - lastBatterySentTime) < BATTERY_THROTTLE_MS) {
+    return;
+  }
+
+  lastBatteryPayloadKey = payloadKey;
+  lastBatterySentTime = now;
+
+  try {
+    const { error } = await db.rpc('update_my_device_status', {
+      p_battery_level: batterySupported ? batteryLevel : null,
+      p_is_charging: batterySupported ? isCharging : null,
+      p_battery_supported: batterySupported
+    });
+
+    if (error) {
+      console.warn("update_my_device_status notice:", error.message || error);
+    }
+  } catch (err) {
+    console.warn("update_my_device_status exception:", err.message || err);
+  }
+}
+
+let isTelemetryInitialized = false;
+
+async function initRiderDeviceTelemetry() {
+  showPrivacyConsentNotice();
+
+  if (isTelemetryInitialized) {
+    if (currentRider) {
+      lastBatterySentTime = 0;
+      refreshCurrentBatteryState();
+    }
+    return;
+  }
+  isTelemetryInitialized = true;
+
+  if (typeof navigator !== 'undefined' && typeof navigator.getBattery === 'function') {
+    try {
+      const battery = await navigator.getBattery();
+
+      window._batteryManagerRef = battery;
+
+      const syncFn = () => {
+        const level = Math.round(battery.level * 100);
+        const charging = Boolean(battery.charging);
+        currentBatteryLevel = level;
+        sendDeviceStatus(level, charging, true);
+      };
+
+      syncFn();
+
+      battery.addEventListener('levelchange', syncFn);
+      battery.addEventListener('chargingchange', () => {
+        lastBatterySentTime = 0;
+        syncFn();
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          syncFn();
+        }
+      });
+      return;
+    } catch (err) {
+      console.warn("navigator.getBattery fallback notice:", err.message || err);
+    }
+  }
+
+  // Fallback para navegadores sem suporte ou permissão negada (executa apenas uma vez)
+  sendDeviceStatus(null, null, false);
+}
+
+function refreshCurrentBatteryState() {
+  if (window._batteryManagerRef) {
+    const level = Math.round(window._batteryManagerRef.level * 100);
+    const charging = Boolean(window._batteryManagerRef.charging);
+    sendDeviceStatus(level, charging, true);
+  } else {
+    sendDeviceStatus(null, null, false);
+  }
+}
+
+function showPrivacyConsentNotice() {
+  if (typeof localStorage === 'undefined') return;
+  if (!localStorage.getItem('privacy_consent_shown')) {
+    localStorage.setItem('privacy_consent_shown', 'true');
+    showPWAToast('O aplicativo utiliza localização e o nível de bateria para acompanhamento operacional.');
+  }
 }
 
 function startGeolocation() {
   if (!navigator.geolocation) return;
 
-  // Initialize battery API
-  if (navigator.getBattery && currentBatteryLevel === null) {
-    try {
-      navigator.getBattery().then(battery => {
-        currentBatteryLevel = Math.round(battery.level * 100);
-        battery.addEventListener('levelchange', async () => {
-          currentBatteryLevel = Math.round(battery.level * 100);
-          if (db && currentRider) {
-            try {
-              await db
-                .from('fleet')
-                .update({ battery_level: currentBatteryLevel })
-                .eq('id', currentRider.id);
-            } catch (err) {
-              console.error("Failed to update battery level in background:", err);
-            }
-          }
-        });
-      }).catch(err => {
-        console.warn("navigator.getBattery rejected:", err);
-      });
-    } catch (err) {
-      console.warn("navigator.getBattery exception:", err);
-    }
-  }
+  initRiderDeviceTelemetry();
 
   watchId = navigator.geolocation.watchPosition(
     async (pos) => {
       lastPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       if (riderMap) placeRiderMarker(lastPosition.lat, lastPosition.lng);
 
-      // Update location and battery level in Supabase fleet table in real-time
       if (db && currentRider) {
-        const updatePayload = { lat: lastPosition.lat, lng: lastPosition.lng };
-        if (currentBatteryLevel !== null) {
-          updatePayload.battery_level = currentBatteryLevel;
-        }
         await db
           .from('fleet')
-          .update(updatePayload)
+          .update({ lat: lastPosition.lat, lng: lastPosition.lng })
           .eq('id', currentRider.id);
       }
     },
@@ -1111,6 +1854,7 @@ function startGeolocation() {
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
   );
 }
+
 
 // ─── TOAST ───────────────────────────────────────────────────────────────────
 
@@ -1425,23 +2169,25 @@ async function loadWeeklyBalance() {
 
   const { data, error } = await db
     .from('teles')
-    .select('price, date, address')
-    .eq('rider', currentRider.name)
-    .eq('status', 'Entregue');
+    .select('delivery_charge, created_at, delivery_address, status')
+    .eq('motoboy_id', currentRider.id)
+    .in('status', ['concluida', 'concluido', 'entregue', 'Entregue']);
+
+
+
 
   if (error || !data) return;
 
   const { data: credits, error: creditsErr } = await db
-    .from('rider_credits')
+    .from('rider_credits_ledger')
     .select('amount, target_date')
-    .eq('rider_id', currentRider.id);
+    .eq('motoboy_id', currentRider.id);
 
   let totalWeekly = 0;
   data.forEach(order => {
-    const orderDate = parseOrderDate(order.date);
+    const orderDate = parseOrderDate(order.date || order.created_at);
     if (isDateInCurrentWeek(orderDate)) {
-      const fixedPrice = getFixedPriceByAddress(order.address);
-      totalWeekly += fixedPrice * 0.90;
+      totalWeekly += parseFloat(order.delivery_charge || 0);
     }
   });
 
@@ -1542,9 +2288,11 @@ function updateMapOverlays(deliveries) {
 
   if (!riderMap) return;
 
-  const bounds = new mapboxgl.LngLatBounds();
+  if (!riderMap || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') return;
+
+  const bounds = new window.google.maps.LatLngBounds();
   if (lastPosition && lastPosition.lat && lastPosition.lng) {
-    bounds.extend([lastPosition.lng, lastPosition.lat]);
+    bounds.extend(new window.google.maps.LatLng(lastPosition.lat, lastPosition.lng));
   }
 
   const currentActiveIds = new Set();
@@ -1553,7 +2301,6 @@ function updateMapOverlays(deliveries) {
     let targetLat = null;
     let targetLng = null;
     let title = '';
-    let addressInfo = order.address || '';
 
     if (order.status === 'Em rota de entrega') {
       targetLat = order.dest_lat !== null ? parseFloat(order.dest_lat) : null;
@@ -1563,87 +2310,37 @@ function updateMapOverlays(deliveries) {
 
     if (targetLat !== null && targetLng !== null && !isNaN(targetLat) && !isNaN(targetLng)) {
       currentActiveIds.add(order.id);
-      bounds.extend([targetLng, targetLat]);
+      const pos = { lat: targetLat, lng: targetLng };
+      bounds.extend(new window.google.maps.LatLng(targetLat, targetLng));
 
-      // Define style: Green for Delivery (entrega)
-      const bgColor = '#10b981';
-      const shadowColor = 'rgba(16,185,129,0.6)';
-      const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>`;
-
-      const iconHtml = `
-        <div style="background: ${bgColor}; border: 2px solid #fff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${shadowColor};">
-          ${iconSvg}
-        </div>
-      `;
-
-      const mapsUrl = order.address 
-        ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.address)}&travelmode=driving`
-        : `https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}&travelmode=driving`;
-      
-      const popupContent = `
-        <div style="font-family: var(--font-sans); color: #fff; padding: 2px;">
-          <strong style="font-size: 0.9rem; display: block; margin-bottom: 4px;">${title}</strong>
-          <span style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 8px;">${addressInfo}</span>
-          <a href="${mapsUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; color: #ffb700; text-decoration: none; font-weight: 700; font-size: 0.8rem; background: rgba(255,183,0,0.1); padding: 6px 10px; border-radius: 4px; border: 1px solid #ffb700; cursor: pointer;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffb700" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg>
-            Navegar no Google Maps
-          </a>
-        </div>
-      `;
-
-      const sourceId = `route-source-${order.id}`;
-      const layerId = `route-layer-${order.id}`;
-
-      // If marker already exists, update position and polyline
       if (activeRiderDeliveryMarkers[order.id]) {
         const entry = activeRiderDeliveryMarkers[order.id];
-        
-        // Update marker latlng if changed
         if (entry.lat !== targetLat || entry.lng !== targetLng) {
-          entry.marker.setLngLat([targetLng, targetLat]);
+          entry.marker.setPosition(pos);
           entry.lat = targetLat;
           entry.lng = targetLng;
         }
-
-        entry.marker.getPopup().setHTML(popupContent);
-
-        if (lastPosition && lastPosition.lat && lastPosition.lng) {
-          safeAddRouteLayer(riderMap, sourceId, layerId, [lastPosition.lat, lastPosition.lng], [targetLat, targetLng], bgColor);
-        } else {
-          safeRemoveRouteLayer(riderMap, sourceId, layerId);
-        }
       } else {
-        // Create new marker
-        const el = document.createElement('div');
-        el.innerHTML = iconHtml;
-
-        const popup = new mapboxgl.Popup({ offset: 15, closeOnClick: false, autoClose: false }).setHTML(popupContent);
-        
-        const marker = new mapboxgl.Marker(el)
-          .setLngLat([targetLng, targetLat])
-          .setPopup(popup)
-          .addTo(riderMap);
-
-        marker.togglePopup(); // Open automatically by default
-
-        if (lastPosition && lastPosition.lat && lastPosition.lng) {
-          safeAddRouteLayer(riderMap, sourceId, layerId, [lastPosition.lat, lastPosition.lng], [targetLat, targetLng], bgColor);
-        }
-
+        const marker = new window.google.maps.Marker({
+          position: pos,
+          map: riderMap,
+          title: title
+        });
         activeRiderDeliveryMarkers[order.id] = { marker, lat: targetLat, lng: targetLng };
       }
     }
   });
 
-  // Clean up any markers that are no longer active
   for (const id in activeRiderDeliveryMarkers) {
     if (!currentActiveIds.has(id)) {
       const entry = activeRiderDeliveryMarkers[id];
-      if (entry.marker) entry.marker.remove();
-      safeRemoveRouteLayer(riderMap, `route-source-${id}`, `route-layer-${id}`);
+      if (entry.marker && typeof entry.marker.setMap === 'function') {
+        entry.marker.setMap(null);
+      }
       delete activeRiderDeliveryMarkers[id];
     }
   }
+
 
   // Fit bounds once if active tele ID changed to show both the rider and target clearly
   const activeTeleId = deliveries.length > 0 ? deliveries[0].id : null;
@@ -1687,9 +2384,12 @@ async function loadReportsData() {
   const { data, error } = await db
     .from('teles')
     .select('*')
-    .eq('rider', currentRider.name)
-    .eq('status', 'Entregue')
-    .order('id', { ascending: false });
+    .eq('motoboy_id', currentRider.id)
+    .in('status', ['concluida', 'concluido', 'entregue', 'Entregue'])
+    .order('created_at', { ascending: false });
+
+
+
 
   if (error || !data) {
     if (listContainer) listContainer.innerHTML = '<p class="pwa-empty-msg">Erro ao carregar histórico.</p>';
@@ -1850,9 +2550,12 @@ async function loadWeeklyClosures() {
   try {
     const { data: deliveries, error: deliveriesErr } = await db
       .from('teles')
-      .select('*')
-      .eq('rider', currentRider.name)
-      .or('status.eq.Entregue,status.eq.Concluído');
+      .select('id, delivery_charge, created_at')
+      .eq('motoboy_id', currentRider.id)
+      .in('status', ['concluida', 'concluido', 'entregue', 'Entregue']);
+
+
+
 
     if (deliveriesErr) throw deliveriesErr;
 
@@ -1868,9 +2571,9 @@ async function loadWeeklyClosures() {
     }
 
     const { data: credits, error: creditsErr } = await db
-      .from('rider_credits')
+      .from('rider_credits_ledger')
       .select('*')
-      .eq('rider_id', currentRider.id);
+      .eq('motoboy_id', currentRider.id);
 
     if (creditsErr) throw creditsErr;
 
@@ -2225,7 +2928,15 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// ─── SUPPORT CHAT LOGIC ──────────────────────────────────────────────────────
+// ─── SUPPORT TICKETS MODULE (AUTHORITATIVE RPCs) ──────────────────────────────
+
+let riderSupportState = {
+  filter: 'all',
+  tickets: [],
+  currentTicketId: null,
+  isSubmitting: false,
+  realtimeChannel: null
+};
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -2237,99 +2948,799 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-async function fetchMotoChatHistory() {
-  const container = document.getElementById('pwa-chat-messages');
+function getCategoryLabel(cat) {
+  const categories = {
+    delivery_issue: 'Problema em Entrega',
+    payment_question: 'Dúvida sobre Pagamento',
+    consumable_question: 'Consumíveis / Bag',
+    app_problem: 'Problema no Aplicativo',
+    account_problem: 'Problema na Conta',
+    other: 'Outros Assuntos'
+  };
+  return categories[cat] || cat || 'Outros Assuntos';
+}
+
+function getStatusBadgeHtml(status) {
+  const styles = {
+    open: 'background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);',
+    in_progress: 'background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);',
+    waiting_rider: 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);',
+    waiting_admin: 'background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);',
+    resolved: 'background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3);',
+    closed: 'background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3);'
+  };
+  const labels = {
+    open: 'Novo Chamado',
+    in_progress: 'Em Atendimento',
+    waiting_rider: 'Aguardando Você',
+    waiting_admin: 'Aguardando Suporte',
+    resolved: 'Resolvido',
+    closed: 'Encerrado'
+  };
+  const st = styles[status] || styles.closed;
+  const lb = labels[status] || status;
+  return `<span style="padding: 3px 8px; border-radius: 6px; font-size: 0.68rem; font-weight: 700; ${st}">${lb}</span>`;
+}
+
+function setRiderSupportFilter(filterName) {
+  riderSupportState.filter = filterName;
+  document.querySelectorAll('.support-filter-pill').forEach(btn => {
+    if (btn.dataset.filter === filterName) {
+      btn.classList.add('active');
+      btn.style.background = 'linear-gradient(135deg, var(--primary), #c2410c)';
+      btn.style.color = '#fff';
+      btn.style.borderColor = 'transparent';
+    } else {
+      btn.classList.remove('active');
+      btn.style.background = 'var(--bg-card)';
+      btn.style.color = 'var(--text)';
+      btn.style.borderColor = 'var(--border)';
+    }
+  });
+  renderRiderSupportTickets();
+}
+
+async function loadRiderSupportTickets() {
+  const container = document.getElementById('pwa-rider-tickets-list');
   if (!container) return;
 
-  container.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
-      <div style="width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-    </div>
-  `;
-
-  if (!db || !currentRider) {
-    container.innerHTML = `<p style="text-align: center; color: var(--muted); padding: 20px;">Nenhuma mensagem.</p>`;
+  if (!db || !supabaseClient) {
+    container.innerHTML = `<p style="text-align: center; color: var(--muted); padding: 20px;">Sessão não disponível.</p>`;
     return;
   }
 
   try {
-    const { data, error } = await db
-      .from('support_messages')
-      .select('*')
-      .eq('client_email', currentRider.id)
-      .order('id', { ascending: true });
+    const { data, error } = await supabaseClient.rpc('get_my_rider_support_tickets', {
+      p_status: null,
+      p_limit: 50,
+      p_offset: 0
+    });
 
     if (error) throw error;
 
-    renderMotoMessages(data || []);
+    if (data && data.success) {
+      riderSupportState.tickets = data.items || [];
+      updateRiderUnreadBadge(riderSupportState.tickets);
+      renderRiderSupportTickets();
+      subscribeRiderSupportRealtime();
+    } else {
+      throw new Error(data?.message || 'Falha ao carregar chamados.');
+    }
   } catch (err) {
-    console.error("Error loading chat history:", err);
-    container.innerHTML = `<p style="text-align: center; color: var(--muted); padding: 20px;">Erro ao carregar mensagens.</p>`;
+    console.error("Error loading rider support tickets:", err);
+    container.innerHTML = `<div style="text-align: center; color: var(--muted); padding: 24px; font-size: 0.85rem;">Erro ao carregar chamados. Tente novamente.</div>`;
   }
 }
 
-function renderMotoMessages(messages) {
-  const container = document.getElementById('pwa-chat-messages');
+function updateRiderUnreadBadge(tickets) {
+  const badge = document.getElementById('pwa-support-unread-badge');
+  if (!badge) return;
+  const totalUnread = tickets.reduce((sum, t) => sum + (t.unread_messages_count || 0), 0);
+  if (totalUnread > 0) {
+    badge.textContent = totalUnread;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function renderRiderSupportTickets() {
+  const container = document.getElementById('pwa-rider-tickets-list');
   if (!container) return;
 
-  if (messages.length === 0) {
+  let filtered = riderSupportState.tickets;
+  if (riderSupportState.filter === 'open') {
+    filtered = filtered.filter(t => ['open', 'in_progress', 'waiting_rider', 'waiting_admin'].includes(t.status));
+  } else if (riderSupportState.filter === 'resolved') {
+    filtered = filtered.filter(t => ['resolved', 'closed'].includes(t.status));
+  }
+
+  if (filtered.length === 0) {
     container.innerHTML = `
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--muted); gap: 12px; padding: 20px;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <p style="font-size: 0.85rem; margin: 0;">Fale diretamente com o suporte.</p>
-        <p style="font-size: 0.78rem; margin: 0; color: var(--muted);">Escreva uma mensagem abaixo para iniciar a conversa.</p>
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--muted); gap: 12px; padding: 40px 20px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <p style="font-size: 0.9rem; font-weight: 700; margin: 0; color: var(--text);">Você ainda não possui chamados de suporte.</p>
+        <p style="font-size: 0.78rem; margin: 0; color: var(--muted);">Clique em "+ Novo Chamado" para abrir uma solicitação para a central.</p>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = messages.map(msg => {
-    const isMe = msg.sender_role === 'rider';
+  container.innerHTML = filtered.map(t => {
+    const timeStr = t.last_message_at ? new Date(t.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const unreadHtml = t.unread_messages_count > 0 
+      ? `<span style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 7px; font-size: 0.65rem; font-weight: 800;">${t.unread_messages_count} nova(s)</span>`
+      : '';
+
+    return `
+      <div onclick="openRiderSupportChat('${t.ticket_id}')" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: transform 0.1s; position: relative;">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+          <h4 style="font-size: 0.9rem; font-weight: 800; margin: 0; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.subject)}</h4>
+          ${getStatusBadgeHtml(t.status)}
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.73rem; color: var(--muted);">
+          <span>${escapeHtml(getCategoryLabel(t.category))}</span>
+          <span>${timeStr}</span>
+        </div>
+        ${t.last_message_preview ? `<div style="font-size: 0.78rem; color: var(--text); background: var(--bg); padding: 8px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.last_message_preview)}</div>` : ''}
+        ${unreadHtml ? `<div style="display: flex; justify-content: flex-end;">${unreadHtml}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function openCreateRiderTicketModal() {
+  const modal = document.getElementById('modal-create-rider-ticket');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeCreateRiderTicketModal() {
+  const modal = document.getElementById('modal-create-rider-ticket');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitCreateRiderTicket(event) {
+  if (event) event.preventDefault();
+  if (riderSupportState.isSubmitting) return;
+
+  const subjectInput = document.getElementById('rider-ticket-subject');
+  const categorySelect = document.getElementById('rider-ticket-category');
+  const prioritySelect = document.getElementById('rider-ticket-priority');
+  const messageInput = document.getElementById('rider-ticket-message');
+  const submitBtn = document.getElementById('submit-create-rider-ticket-btn');
+
+  const subject = subjectInput?.value.trim();
+  const category = categorySelect?.value;
+  const priority = prioritySelect?.value;
+  const message = messageInput?.value.trim();
+
+  if (!subject || subject.length < 3 || subject.length > 120) {
+    showPWAToast("O assunto deve conter entre 3 e 120 caracteres.");
+    return;
+  }
+  if (!message || message.length < 1 || message.length > 4000) {
+    showPWAToast("A mensagem deve conter entre 1 e 4000 caracteres.");
+    return;
+  }
+
+  riderSupportState.isSubmitting = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Enviando...';
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('create_my_rider_support_ticket', {
+      p_subject: subject,
+      p_category: category,
+      p_priority: priority,
+      p_message: message
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      showPWAToast("Chamado criado com sucesso!");
+      closeCreateRiderTicketModal();
+      if (subjectInput) subjectInput.value = '';
+      if (messageInput) messageInput.value = '';
+      await loadRiderSupportTickets();
+      if (data.ticket_id) {
+        openRiderSupportChat(data.ticket_id);
+      }
+    } else {
+      showPWAToast(data?.message || "Erro ao criar chamado.");
+    }
+  } catch (err) {
+    console.error("Error creating rider support ticket:", err);
+    showPWAToast("Erro de conexão ao criar chamado.");
+  } finally {
+    riderSupportState.isSubmitting = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Abrir Chamado';
+    }
+  }
+}
+
+async function fetchMotoChatHistory() {
+  if (!db) return;
+  try {
+    const { data, error } = await db.rpc('get_or_create_my_active_rider_chat');
+    if (error) {
+      logSafeError('fetchMotoChatHistoryRPC', error);
+      return;
+    }
+
+    if (data && data.success && data.ticket_id) {
+      riderSupportState.currentTicketId = data.ticket_id;
+      openRiderSupportChat(data.ticket_id);
+    }
+  } catch (e) {
+    logSafeError('fetchMotoChatHistoryException', e);
+  }
+}
+
+async function openRiderSupportChat(ticketId) {
+  riderSupportState.currentTicketId = ticketId;
+  const messagesContainer = document.getElementById('pwa-chat-messages-container');
+
+  if (messagesContainer && !messagesContainer.children.length) {
+    messagesContainer.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+        <div style="width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      </div>
+    `;
+  }
+
+  try {
+    const { data, error } = await db.rpc('get_my_rider_support_ticket', {
+      p_ticket_id: ticketId
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      renderRiderSupportChat(data.ticket, data.messages || []);
+      subscribeRiderSupportRealtime();
+    } else {
+      showPWAToast(data?.message || "Erro ao carregar mensagens do atendimento.");
+    }
+  } catch (err) {
+    logSafeError("openRiderSupportChat", err);
+  }
+}
+
+function closeRiderSupportChat() {
+  riderSupportState.currentTicketId = null;
+  const ticketsView = document.getElementById('pwa-support-tickets-view');
+  const chatView = document.getElementById('pwa-support-chat-detail-view');
+  if (chatView) chatView.classList.add('hidden');
+  if (ticketsView) ticketsView.classList.remove('hidden');
+}
+
+function renderRiderSupportChat(ticket, messages) {
+  const subjectEl = document.getElementById('pwa-chat-ticket-subject');
+  const categoryEl = document.getElementById('pwa-chat-ticket-category');
+  const badgeEl = document.getElementById('pwa-chat-ticket-status-badge');
+  const messagesContainer = document.getElementById('pwa-chat-messages-container');
+  const closedBanner = document.getElementById('pwa-chat-closed-banner');
+  const replyForm = document.getElementById('pwa-ticket-reply-form');
+
+  if (subjectEl) subjectEl.textContent = ticket.subject;
+  if (categoryEl) categoryEl.textContent = getCategoryLabel(ticket.category);
+  if (badgeEl) badgeEl.innerHTML = getStatusBadgeHtml(ticket.status);
+
+  const isClosed = ticket.status === 'closed';
+  if (closedBanner) {
+    if (isClosed) closedBanner.classList.remove('hidden');
+    else closedBanner.classList.add('hidden');
+  }
+
+  if (replyForm) {
+    const input = document.getElementById('pwa-ticket-reply-input');
+    const submitBtn = document.getElementById('pwa-ticket-reply-submit-btn');
+    if (input) input.disabled = isClosed;
+    if (submitBtn) submitBtn.disabled = isClosed;
+  }
+
+  if (!messagesContainer) return;
+
+  if (messages.length === 0) {
+    messagesContainer.innerHTML = `<p style="text-align: center; color: var(--muted); padding: 20px;">Nenhuma mensagem registrada.</p>`;
+    return;
+  }
+
+  messagesContainer.innerHTML = messages.map(msg => {
+    const isMe = msg.sender_type === 'rider';
     const alignStyle = isMe ? 'align-self: flex-end; align-items: flex-end;' : 'align-self: flex-start; align-items: flex-start;';
     const bubbleStyle = isMe 
       ? 'background: linear-gradient(135deg, var(--primary), #c2410c); color: #ffffff; border-radius: 16px 16px 2px 16px; box-shadow: 0 4px 12px rgba(255, 183, 0, 0.25);'
       : 'background: #272732; border: 1px solid var(--border); color: var(--text); border-radius: 16px 16px 16px 2px;';
     const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Agora';
+    const senderLabel = isMe ? 'Você' : (msg.sender_type === 'admin' ? 'Suporte Central' : 'Sistema');
 
     return `
-      <div style="display: flex; flex-direction: column; max-width: 80%; ${alignStyle}">
-        <span style="font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; font-weight: 500;">${msg.sender_name}</span>
+      <div style="display: flex; flex-direction: column; max-width: 85%; ${alignStyle}">
+        <span style="font-size: 0.7rem; color: var(--muted); margin-bottom: 3px; font-weight: 600;">${senderLabel}</span>
         <div style="padding: 10px 14px; font-size: 0.88rem; line-height: 1.45; word-break: break-word; ${bubbleStyle}">
           ${escapeHtml(msg.message)}
         </div>
-        <span style="font-size: 0.65rem; color: var(--muted); margin-top: 4px;">${time}</span>
+        <span style="font-size: 0.65rem; color: var(--muted); margin-top: 3px;">${time}</span>
       </div>
     `;
   }).join('');
-  container.scrollTop = container.scrollHeight;
+
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-async function sendMotoChatMessage(event) {
+async function submitRiderTicketReply(event) {
   if (event) event.preventDefault();
+  if (riderSupportState.isSubmitting || !riderSupportState.currentTicketId) return;
 
-  const input = document.getElementById('pwa-chat-input');
-  if (!input) return;
+  const input = document.getElementById('pwa-ticket-reply-input');
+  const submitBtn = document.getElementById('pwa-ticket-reply-submit-btn');
 
-  const val = input.value.trim();
-  if (!val) return;
+  const val = input?.value.trim();
+  if (!val || val.length < 1 || val.length > 4000) return;
 
-  if (!db || !currentRider) return;
-
-  input.value = ''; // clear input immediately
+  riderSupportState.isSubmitting = true;
+  if (submitBtn) submitBtn.disabled = true;
 
   try {
-    const { error } = await db
-      .from('support_messages')
-      .insert([{
-        client_email: currentRider.id,
-        sender_role: 'rider',
-        sender_name: currentRider.name,
-        message: val
-      }]);
+    const { data, error } = await supabaseClient.rpc('reply_my_rider_support_ticket', {
+      p_ticket_id: riderSupportState.currentTicketId,
+      p_message: val
+    });
 
     if (error) throw error;
+
+    if (data && data.success) {
+      if (input) input.value = '';
+      openRiderSupportChat(riderSupportState.currentTicketId);
+    } else {
+      showPWAToast(data?.message || "Erro ao responder chamado.");
+    }
   } catch (err) {
-    console.error("Error sending rider chat message:", err);
-    showPWAToast("Erro ao enviar mensagem.");
+    console.error("Error replying rider support ticket:", err);
+    showPWAToast("Erro ao enviar resposta.");
+  } finally {
+    riderSupportState.isSubmitting = false;
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
+
+function subscribeRiderSupportRealtime() {
+  if (riderSupportState.realtimeChannel || !supabaseClient) return;
+
+  riderSupportState.realtimeChannel = supabaseClient.channel('realtime:rider_support')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rider_support_tickets' }, () => {
+      loadRiderSupportTickets();
+      if (riderSupportState.currentTicketId) {
+        openRiderSupportChat(riderSupportState.currentTicketId);
+      }
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rider_support_messages' }, (payload) => {
+      loadRiderSupportTickets();
+      if (riderSupportState.currentTicketId && payload.new && payload.new.ticket_id === riderSupportState.currentTicketId) {
+        openRiderSupportChat(riderSupportState.currentTicketId);
+      }
+    })
+    .subscribe();
+}
+
+// ─── PWA FINANCIAL REPORTS & STATEMENT (AUTHORITATIVE LEDGER) ────────────────
+
+// ─── PWA FINANCIAL REPORTS & STATEMENT (AUTHORITATIVE LEDGER) ────────────────
+
+let currentReportsFilterPeriod = 'week'; // 'today', 'week', 'month', 'custom'
+let customReportsStartDate = null;
+let customReportsEndDate = null;
+let reportsStatementOffset = 0;
+const REPORTS_STATEMENT_LIMIT = 30;
+let reportsFetchToken = 0;
+let realtimeFinancialSubscription = null;
+let pwaStatementCachedItems = new Map();
+
+function formatISOShortDate(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function setReportsFilterPeriod(period) {
+  currentReportsFilterPeriod = period;
+
+  ['today', 'week', 'month', 'custom'].forEach(p => {
+    const pill = document.getElementById(`pwa-filter-${p}`);
+    if (pill) {
+      if (p === period) pill.classList.add('active');
+      else pill.classList.remove('active');
+    }
+  });
+
+  const customContainer = document.getElementById('pwa-custom-date-container');
+  if (period === 'custom') {
+    if (customContainer) customContainer.classList.remove('hidden');
+    const startInput = document.getElementById('pwa-filter-start-date');
+    const endInput = document.getElementById('pwa-filter-end-date');
+    if (startInput && !startInput.value) {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      startInput.value = formatISOShortDate(d);
+    }
+    if (endInput && !endInput.value) {
+      endInput.value = formatISOShortDate(new Date());
+    }
+    return;
+  } else {
+    if (customContainer) customContainer.classList.add('hidden');
+    customReportsStartDate = null;
+    customReportsEndDate = null;
+    loadPWAFinancialReports();
+  }
+}
+
+function applyCustomReportsDateFilter() {
+  const startInput = document.getElementById('pwa-filter-start-date');
+  const endInput = document.getElementById('pwa-filter-end-date');
+  if (!startInput || !endInput || !startInput.value || !endInput.value) {
+    showPWAToast('Por favor, selecione as datas inicial e final.');
+    return;
+  }
+  if (startInput.value > endInput.value) {
+    showPWAToast('A data inicial não pode ser posterior à data final.');
+    return;
+  }
+  const diffTime = Math.abs(new Date(endInput.value) - new Date(startInput.value));
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  if (diffDays > 366) {
+    showPWAToast('O período máximo de busca é de 366 dias.');
+    return;
+  }
+
+  customReportsStartDate = startInput.value;
+  customReportsEndDate = endInput.value;
+  loadPWAFinancialReports();
+}
+
+function clearCustomReportsDateFilter() {
+  const startInput = document.getElementById('pwa-filter-start-date');
+  const endInput = document.getElementById('pwa-filter-end-date');
+  if (startInput) startInput.value = '';
+  if (endInput) endInput.value = '';
+  setReportsFilterPeriod('week');
+}
+
+function loadReportsData() {
+  loadPWAFinancialReports();
+  initPWAFinancialRealtime();
+}
+
+async function loadPWAFinancialReports(isManualRefresh = false) {
+  if (!supabaseClient) return;
+
+  const currentToken = ++reportsFetchToken;
+  reportsStatementOffset = 0;
+
+  let startDate = null;
+  let endDate = null;
+  let labelText = 'Semana Operacional';
+
+  if (currentReportsFilterPeriod === 'today') {
+    const todayStr = formatISOShortDate(new Date());
+    startDate = todayStr;
+    endDate = todayStr;
+    labelText = 'Hoje';
+  } else if (currentReportsFilterPeriod === 'month') {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    startDate = formatISOShortDate(firstDay);
+    endDate = formatISOShortDate(now);
+    labelText = 'Mês Atual';
+  } else if (currentReportsFilterPeriod === 'custom' && customReportsStartDate && customReportsEndDate) {
+    startDate = customReportsStartDate;
+    endDate = customReportsEndDate;
+    labelText = 'Período Personalizado';
+  } else {
+    startDate = null;
+    endDate = null;
+    labelText = 'Semana Operacional';
+  }
+
+  const labelEl = document.getElementById('pwa-statement-period-label');
+  if (labelEl) labelEl.textContent = labelText;
+
+  const listContainer = document.getElementById('pwa-reports-list-container');
+  if (listContainer) {
+    listContainer.innerHTML = `
+      <div style="text-align: center; padding: 24px; color: var(--muted); font-size: 0.85rem;">
+        <span class="pwa-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px;"></span>
+        Carregando extrato financeiro...
+      </div>
+    `;
+  }
+
+  try {
+    const { data: heroData, error: heroErr } = await supabaseClient.rpc('get_my_rider_financial_summary', {
+      p_start_date: null,
+      p_end_date: null
+    });
+
+    if (currentToken !== reportsFetchToken) return;
+
+    if (heroErr) throw heroErr;
+    if (heroData && heroData.success) {
+      const heroNetEl = document.getElementById('pwa-hero-net-balance');
+      const heroResetEl = document.getElementById('pwa-hero-reset-info');
+      if (heroNetEl) heroNetEl.textContent = formatMoneyBR(heroData.net_total);
+      if (heroResetEl && heroData.next_reset_at) {
+        const resetDate = new Date(heroData.next_reset_at);
+        const resetFmt = resetDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+        heroResetEl.textContent = `Ciclo encerra em ${resetFmt} (Repasse quinta-feira)`;
+      }
+    }
+
+    const { data: summaryData, error: summaryErr } = await supabaseClient.rpc('get_my_rider_financial_summary', {
+      p_start_date: startDate,
+      p_end_date: endDate
+    });
+
+    if (currentToken !== reportsFetchToken) return;
+
+    if (summaryErr) throw summaryErr;
+    if (summaryData && summaryData.success) {
+      const countEl = document.getElementById('reports-deliveries-count');
+      const earnEl = document.getElementById('reports-deliveries-earnings');
+      const credEl = document.getElementById('reports-credits-total');
+      const dedEl = document.getElementById('reports-deductions-total');
+      const netEl = document.getElementById('reports-period-net-total');
+
+      if (countEl) countEl.textContent = summaryData.completed_deliveries_count || 0;
+      if (earnEl) earnEl.textContent = formatMoneyBR(summaryData.delivery_earnings || 0);
+      if (credEl) credEl.textContent = formatMoneyBR(summaryData.credits_total || 0);
+      if (dedEl) dedEl.textContent = `- ${formatMoneyBR(summaryData.deductions_total || 0)}`;
+      if (netEl) netEl.textContent = formatMoneyBR(summaryData.net_total || 0);
+    }
+
+    const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+      p_limit: REPORTS_STATEMENT_LIMIT,
+      p_offset: 0
+    });
+
+    if (currentToken !== reportsFetchToken) return;
+
+    if (stmtErr) throw stmtErr;
+    if (stmtData && stmtData.success) {
+      renderPWAFinancialStatementItems(stmtData.items || [], false);
+
+      const loadMoreBtn = document.getElementById('pwa-reports-load-more-btn');
+      if (loadMoreBtn) {
+        if (stmtData.has_more) {
+          loadMoreBtn.classList.remove('hidden');
+        } else {
+          loadMoreBtn.classList.add('hidden');
+        }
+      }
+    }
+
+    if (isManualRefresh) {
+      showPWAToast('Dados financeiros atualizados.');
+    }
+  } catch (err) {
+    console.error('Erro ao carregar relatórios financeiros:', err);
+    if (currentToken === reportsFetchToken && listContainer) {
+      listContainer.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: #ef4444; font-size: 0.82rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px;">
+          Falha ao carregar extrato financeiro. <br>
+          <button onclick="loadPWAFinancialReports()" style="margin-top: 8px; background: transparent; border: 1px solid #ef4444; color: #ef4444; padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">Tentar Novamente</button>
+        </div>
+      `;
+    }
+  }
+}
+
+async function loadMorePWAFinancialStatement() {
+  if (!supabaseClient) return;
+
+  const loadMoreBtn = document.getElementById('pwa-reports-load-more-btn');
+  if (loadMoreBtn) loadMoreBtn.disabled = true;
+
+  reportsStatementOffset += REPORTS_STATEMENT_LIMIT;
+
+  let startDate = null;
+  let endDate = null;
+  if (currentReportsFilterPeriod === 'today') {
+    const todayStr = formatISOShortDate(new Date());
+    startDate = todayStr;
+    endDate = todayStr;
+  } else if (currentReportsFilterPeriod === 'month') {
+    const now = new Date();
+    startDate = formatISOShortDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    endDate = formatISOShortDate(now);
+  } else if (currentReportsFilterPeriod === 'custom' && customReportsStartDate && customReportsEndDate) {
+    startDate = customReportsStartDate;
+    endDate = customReportsEndDate;
+  }
+
+  try {
+    const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+      p_limit: REPORTS_STATEMENT_LIMIT,
+      p_offset: reportsStatementOffset
+    });
+
+    if (stmtErr) throw stmtErr;
+
+    if (stmtData && stmtData.success) {
+      renderPWAFinancialStatementItems(stmtData.items || [], true);
+      if (loadMoreBtn) {
+        if (stmtData.has_more) {
+          loadMoreBtn.classList.remove('hidden');
+        } else {
+          loadMoreBtn.classList.add('hidden');
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao carregar mais lançamentos:', err);
+    showPWAToast('Não foi possível carregar mais lançamentos.');
+  } finally {
+    if (loadMoreBtn) loadMoreBtn.disabled = false;
+  }
+}
+
+function renderPWAFinancialStatementItems(items, isAppend) {
+  const container = document.getElementById('pwa-reports-list-container');
+  if (!container) return;
+
+  if (!isAppend) {
+    container.innerHTML = '';
+    pwaStatementCachedItems.clear();
+  }
+
+  if (items.length === 0 && !isAppend) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 32px 16px; color: var(--muted); font-size: 0.85rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;">
+        <div style="font-size: 1.8rem; margin-bottom: 6px;">📊</div>
+        <strong>Nenhum lançamento financeiro</strong><br>
+        <span style="font-size: 0.75rem;">Não há registros no período selecionado.</span>
+      </div>
+    `;
+    return;
+  }
+
+  items.forEach(item => {
+    pwaStatementCachedItems.set(item.transaction_id, item);
+
+    const isCredit = item.direction === 'credit';
+    const amountSign = isCredit ? '+' : '-';
+    const amountColor = isCredit ? '#10b981' : '#ef4444';
+    const iconBg = isCredit ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+    const iconSymbol = item.transaction_category === 'delivery_earning' ? '🛵' : (isCredit ? '💵' : '🎒');
+
+    let titleText = item.description || 'Lançamento Financeiro';
+    if (item.transaction_category === 'delivery_earning' && item.tele_code) {
+      titleText = `Entrega ${item.tele_code}`;
+    }
+
+    const txDate = new Date(item.transaction_at || item.created_at);
+    const dateFmt = txDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    const cardHtml = `
+      <div class="pwa-statement-card" onclick="openPWATransactionDetailModal('${item.transaction_id}')" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; transition: background 0.15s ease;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: ${iconBg}; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">
+            ${iconSymbol}
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <strong style="font-size: 0.85rem; color: var(--text); font-weight: 700;">${escapeHtml(titleText)}</strong>
+            <span style="font-size: 0.7rem; color: var(--muted);">${dateFmt}</span>
+          </div>
+        </div>
+        <div style="text-align: right; flex-shrink: 0;">
+          <strong style="font-size: 0.95rem; color: ${amountColor}; font-weight: 800; font-family: var(--font-display);">${amountSign} ${formatMoneyBR(item.amount)}</strong>
+          <span style="font-size: 0.65rem; color: var(--muted); display: block; text-transform: uppercase;">Detalhes ›</span>
+        </div>
+      </div>
+    `;
+    container.insertAdjacentHTML('beforeend', cardHtml);
+  });
+}
+
+function openPWATransactionDetailModal(transactionId) {
+  const item = pwaStatementCachedItems.get(transactionId);
+  if (!item) return;
+
+  const modal = document.getElementById('pwa-transaction-detail-modal');
+  if (!modal) return;
+
+  const categoryEl = document.getElementById('pwa-tx-detail-category');
+  const amountEl = document.getElementById('pwa-tx-detail-amount');
+  const dateEl = document.getElementById('pwa-tx-detail-date');
+  const typeEl = document.getElementById('pwa-tx-detail-type');
+  const teleRow = document.getElementById('pwa-tx-detail-tele-row');
+  const teleCodeEl = document.getElementById('pwa-tx-detail-tele-code');
+  const addrRow = document.getElementById('pwa-tx-detail-address-row');
+  const addrEl = document.getElementById('pwa-tx-detail-address');
+  const descEl = document.getElementById('pwa-tx-detail-description');
+
+  const isCredit = item.direction === 'credit';
+  const categoryLabels = {
+    'delivery_earning': 'Crédito de Entrega Concluída',
+    'credit': 'Crédito Administrativo / Bônus',
+    'consumable': 'Compra / Retirada de Consumível',
+    'negative_adjustment': 'Ajuste Financeiro Negativo',
+    'positive_adjustment': 'Ajuste Financeiro Positivo',
+    'refund': 'Estorno de Lançamento',
+    'other_discount': 'Desconto Diversos'
+  };
+
+  if (categoryEl) categoryEl.textContent = categoryLabels[item.transaction_category] || 'Detalhes do Lançamento';
+  if (amountEl) {
+    amountEl.textContent = `${isCredit ? '+' : '-'} ${formatMoneyBR(item.amount)}`;
+    amountEl.style.color = isCredit ? '#10b981' : '#ef4444';
+  }
+
+  const txDate = new Date(item.transaction_at || item.created_at);
+  if (dateEl) dateEl.textContent = txDate.toLocaleString('pt-BR');
+  if (typeEl) typeEl.textContent = isCredit ? 'Crédito (Entrada)' : 'Débito (Saída / Desconto)';
+
+  if (item.tele_id && item.tele_code) {
+    if (teleRow) teleRow.classList.remove('hidden');
+    if (teleCodeEl) teleCodeEl.textContent = item.tele_code;
+  } else {
+    if (teleRow) teleRow.classList.add('hidden');
+  }
+
+  if (item.delivery_address_summary) {
+    if (addrRow) addrRow.classList.remove('hidden');
+    if (addrEl) addrEl.textContent = item.delivery_address_summary;
+  } else {
+    if (addrRow) addrRow.classList.add('hidden');
+  }
+
+  if (descEl) descEl.textContent = item.description || 'Nenhuma observação registrada.';
+
+  modal.classList.remove('hidden');
+}
+
+function closePWATransactionDetailModal() {
+  const modal = document.getElementById('pwa-transaction-detail-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function initPWAFinancialRealtime() {
+  if (!supabaseClient || realtimeFinancialSubscription) return;
+
+  const fleetId = currentRiderData?.id;
+  if (!fleetId) return;
+
+  try {
+    realtimeFinancialSubscription = supabaseClient
+      .channel(`rider-financial-${fleetId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rider_financial_transactions',
+          filter: `rider_id=eq.${fleetId}`
+        },
+        (payload) => {
+          console.log('[Realtime Financial Update Payload]:', payload);
+          loadPWAFinancialReports(false);
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime Financial Channel Status]:', status);
+      });
+  } catch (err) {
+    console.warn('Erro ao inicializar subscrição realtime financeira:', err);
+  }
+}
+

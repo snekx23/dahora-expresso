@@ -13,12 +13,7 @@
   <link rel="icon" type="image/png" href="logo.png?v=3">
   <link rel="apple-touch-icon" href="logo.png?v=3">
 
-  <!-- Mapbox GL JS CSS & JS for Real Map -->
-  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 
-  <!-- Google Maps API -->
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBkwbG65d17USn4PLxNzyPN7QODNaWWZ0k&libraries=geometry,places"></script>
 
   <!-- Lucide & Supabase -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -839,118 +834,145 @@
       height: 22px;
     }
 
-    .pwa-map-right-actions {
+    /* ── PARTE 3: NOVOS CONTROLES FLUTUANTES SOBRE O MAPA ── */
+    .pwa-map-float-btn {
       position: absolute;
-      bottom: 96px;
-      right: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      z-index: 999;
-    }
-    .pwa-map-action-btn {
       width: 48px;
       height: 48px;
       border-radius: 50%;
-      background: #ffffff;
-      border: none;
-      color: #1c1917;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      background: #181820;
+      border: 1px solid var(--border);
+      color: #ffffff;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      position: relative;
-      transition: transform 0.1s;
+      z-index: 999;
+      transition: transform 0.15s ease, background-color 0.2s, box-shadow 0.2s;
     }
-    .pwa-map-action-btn:active {
-      transform: scale(0.95);
+    .pwa-map-float-btn:hover {
+      background: #272732;
     }
-    .pwa-map-action-btn svg {
+    .pwa-map-float-btn:active {
+      transform: scale(0.92);
+    }
+    .pwa-map-float-btn svg {
       width: 22px;
       height: 22px;
     }
-    .pwa-map-action-btn .badge {
+    .pwa-map-float-btn .badge {
       position: absolute;
-      top: -3px;
-      right: -3px;
+      top: -4px;
+      right: -4px;
       background: #ef4444;
-      color: white;
+      color: #ffffff;
       font-size: 0.65rem;
-      font-weight: 700;
-      width: 18px;
-      height: 18px;
+      font-weight: 800;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 2px solid #ffffff;
+      border: 2px solid #181820;
     }
 
-    .pwa-map-bottom-bar {
+    .pwa-map-float-left {
+      left: calc(16px + env(safe-area-inset-left, 0px));
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    }
+    .pwa-map-float-right {
+      right: calc(16px + env(safe-area-inset-right, 0px));
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    }
+    .pwa-map-float-above-menu {
+      right: calc(16px + env(safe-area-inset-right, 0px));
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .pwa-map-connect-btn {
       position: absolute;
-      bottom: 20px;
-      left: 16px;
-      right: 16px;
-      height: 64px;
-      background: #ffffff;
-      border-radius: 32px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
-      z-index: 999;
-    }
-    .pwa-bottom-bar-icon {
-      background: none;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      height: 50px;
+      min-width: 140px;
+      max-width: calc(100vw - 130px);
+      width: max-content;
+      white-space: nowrap;
       border: none;
-      color: #1c1917;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 8px;
-      transition: opacity 0.2s;
-    }
-    .pwa-bottom-bar-icon:active {
-      opacity: 0.6;
-    }
-    .pwa-bottom-bar-icon svg {
-      width: 22px;
-      height: 22px;
-    }
-    .pwa-btn-connect-pill {
-      flex: 1;
-      max-width: 170px;
-      margin: 0 16px;
-      height: 42px;
-      border: none;
-      border-radius: 21px;
+      border-radius: 25px;
       font-family: var(--font-display);
       font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
+      font-weight: 800;
+      padding: 0 22px;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      transition: background-color 0.2s, transform 0.1s, color 0.2s;
+      cursor: pointer;
+      z-index: 999;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+      transition: background-color 0.25s, transform 0.15s, box-shadow 0.25s;
     }
-    .pwa-btn-connect-pill:active {
-      transform: scale(0.98);
+    .pwa-map-connect-btn:active {
+      transform: translateX(-50%) scale(0.96);
     }
-    .pwa-btn-connect-pill:disabled {
-      opacity: 0.5;
+    .pwa-map-connect-btn:disabled {
+      opacity: 0.65;
       cursor: not-allowed;
     }
-    .pwa-btn-connect-pill.offline {
-      background: #e4e4e7; /* grey */
-      color: #1c1917;
+    .pwa-map-connect-btn.offline {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #ffffff;
     }
-    .pwa-btn-connect-pill.online {
-      background: #FF9900;
-      color: #000000;
+    .pwa-map-connect-btn.online {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: #ffffff;
+    }
+
+    /* Modal Overlay Styles */
+    .pwa-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .pwa-modal-overlay.hidden {
+      display: none !important;
+    }
+    .pwa-modal-card {
+      background: #181820;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    }
+
+    @media (max-width: 375px) {
+      .pwa-map-float-btn {
+        width: 44px;
+        height: 44px;
+      }
+      .pwa-map-float-above-menu {
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+      }
+      .pwa-map-connect-btn {
+        height: 46px;
+        font-size: 0.88rem;
+        padding: 0 16px;
+      }
     }
 
     /* ── NEW PAGES: PROFILE AND REPORTS ── */
@@ -1013,12 +1035,12 @@
 
     <div class="login-card">
       <h2>Entrar como Motoboy</h2>
-      <p>Use seu ID e PIN fornecidos pelo administrador.</p>
+      <p>Use seu Código de Acesso e PIN fornecidos pelo administrador.</p>
 
       <form onsubmit="handleMotoLogin(event)">
         <div class="form-group">
-          <label>Seu ID</label>
-          <input type="text" id="moto-id" required placeholder="Ex: MB-001" autocomplete="off" autocapitalize="characters">
+          <label>Código de Acesso</label>
+          <input type="text" id="moto-id" required placeholder="Ex: 2425" autocomplete="off" inputmode="numeric">
         </div>
         <div class="form-group">
           <label>PIN (4 dígitos)</label>
@@ -1028,6 +1050,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
           Entrar
         </button>
+
         <div id="login-error" class="login-error hidden"></div>
       </form>
     </div>
@@ -1059,8 +1082,27 @@
       </button>
     </header>
 
+    <!-- Card: Ativar Alertas de Novas Teles -->
+    <div id="pwa-push-alert-card" style="background: rgba(255, 183, 0, 0.08); border: 1px solid var(--primary); border-radius: var(--radius); padding: 14px 16px; margin: 12px 16px; display: flex; flex-direction: column; gap: 10px; z-index: 10; relative;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary); flex-shrink: 0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <div>
+          <strong style="font-size: 0.9rem; color: #ffffff; display: block;">Ativar alertas de novas Teles</strong>
+          <span style="font-size: 0.78rem; color: var(--muted); display: block;">Permita notificações para receber avisos mesmo quando o aplicativo estiver em segundo plano.</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; wrap: flex-wrap;">
+        <span id="pwa-push-status-badge" style="font-size: 0.75rem; color: var(--warning); font-weight: 600;">Status: Não ativado</span>
+        <button id="pwa-push-toggle-btn" class="pwa-btn pwa-btn-primary" onclick="enableRiderNotifications()" style="padding: 8px 14px; font-size: 0.8rem; font-weight: 700; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
+          Ativar alertas de novas Teles
+        </button>
+
+      </div>
+    </div>
+
     <!-- Main content area -->
     <main class="pwa-main">
+
 
       <!-- System Teles disabled -->
 
@@ -1079,117 +1121,124 @@
 
       <!-- Map Tab (Fullscreen style) -->
       <div id="pwa-tab-map" class="pwa-tab hidden" style="padding: 0; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
-        <!-- Leaflet Map -->
+        <!-- Google Map Container -->
         <div id="pwa-map" style="height: 100%; width: 100%;"></div>
 
-        <!-- Floating Profile Avatar -->
-        <button class="pwa-map-avatar-btn" onclick="switchPWATab('profile')" title="Ver Perfil" aria-label="Ver Perfil">
-          <img id="map-avatar-img" class="hidden">
-          <svg id="map-avatar-placeholder" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <!-- Top Status Capsule (Discreet Header Status) -->
+        <div class="pwa-map-status-capsule" style="position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 999; pointer-events: none; background: rgba(24, 24, 32, 0.85); backdrop-filter: blur(8px); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 6px;">
+          <span class="status-text" style="font-size: 0.72rem; color: var(--muted); font-weight: 600;">Status:</span>
+          <span class="status-val online" id="map-status-val" style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">ONLINE</span>
+        </div>
+
+        <!-- Bottom Floating Controls Overlay (Parte 3) -->
+        <!-- 1. Bottom Left: Suporte Chat Button -->
+        <button id="pwa-map-support-btn" class="pwa-map-float-btn pwa-map-float-left" onclick="switchPWATab('chat')" title="Suporte Chat" aria-label="Abrir Suporte Chat">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="badge hidden" id="pwa-support-badge">0</span>
         </button>
 
-        <!-- Floating Status Capsule -->
-        <div class="pwa-map-status-capsule">
-          <span class="status-text">Você está</span>
-          <span class="status-val offline" id="map-status-val">OFFLINE</span>
-        </div>
-
-        <!-- Centering Location Button -->
-        <button class="pwa-map-locate-btn" onclick="centerMapOnRider()" title="Centralizar Localização" aria-label="Centralizar Localização">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+        <!-- 2. Bottom Center: Conectar / Desconectar Main Action Button -->
+        <button id="pwa-map-connect-btn" class="pwa-map-connect-btn main-connect-btn offline" onclick="toggleConnectionState()" title="Alternar Status de Disponibilidade" aria-label="Alternar Status de Disponibilidade">
+          <span id="pwa-map-connect-btn-icon" style="display: flex; align-items: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+          </span>
+          <span id="pwa-map-connect-btn-text">Conectar</span>
         </button>
 
-        <!-- Right Action Buttons -->
-        <div class="pwa-map-right-actions">
-          <!-- Bottom Button: Minhas Teles -->
-          <button class="pwa-map-action-btn" id="map-my-teles-btn" onclick="switchPWATab('teles')" title="Minhas Teles" aria-label="Minhas Teles">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            <span class="badge hidden" id="map-teles-badge">0</span>
-          </button>
-        </div>
+        <!-- 3. Bottom Right: Menu Drawer Button -->
+        <button id="pwa-map-menu-btn" class="pwa-map-float-btn pwa-map-float-right" onclick="togglePWADrawer(true)" title="Abrir Menu" aria-label="Abrir Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
 
-        <!-- Floating Bottom Bar (White card) -->
-        <div class="pwa-map-bottom-bar">
-          <button class="pwa-bottom-bar-icon" style="position: relative;" id="pwa-bottom-chat-btn" onclick="switchPWATab('chat')" title="Suporte Chat" aria-label="Suporte Chat">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span class="pulse-dot hidden" id="pwa-chat-dot" style="position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: #ffb700; box-shadow: 0 0 8px #ffb700;"></span>
-          </button>
-          <button id="pwa-connect-btn" class="pwa-btn-connect-pill offline" onclick="toggleConnectionState()">Conectar</button>
-          <button class="pwa-bottom-bar-icon" onclick="togglePWADrawer(true)" title="Menu" aria-label="Menu">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          </button>
-        </div>
+        <!-- 4. Above Menu: Minhas Teles Button -->
+        <button id="pwa-map-teles-btn" class="pwa-map-float-btn pwa-map-float-above-menu" onclick="switchPWATab('teles')" title="Minhas Teles" aria-label="Abrir Minhas Teles">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="badge hidden" id="map-teles-badge">0</span>
+        </button>
       </div>
 
       <!-- Reports Tab -->
       <div id="pwa-tab-reports" class="pwa-tab hidden">
-        <div class="pwa-tab-header-row" style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-          <button class="pwa-back-btn" onclick="switchPWATab('map')" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        <div class="pwa-tab-header-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="pwa-back-btn" onclick="switchPWATab('map')" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            </button>
+            <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 800;">Relatórios & Ganhos</h2>
+          </div>
+          <button onclick="loadPWAFinancialReports(true)" title="Atualizar dados" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+            🔄 Atualizar
           </button>
-          <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 800;">Relatórios e Extrato</h2>
         </div>
 
-        <!-- Toggle View Selector -->
-        <div class="pwa-reports-view-toggle" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; background: var(--bg-card); padding: 4px; border-radius: 12px; border: 1px solid var(--border);">
-          <button class="pwa-filter-pill active" id="reports-toggle-history" onclick="switchReportsView('history')">Histórico de Entregas</button>
-          <button class="pwa-filter-pill" id="reports-toggle-weeks" onclick="switchReportsView('weeks')">Fechamentos Semanais</button>
+        <!-- Weekly Highlight Card (Authoritative Ledger Balance) -->
+        <div class="pwa-weekly-hero-card" style="background: linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(16,185,129,0.08) 100%); border: 1px solid rgba(251,191,36,0.3); border-radius: 16px; padding: 18px; margin-bottom: 20px; text-align: center; position: relative; overflow: hidden;">
+          <span style="font-size: 0.7rem; color: #fbbf24; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; display: block; margin-bottom: 4px;">Saldo da Semana Atual (Líquido)</span>
+          <strong id="pwa-hero-net-balance" style="font-size: 1.85rem; color: #10b981; font-weight: 900; font-family: var(--font-display); display: block; margin-bottom: 4px;">R$ 0,00</strong>
+          <span id="pwa-hero-reset-info" style="font-size: 0.72rem; color: var(--muted); display: block;">Ciclo semanal encerra na próxima quarta-feira</span>
         </div>
 
-        <!-- Date Range Filter Selector -->
-        <div class="pwa-date-filter" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;">
-          <span style="font-size: 0.72rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Busca por Período Customizado</span>
+        <!-- Filter Pills (Hoje, Semana, Mês, Personalizado) -->
+        <div class="pwa-period-filters" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; background: var(--bg-card); padding: 4px; border-radius: 12px; border: 1px solid var(--border);">
+          <button class="pwa-filter-pill active" id="pwa-filter-today" onclick="setReportsFilterPeriod('today')">Hoje</button>
+          <button class="pwa-filter-pill" id="pwa-filter-week" onclick="setReportsFilterPeriod('week')">Semana</button>
+          <button class="pwa-filter-pill" id="pwa-filter-month" onclick="setReportsFilterPeriod('month')">Mês</button>
+          <button class="pwa-filter-pill" id="pwa-filter-custom" onclick="setReportsFilterPeriod('custom')">Outro</button>
+        </div>
+
+        <!-- Custom Date Range Picker Container (Collapsible) -->
+        <div id="pwa-custom-date-container" class="hidden" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 16px; flex-direction: column; gap: 10px;">
+          <span style="font-size: 0.72rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Selecionar Intervalo de Datas</span>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div style="display: flex; flex-direction: column; gap: 4px;">
-              <label for="pwa-filter-start-date" style="font-size: 0.68rem; color: var(--muted); font-weight: 600;">Data Início</label>
+              <label for="pwa-filter-start-date" style="font-size: 0.68rem; color: var(--muted); font-weight: 600;">Data Inicial</label>
               <input type="date" id="pwa-filter-start-date" style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px; font-size: 0.8rem; outline: none; width: 100%;">
             </div>
             <div style="display: flex; flex-direction: column; gap: 4px;">
-              <label for="pwa-filter-end-date" style="font-size: 0.68rem; color: var(--muted); font-weight: 600;">Data Fim</label>
+              <label for="pwa-filter-end-date" style="font-size: 0.68rem; color: var(--muted); font-weight: 600;">Data Final</label>
               <input type="date" id="pwa-filter-end-date" style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px; font-size: 0.8rem; outline: none; width: 100%;">
             </div>
           </div>
           <div style="display: flex; gap: 8px; margin-top: 4px;">
-            <button class="pwa-btn pwa-btn-primary" onclick="applyCustomDateFilter()" style="flex: 1; font-size: 0.8rem; padding: 8px 12px; font-weight: 700; background: var(--primary); color: #181820; border: none; border-radius: 8px; cursor: pointer; text-align: center;">Filtrar Período</button>
-            <button class="pwa-btn pwa-btn-secondary" onclick="clearCustomDateFilter()" style="font-size: 0.8rem; padding: 8px 12px; font-weight: 600; background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">Limpar</button>
+            <button class="pwa-btn pwa-btn-primary" onclick="applyCustomReportsDateFilter()" style="flex: 1; font-size: 0.8rem; padding: 8px 12px; font-weight: 700; background: var(--primary); color: #181820; border: none; border-radius: 8px; cursor: pointer; text-align: center;">Aplicar Filtro</button>
+            <button class="pwa-btn pwa-btn-secondary" onclick="clearCustomReportsDateFilter()" style="font-size: 0.8rem; padding: 8px 12px; font-weight: 600; background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">Limpar</button>
           </div>
         </div>
 
-        <!-- Deliveries History View -->
-        <div id="reports-history-view">
-          <!-- Period Selector -->
-          <div class="pwa-reports-filters" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; background: var(--bg-card); padding: 4px; border-radius: 12px; border: 1px solid var(--border);">
-            <button class="pwa-filter-pill active" id="filter-btn-day" onclick="setReportsPeriod('day')">Dia</button>
-            <button class="pwa-filter-pill" id="filter-btn-week" onclick="setReportsPeriod('week')">Semana</button>
-            <button class="pwa-filter-pill" id="filter-btn-month" onclick="setReportsPeriod('month')">Mês</button>
+        <!-- 4-Grid Financial Breakdown Summary Cards -->
+        <div class="pwa-reports-summary" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+          <div class="pwa-summary-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px;">
+            <span style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block;">Entregas (<span id="reports-deliveries-count">0</span>)</span>
+            <strong style="font-size: 1.15rem; color: #10b981; font-weight: 800; font-family: var(--font-display);" id="reports-deliveries-earnings">R$ 0,00</strong>
           </div>
-
-          <!-- Financial Summary Cards -->
-          <div class="pwa-reports-summary" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px;">
-            <div class="pwa-summary-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center;">
-              <span style="font-size: 0.68rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 6px;">Total Recebido</span>
-              <strong style="font-size: 1.35rem; color: #10b981; font-weight: 800; display: block;" id="reports-total-earned">R$ 0,00</strong>
-            </div>
-            <div class="pwa-summary-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center;">
-              <span style="font-size: 0.68rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 6px;">Corridas Feitas</span>
-              <strong style="font-size: 1.35rem; color: var(--primary); font-weight: 800; display: block;" id="reports-total-count">0</strong>
-            </div>
+          <div class="pwa-summary-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px;">
+            <span style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block;">Créditos & Bônus</span>
+            <strong style="font-size: 1.15rem; color: #3b82f6; font-weight: 800; font-family: var(--font-display);" id="reports-credits-total">R$ 0,00</strong>
           </div>
-
-          <!-- List of Completed Deliveries -->
-          <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--text);">Histórico do Período</h3>
-          <div id="pwa-reports-list-container" style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Rendered dynamically -->
+          <div class="pwa-summary-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px;">
+            <span style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block;">Consumíveis / Descontos</span>
+            <strong style="font-size: 1.15rem; color: #ef4444; font-weight: 800; font-family: var(--font-display);" id="reports-deductions-total">- R$ 0,00</strong>
+          </div>
+          <div class="pwa-summary-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px;">
+            <span style="font-size: 0.65rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block;">Líquido do Período</span>
+            <strong style="font-size: 1.15rem; color: var(--primary); font-weight: 800; font-family: var(--font-display);" id="reports-period-net-total">R$ 0,00</strong>
           </div>
         </div>
 
-        <!-- Weekly Closures View (Paid/Pending) -->
-        <div id="reports-weeks-view" class="hidden">
-          <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--text);">Fechamentos por Semana</h3>
-          <div id="pwa-weeks-list-container" style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Rendered dynamically by JS -->
-          </div>
+        <!-- Extrato Paginado -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text);">Extrato de Lançamentos</h3>
+          <span id="pwa-statement-period-label" style="font-size: 0.72rem; color: var(--muted); font-weight: 600;">Semana Operacional</span>
         </div>
+
+        <div id="pwa-reports-list-container" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+          <!-- Items rendered dynamically -->
+        </div>
+
+        <!-- Botão Carregar Mais -->
+        <button id="pwa-reports-load-more-btn" class="hidden" onclick="loadMorePWAFinancialStatement()" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); border-radius: 10px; font-weight: 700; font-size: 0.82rem; cursor: pointer; text-align: center; margin-bottom: 20px;">
+          Carregar Mais Lançamentos
+        </button>
       </div>
 
       <!-- Consumables Tab -->
@@ -1267,6 +1316,14 @@
               <input type="password" id="profile-pin" required placeholder="••••" maxlength="4" inputmode="numeric" style="width: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 12px 14px; outline: none;">
             </div>
 
+            <div class="form-group" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px;">
+              <label style="font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; color: var(--text);">Tema do Mapa</label>
+              <div style="display: flex; gap: 12px; margin-top: 8px;">
+                <button type="button" id="btn-theme-light" onclick="setMapTheme('light')" class="pwa-filter-pill" style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--border); font-weight: 700; cursor: pointer; text-align: center;">Claro</button>
+                <button type="button" id="btn-theme-dark" onclick="setMapTheme('dark')" class="pwa-filter-pill active" style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--border); font-weight: 700; cursor: pointer; text-align: center;">Escuro</button>
+              </div>
+            </div>
+
             <button type="submit" class="pwa-btn-block" id="save-profile-btn" style="margin-top: 24px;">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               Salvar Alterações
@@ -1276,30 +1333,87 @@
         </div>
       </div>
 
-      <!-- Support Chat Tab -->
+      <!-- Support Tickets Tab -->
       <div id="pwa-tab-chat" class="pwa-tab hidden" style="display: flex; flex-direction: column; height: 100%; padding: 0; padding-bottom: calc(var(--nav-h) + 4px); overflow: hidden;">
-        <div class="pwa-tab-header-row" style="display: flex; align-items: center; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); background: var(--bg-card); flex-shrink: 0;">
-          <button class="pwa-back-btn" onclick="switchPWATab('map')" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          </button>
-          <div style="display: flex; flex-direction: column;">
-            <h2 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; margin: 0;">Suporte da Central</h2>
-            <span style="font-size: 0.72rem; color: var(--muted);">Fale diretamente com o administrador</span>
+        <!-- Header Row -->
+        <div class="pwa-tab-header-row" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--bg-card); flex-shrink: 0;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button class="pwa-back-btn" onclick="switchPWATab('map')" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            </button>
+            <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 153, 0, 0.15); border: 1px solid var(--primary); display: flex; align-items: center; justify-content: center; color: var(--primary);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <div>
+              <h3 style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 800; margin: 0; color: var(--text);">Atendimento Dahora Expresso</h3>
+              <span style="font-size: 0.72rem; color: #10b981; font-weight: 600;">🟢 Atendimento Dahora Expresso</span>
+            </div>
           </div>
         </div>
 
-        <!-- Messages Area -->
-        <div id="pwa-chat-messages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-          <!-- dynamic messages -->
+        <!-- Chat Messages Feed -->
+        <div id="pwa-chat-messages-container" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: var(--bg);">
+          <!-- messages rendered dynamically -->
         </div>
 
-        <!-- Input Row -->
-        <form id="pwa-chat-form" onsubmit="sendMotoChatMessage(event)" style="padding: 12px 16px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; gap: 10px; align-items: center; flex-shrink: 0;">
-          <input type="text" id="pwa-chat-input" placeholder="Digite sua mensagem..." required style="flex: 1; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-size: 0.9rem; outline: none;" autocomplete="off">
-          <button type="submit" class="pwa-chat-send-btn" style="background: linear-gradient(135deg, var(--primary), #c2410c); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.1s; box-shadow: 0 4px 12px rgba(255, 183, 0, 0.25);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        <!-- Closed Banner -->
+        <div id="pwa-chat-closed-banner" class="hidden" style="padding: 12px; background: rgba(239, 68, 68, 0.1); border-top: 1px solid rgba(239, 68, 68, 0.2); text-align: center; color: #ef4444; font-size: 0.82rem; font-weight: 700;">
+          Este chamado está encerrado.
+        </div>
+
+        <!-- Direct Reply Input Bar -->
+        <form id="pwa-ticket-reply-form" onsubmit="submitRiderTicketReply(event)" style="padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
+          <input type="text" id="pwa-ticket-reply-input" placeholder="Digite uma mensagem..." required maxlength="4000" style="flex: 1; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 20px; color: var(--text); font-size: 0.88rem; outline: none;" autocomplete="off">
+          <button type="submit" id="pwa-ticket-reply-submit-btn" style="background: linear-gradient(135deg, var(--primary), #c2410c); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 12px rgba(255, 153, 0, 0.3);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </form>
+      </div>
+
+      <!-- Modal Novo Chamado (PWA) -->
+      <div id="modal-create-rider-ticket" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0; color: var(--text);">Novo Chamado</h3>
+            <button onclick="closeCreateRiderTicketModal()" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem;">✕</button>
+          </div>
+          <form onsubmit="submitCreateRiderTicket(event)" style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <label style="font-size: 0.78rem; font-weight: 700; color: var(--muted); display: block; margin-bottom: 4px;">Assunto *</label>
+              <input type="text" id="rider-ticket-subject" required minlength="3" maxlength="120" placeholder="Ex: Dúvida sobre repasse da semana" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font-size: 0.88rem;">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div>
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--muted); display: block; margin-bottom: 4px;">Categoria *</label>
+                <select id="rider-ticket-category" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font-size: 0.85rem;">
+                  <option value="delivery_issue">Problema em Entrega</option>
+                  <option value="payment_question">Dúvida sobre Pagamento</option>
+                  <option value="consumable_question">Consumíveis / Bag</option>
+                  <option value="app_problem">Problema no Aplicativo</option>
+                  <option value="account_problem">Problema na Conta</option>
+                  <option value="other" selected>Outros Assuntos</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--muted); display: block; margin-bottom: 4px;">Prioridade</label>
+                <select id="rider-ticket-priority" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font-size: 0.85rem;">
+                  <option value="low">Baixa</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="high">Alta</option>
+                  <option value="urgent">Urgente</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style="font-size: 0.78rem; font-weight: 700; color: var(--muted); display: block; margin-bottom: 4px;">Mensagem Inicial *</label>
+              <textarea id="rider-ticket-message" required minlength="1" maxlength="4000" rows="4" placeholder="Descreva detalhadamente a sua solicitação..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font-size: 0.88rem; resize: vertical;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px;">
+              <button type="button" onclick="closeCreateRiderTicketModal()" style="padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; font-size: 0.85rem;">Cancelar</button>
+              <button type="submit" id="submit-create-rider-ticket-btn" style="padding: 10px 18px; border-radius: 8px; border: none; background: linear-gradient(135deg, var(--primary), #c2410c); color: white; font-weight: 700; cursor: pointer; font-size: 0.85rem;">Abrir Chamado</button>
+            </div>
+          </form>
+        </div>
       </div>
 
     </main>
@@ -1359,6 +1473,10 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             Editar Perfil
           </button>
+          <button class="pwa-drawer-item" id="pwa-connect-btn" onclick="toggleConnectionState()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            <span id="pwa-connect-btn-text">Conectar</span>
+          </button>
           <button class="pwa-drawer-item hidden" id="pwa-nav-install" onclick="triggerAppInstall()">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Instalar no Celular
@@ -1416,9 +1534,150 @@
         <button class="pwa-btn pwa-btn-primary" id="pending-tele-accept-btn" onclick="acceptSelectedPendingTele()" style="flex: 1; background: var(--primary); color: #fff;">Aceitar</button>
       </div>
     </div>
+  <!-- Modal: Nova Tele Atribuída (Alta Prioridade) -->
+  <div id="modal-high-priority-tele" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 380px; padding: 24px; text-align: center; border: 2px solid var(--primary); box-shadow: 0 0 32px rgba(255, 183, 0, 0.3);">
+      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(255,183,0,0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <h3 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; margin-bottom: 8px;">Nova Tele Atribuída!</h3>
+      <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 20px;">Você recebeu uma nova entrega. Verifique os detalhes abaixo:</p>
+
+      <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: left; margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 0.82rem;"><span style="color: var(--muted);">Estabelecimento:</span> <strong id="high-priority-client">—</strong></div>
+        <div style="font-size: 0.82rem;"><span style="color: var(--muted);">Coleta:</span> <strong id="high-priority-pickup">—</strong></div>
+        <div style="font-size: 0.82rem;"><span style="color: var(--muted);">Entrega:</span> <strong id="high-priority-address">—</strong></div>
+        <div style="font-size: 0.95rem; font-weight: 700; color: #10b981; margin-top: 4px;"><span style="color: var(--muted); font-size: 0.8rem; font-weight: normal;">Taxa Motoboy:</span> <span id="high-priority-price">R$ 0,00</span></div>
+      </div>
+
+      <button class="pwa-btn pwa-btn-primary" onclick="closeHighPriorityModal()" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 700; background: var(--primary); color: #000; border: none; border-radius: 10px; cursor: pointer;">
+        Ver detalhes
+      </button>
+    </div>
   </div>
 
+  <!-- Modal / Drawer: Detalhes da Tele -->
+  <div id="pwa-tele-details-modal" class="modal-overlay hidden" style="z-index: 99990; backdrop-filter: blur(4px);">
+    <div class="modal-card" style="max-width: 440px; width: 92%; padding: 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
+        <div>
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 700;">Detalhes da Entrega</span>
+          <h3 id="pwa-detail-tele-code" style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; color: var(--text);">#TELE-000</h3>
+        </div>
+        <button onclick="closeTeleDetailsModal()" style="background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Seção COLETA -->
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 10px; padding: 14px;">
+          <span style="font-size: 0.7rem; color: #ffb700; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">COLETA</span>
+          <div style="font-weight: 700; font-size: 0.92rem; color: var(--text);" id="pwa-detail-client-name">Estabelecimento</div>
+          <div style="font-size: 0.82rem; color: var(--muted); margin-top: 4px;" id="pwa-detail-pickup-address">Endereço de Coleta</div>
+          <div style="font-size: 0.78rem; color: var(--muted); margin-top: 4px;" id="pwa-detail-client-phone-container"></div>
+        </div>
+
+        <!-- Seção ENTREGA -->
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 10px; padding: 14px;">
+          <span style="font-size: 0.7rem; color: #10b981; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">ENTREGA</span>
+          <div style="font-weight: 700; font-size: 0.92rem; color: var(--text);" id="pwa-detail-recipient-name">Destinatário</div>
+          <div style="font-size: 0.82rem; color: var(--muted); margin-top: 2px;" id="pwa-detail-recipient-phone">Telefone</div>
+          <div style="font-size: 0.85rem; color: var(--text); font-weight: 600; margin-top: 6px; line-height: 1.4;" id="pwa-detail-delivery-address">Endereço de Entrega</div>
+          <div style="font-size: 0.78rem; color: var(--muted); margin-top: 4px;" id="pwa-detail-delivery-details">Complemento / Ref / Bairro</div>
+          <div style="font-size: 0.78rem; color: #ffb700; margin-top: 6px; font-weight: 500;" id="pwa-detail-notes"></div>
+        </div>
+
+        <!-- Seção VALORES -->
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 0.7rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block;">VALORES E PAGAMENTO</span>
+          <div style="display: flex; justify-content: space-between; font-size: 0.82rem;"><span style="color: var(--muted);">Valor do Pedido:</span> <strong id="pwa-detail-order-amount">R$ 0,00</strong></div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.82rem;"><span style="color: var(--muted);">Taxa da Entrega:</span> <strong id="pwa-detail-delivery-charge">R$ 0,00</strong></div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.82rem;"><span style="color: var(--muted);">Forma de Pagamento:</span> <strong id="pwa-detail-payment-method">Faturado</strong></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px;">
+            <span style="color: #10b981; font-weight: 700; font-size: 0.85rem;">Ganho Motoboy:</span>
+            <strong style="font-size: 1.1rem; color: var(--primary); font-family: var(--font-display);" id="pwa-detail-rider-earning">R$ 0,00</strong>
+          </div>
+        </div>
+
+        <!-- Botões de Ação Secundária (WhatsApp e Rota) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button id="pwa-detail-whatsapp-btn" class="pwa-btn" style="background: #25D366; color: #000; font-weight: 700; font-size: 0.8rem; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; border: none; border-radius: 8px; cursor: pointer;">
+            💬 WhatsApp Cliente
+          </button>
+          <button id="pwa-detail-route-btn" class="pwa-btn" style="background: rgba(255,255,255,0.08); color: #fff; font-weight: 700; font-size: 0.8rem; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;">
+            📍 Abrir Rota
+          </button>
+        </div>
+
+        <!-- Botão Operacional Principal -->
+        <div id="pwa-detail-action-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Detalhes da Transação Financeira -->
+  <div id="pwa-transaction-detail-modal" class="modal-overlay hidden" style="z-index: 99996; backdrop-filter: blur(4px);">
+    <div class="modal-card" style="max-width: 400px; width: 90%; padding: 22px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+        <h3 id="pwa-tx-detail-category" style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: var(--text);">Detalhes do Lançamento</h3>
+        <button onclick="closePWATransactionDetailModal()" style="background: transparent; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 4px;">✕</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+        <div style="text-align: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 14px;">
+          <span style="font-size: 0.7rem; color: var(--muted); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 4px;">Valor da Transação</span>
+          <strong id="pwa-tx-detail-amount" style="font-size: 1.6rem; font-weight: 900; font-family: var(--font-display);">R$ 0,00</strong>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.84rem;">
+          <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Data / Hora:</span> <strong id="pwa-tx-detail-date" style="color: var(--text);">--</strong></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Tipo:</span> <strong id="pwa-tx-detail-type" style="color: var(--text);">--</strong></div>
+          <div id="pwa-tx-detail-tele-row" class="hidden" style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Tele / Código:</span> <strong id="pwa-tx-detail-tele-code" style="color: var(--primary);">--</strong></div>
+          <div id="pwa-tx-detail-address-row" class="hidden" style="display: flex; flex-direction: column; gap: 2px;"><span style="color: var(--muted);">Endereço da Entrega:</span> <span id="pwa-tx-detail-address" style="color: var(--text); font-weight: 600;">--</span></div>
+          <div style="display: flex; flex-direction: column; gap: 2px;"><span style="color: var(--muted);">Descrição / Observação:</span> <span id="pwa-tx-detail-description" style="color: var(--text); line-height: 1.4;">--</span></div>
+        </div>
+      </div>
+
+      <button onclick="closePWATransactionDetailModal()" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: var(--text); border-radius: 10px; font-weight: 700; font-size: 0.85rem; cursor: pointer; text-align: center;">
+        Fechar
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal de Alerta Acessível: Tentativa de Desconexão com Teles Ativas (Parte 3) -->
+  <div id="modal-active-teles-warning" class="pwa-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="active-teles-modal-title" tabindex="-1">
+    <div class="pwa-modal-card">
+      <div class="pwa-modal-header" style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); display: flex; align-items: center; justify-content: center; color: #ef4444; flex-shrink: 0;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div>
+          <h3 id="active-teles-modal-title" style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: var(--text);">Entrega em Andamento</h3>
+          <p style="font-size: 0.8rem; color: var(--muted);">Você possui corridas ativas vinculadas.</p>
+        </div>
+      </div>
+
+      <div class="pwa-modal-body" style="margin: 16px 0;">
+        <p style="font-size: 0.88rem; color: var(--text); line-height: 1.5;">
+          Não é possível ficar offline no momento. Você possui entregas em andamento. Conclua-a ou solicite suporte antes de se desconectar.
+        </p>
+      </div>
+
+      <div class="pwa-modal-footer" style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button id="btn-close-teles-warning" onclick="closeModalActiveTelesWarning()" class="pwa-btn-secondary" style="padding: 10px 16px; border-radius: 10px; font-weight: 700; font-size: 0.85rem; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); cursor: pointer;">
+          Entendi
+        </button>
+        <button id="btn-go-to-teles" onclick="closeModalAndGoToTeles()" class="pwa-btn-primary" style="padding: 10px 16px; border-radius: 10px; font-weight: 700; font-size: 0.85rem; background: var(--primary); color: #000000; border: none; cursor: pointer;">
+          Ver Minhas Teles
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.local.js"></script>
   <script src="config.js"></script>
   <script src="motoboy.js?v=20260708_v8"></script>
+
 </body>
 </html>

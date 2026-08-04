@@ -1,17 +1,25 @@
 // Dahora Expresso - Core Application Logic
 
-mapboxgl.accessToken = window.MAPBOX_ACCESS_TOKEN || ['pk', 'eyJ1Ijoic25la3giLCJhIjoiY21xc3g5eXEzMGQweTJzb2xoemg1YzQwZCJ9', 'SyNFqkGgDnkuvY2wRpFDhg'].join('.');
+
+
 
 // Supabase Configuration
-const supabaseUrl = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.url : 'https://fajkqyapnycnnumpdwrr.supabase.co';
-const supabaseKey = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.key : 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a';
+const supabaseUrl = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.url : 'http://127.0.0.1:54321';
+const supabaseKey = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.key : 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
 let supabaseClient = null;
 let maxSimultaneousDeliveries = 1;
 if (window.supabase) {
-  supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+  supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
 } else {
   console.error("Supabase SDK not loaded!");
 }
+
 
 // Mock Database States (updated dynamically from Supabase)
 const mockData = {
@@ -35,35 +43,125 @@ let teleViewMode = 'list';
 let currentClientTeleFilter = 'all';
 let clientTeleViewMode = 'list';
 
-async function fetchCommerces() {
-  if (!supabaseClient) {
-    commercesList = [
-      { id: '1', nome: 'Lancheria Dahora' },
-      { id: '2', nome: 'Pizzaria da Nonna' },
-      { id: '3', nome: 'Dogão Express' },
-      { id: '4', nome: 'Lanchonete Dahora' }
-    ];
-    return;
+let commercialClientsSelectCache = [];
+let currentActiveSession = null;
+let currentAdminProfile = null;
+
+async function checkAdminSession() {
+  if (!supabaseClient) return null;
+  try {
+    const { data: sessionData, error: sessionErr } = await supabaseClient.auth.getSession();
+    if (sessionErr || !sessionData || !sessionData.session) {
+      currentActiveSession = null;
+      currentAdminProfile = null;
+      return null;
+    }
+
+    currentActiveSession = sessionData.session;
+    console.log(`[AUTH AUDIT] Session active. auth.uid: ${currentActiveSession.user.id}, email: ${currentActiveSession.user.email}`);
+
+    if (!currentAdminProfile) {
+      const { data: profile, error: profileErr } = await supabaseClient
+        .from('user_profiles')
+        .select('id, user_id, name, email, role, is_active')
+        .or(`user_id.eq.${currentActiveSession.user.id},id.eq.${currentActiveSession.user.id}`)
+        .maybeSingle();
+
+      if (profileErr || !profile || !profile.is_active) {
+        console.warn("[AUTH AUDIT] Admin profile invalid or inactive:", profileErr?.message || profile);
+        await supabaseClient.auth.signOut();
+        currentActiveSession = null;
+        currentAdminProfile = null;
+        return null;
+      }
+      currentAdminProfile = profile;
+      console.log(`[AUTH AUDIT] Admin profile validated. role: ${profile.role}, is_active: ${profile.is_active}`);
+    }
+
+    return { session: currentActiveSession, profile: currentAdminProfile };
+  } catch (err) {
+    console.error("[AUTH AUDIT] Session check error:", err);
+    currentActiveSession = null;
+    currentAdminProfile = null;
+    return null;
   }
+}
+
+function handleInvalidSession(customMessage) {
+  currentActiveSession = null;
+  currentAdminProfile = null;
+
+  if (typeof dashboardRealtimeChannel !== 'undefined' && dashboardRealtimeChannel) {
+    try { supabaseClient.removeChannel(dashboardRealtimeChannel); } catch (e) {}
+    dashboardRealtimeChannel = null;
+  }
+
+  mockData.fleet = [];
+  mockData.clientHistory = [];
+  mockData.pendingDeliveries = [];
+  mockData.cities = [];
+  mockData.riderConsumables = [];
+
+  const msg = customMessage || "Sua sessão expirou. Faça login novamente.";
+  if (typeof showToastNotification === 'function') {
+    showToastNotification(msg);
+  }
+
+  const viewLanding = document.getElementById('view-landing');
+  const viewDashboard = document.getElementById('view-dashboard');
+  if (viewLanding) viewLanding.classList.add('active');
+  if (viewDashboard) viewDashboard.classList.remove('active');
+  switchLoginTab('owner');
+}
+
+let clientsFetchState = 'idle'; // 'idle' | 'loading' | 'loaded' | 'failed'
+
+async function fetchCommerces() {
+  if (!supabaseClient || !currentActiveSession) return;
+  clientsFetchState = 'loading';
   try {
     const { data, error } = await supabaseClient
       .from('commercial_clients')
-      .select('id, establishment_name, client_code, lifecycle_status')
+      .select('id, client_code, establishment_name, responsible_name, lifecycle_status, is_internal, address, neighborhood, city, postal_code')
+      .order('is_internal', { ascending: false })
       .order('establishment_name', { ascending: true });
 
     if (error) {
-      console.warn("Aviso ao buscar commercial_clients:", error);
+      clientsFetchState = 'failed';
+      if (error.status === 401 || error.code === '42501') {
+        handleInvalidSession();
+        return;
+      }
+      console.error("Erro ao carregar commercial_clients:", error.message || error);
+      const hintEl = document.getElementById('admin-client-select-hint');
+      if (hintEl) hintEl.textContent = `Erro ao carregar clientes: ${error.message}`;
       return;
     }
 
-    commercesList = (data || []).map(c => ({
+    commercialClientsSelectCache = data || [];
+    opClientsStoreMap.clear();
+    (commercialClientsSelectCache || []).forEach(c => {
+      if (c && c.id) {
+        opClientsStoreMap.set(String(c.id), c);
+      }
+    });
+    clientsFetchState = 'loaded';
+
+    commercesList = commercialClientsSelectCache.map(c => ({
       id: c.id,
-      nome: c.establishment_name || c.client_code || 'Cliente'
+      nome: c.is_internal ? 'Dahora Expresso — Operação Interna' : (c.establishment_name || c.client_code || 'Cliente')
     }));
+
+    if (typeof renderCommercialClientsDropdown === 'function') {
+      renderCommercialClientsDropdown(commercialClientsSelectCache);
+    }
   } catch (err) {
+    clientsFetchState = 'failed';
     console.error("Error fetching commercial_clients:", err);
   }
 }
+
+
 
 // Escapes HTML-special characters so values from the database can never be
 // rendered as markup (prevents stored XSS via fields like address/name).
@@ -110,39 +208,67 @@ let clientRatings = [];
 
 // Async functions to sync with Supabase
 async function fetchFleet() {
-  if (!supabaseClient) return;
+  if (!supabaseClient || !currentActiveSession) return;
   try {
     const { data, error } = await supabaseClient
       .from('fleet')
-      .select('*')
-      .order('id', { ascending: true });
-    if (error) throw error;
-    mockData.fleet = data.map(item => ({
-      id: String(item.id),
-      name: item.name,
-      vehicle: item.vehicle,
-      plate: item.plate,
-      status: item.status,
-      delivery: item.delivery,
-      battery: item.battery_level != null ? `${item.battery_level}%` : (item.battery || '100%'),
-      battery_level: item.battery_level != null ? item.battery_level : (parseInt(item.battery) || 100),
-      rating: parseFloat(item.rating),
-      statusClass: item.status_class,
-      pin: item.pin || '—',
-      bypassDistanceLimit: !!item.bypass_distance_limit,
-      maxSimultaneousDeliveries: parseInt(item.max_simultaneous_deliveries) || 1,
-      lat: item.lat,
-      lng: item.lng
-    }));
+      .select('*, rider_device_status(*)');
+    if (error) {
+      if (error.status === 401 || error.code === '42501') {
+        handleInvalidSession();
+        return;
+      }
+      throw error;
+    }
+    mockData.fleet = (data || []).map(item => {
+      const devStatus = Array.isArray(item.rider_device_status) ? item.rider_device_status[0] : item.rider_device_status;
+      const batterySupported = devStatus ? Boolean(devStatus.battery_supported) : false;
+      const batteryLevel = (devStatus && batterySupported && devStatus.battery_level != null) ? devStatus.battery_level : null;
+      const isCharging = devStatus ? devStatus.is_charging : null;
+      const lastSeenAt = devStatus ? devStatus.last_seen_at : null;
+
+      const isStale = lastSeenAt ? ((Date.now() - new Date(lastSeenAt).getTime()) > 10 * 60 * 1000) : false;
+
+      let batteryDisplay = '🔋 Indisponível';
+      if (batterySupported && batteryLevel !== null) {
+        if (isCharging) {
+          batteryDisplay = `⚡ ${batteryLevel}% — Carregando`;
+        } else {
+          batteryDisplay = `🔋 ${batteryLevel}%`;
+        }
+        if (isStale) {
+          batteryDisplay += ' — desatualizado';
+        }
+      }
+
+      return {
+        id: String(item.id),
+        motoboy_code: item.motoboy_code,
+        name: item.name,
+        phone: item.phone,
+        vehicle: item.vehicle,
+        plate: item.plate,
+        status: item.status,
+        battery: batteryDisplay,
+        battery_level: batteryLevel,
+        is_charging: isCharging,
+        battery_supported: batterySupported,
+        last_seen_at: lastSeenAt,
+        is_stale: isStale,
+        lat: item.lat,
+        lng: item.lng
+      };
+    });
   } catch (err) {
     console.error("Error fetching fleet from Supabase:", err);
   }
 }
 
+
 // Generate next sequential Motoboy ID (#MB-0001, #MB-0002, ...)
 async function getNextRiderID() {
   let maxNum = 0;
-  if (supabaseClient) {
+  if (supabaseClient && currentActiveSession) {
     const { data } = await supabaseClient.from('fleet').select('id');
     (data || []).forEach(item => {
       const match = (item.id || '').match(/#MB-(\d+)/);
@@ -171,8 +297,8 @@ function getFixedPriceFormatted(address) {
 }
 
 async function fetchClientHistory() {
+  if (!supabaseClient || !currentActiveSession) return;
   await fetchCommerces();
-  if (!supabaseClient) return;
 
   try {
     const { data, error } = await supabaseClient
@@ -181,17 +307,25 @@ async function fetchClientHistory() {
       .order('created_at', { ascending: false });
 
     if (error) {
+      if (error.status === 401 || error.code === '42501') {
+        handleInvalidSession();
+        return;
+      }
       console.warn("Aviso ao buscar teles em fetchClientHistory:", error);
       return;
     }
 
+
     mockData.clientHistory = (data || []).map(item => ({
       id: escapeHtml(String(item.tele_code || item.id)),
       raw_id: item.id,
+      tele_code: item.tele_code || item.id,
       client_id: item.client_id,
       client: escapeHtml(resolveClientDisplayName(item)),
-      destName: escapeHtml(item.dest_name || 'Cliente'),
-      address: escapeHtml(item.address),
+      destName: escapeHtml(item.recipient_name || item.dest_name || 'Cliente'),
+      address: escapeHtml(item.delivery_address || item.address || ''),
+      delivery_address: escapeHtml(item.delivery_address || item.address || ''),
+      pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
       rider: escapeHtml(item.rider || 'Aguardando Despacho'),
       dist: '—',
       price: formatMoneyBR(Number(item.delivery_charge || item.valor || 15)),
@@ -200,6 +334,7 @@ async function fetchClientHistory() {
       statusClass: item.status === 'concluida' ? 'status-success' : (item.status === 'cancelada' ? 'status-danger' : 'status-warning'),
       payment_status: 'Pendente',
       created_at: item.created_at,
+      version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
       total_order_amount: item.total_order_amount || null
     }));
   } catch (err) {
@@ -392,9 +527,14 @@ async function fetchPendingDeliveries() {
 
     mockData.pendingDeliveries = (data || []).map(item => ({
       id: escapeHtml(String(item.id || item.tele_code || '')),
-      client: escapeHtml(item.client_name || item.client || 'Cliente Comercial'),
+      raw_id: item.id,
+      tele_code: item.tele_code || item.id,
+      client_id: item.client_id,
+      client: escapeHtml(resolveClientDisplayName(item)),
       destName: escapeHtml(item.recipient_name || item.dest_name || 'Destinatário'),
       address: escapeHtml(item.delivery_address || item.address || ''),
+      delivery_address: escapeHtml(item.delivery_address || item.address || ''),
+      pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
       dist: item.dist || '3,5 km',
       price: item.delivery_charge ? `R$ ${parseFloat(item.delivery_charge).toFixed(2).replace('.', ',')}` : getFixedPriceFormatted(item.delivery_address || item.address),
       payment: escapeHtml(item.payment_method || item.payment || 'Faturado'),
@@ -404,6 +544,7 @@ async function fetchPendingDeliveries() {
       dest_lat: item.dest_lat,
       dest_lng: item.dest_lng,
       created_at: item.created_at,
+      version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
       total_order_amount: item.total_order_amount || null
     }));
   } catch (err) {
@@ -411,8 +552,18 @@ async function fetchPendingDeliveries() {
   }
 }
 
+function formatRiderDisplayName(r) {
+  if (!r) return 'Motoboy sem nome';
+  const name = r.name || r.full_name || r.motoboy_name || '';
+  const code = r.motoboy_code || r.code || '';
+  if (name && code) return `${name} — ${code}`;
+  if (name) return name;
+  if (code) return `Motoboy — ${code}`;
+  return 'Motoboy sem nome';
+}
+
 async function fetchRiderConsumables() {
-  if (!supabaseClient) return;
+  if (!supabaseClient || !currentActiveSession) return;
   try {
     const { data, error } = await supabaseClient
       .from('rider_consumable_purchases')
@@ -420,20 +571,27 @@ async function fetchRiderConsumables() {
       .order('created_at', { ascending: false });
 
     if (error) {
+      if (error.status === 401 || error.code === '42501') {
+        handleInvalidSession();
+        return;
+      }
       console.warn("Aviso ao buscar rider_consumable_purchases:", error.message);
       return;
     }
 
     mockData.riderConsumables = (data || []).map(item => ({
       id: item.id,
-      rider_id: escapeHtml(String(item.rider_id || item.motoboy_id || '')),
-      rider_name: escapeHtml(item.rider_name || item.motoboy_name || 'Motoboy'),
-      categoria: escapeHtml(item.categoria || 'Consumível'),
-      item_type: escapeHtml(item.item_type || item.item_name || 'Item'),
+      rider_id: escapeHtml(String(item.motoboy_id || item.rider_id || '')),
+      rider_name: escapeHtml(item.motoboy_name || item.rider_name || 'Motoboy'),
+      categoria: escapeHtml(item.categoria === 'vale' ? 'Vale' : 'Consumível'),
+      item_name: escapeHtml(item.item_name || 'Item'),
+      item_type: escapeHtml(item.item_name || 'Item'),
       quantidade: parseInt(item.quantidade || 1),
       valor_unitario: parseFloat(item.valor_unitario || item.amount || 0),
       amount: parseFloat(item.amount || 0),
       observacao: escapeHtml(item.observacao || ''),
+      status: item.status || 'active',
+      reversal_reason: item.reversal_reason || '',
       created_at: item.created_at
     }));
   } catch (err) {
@@ -456,9 +614,12 @@ async function fetchRiderCredits() {
 
     mockData.riderCredits = (data || []).map(item => ({
       id: item.id,
-      rider_id: escapeHtml(String(item.rider_id || item.motoboy_id || '')),
+      rider_id: escapeHtml(String(item.motoboy_id || item.rider_id || '')),
       amount: parseFloat(item.amount || 0),
-      description: escapeHtml(item.description || item.tipo || ''),
+      description: escapeHtml(item.description || ''),
+      direction: item.direction || 'credit',
+      status: item.status || 'active',
+      reversal_reason: item.reversal_reason || '',
       target_date: item.target_date || item.created_at,
       created_at: item.created_at
     }));
@@ -469,12 +630,11 @@ async function fetchRiderCredits() {
 
 
 const initAppHandler = async () => {
-  // Register Service Worker for PWA (com auto-atualização para nunca prender versão velha em cache)
+  // Register Service Worker for PWA
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
       .then(reg => {
-        reg.update(); // checa por nova versão a cada carregamento
-        // quando uma nova versão é encontrada, ativa assim que instalar
+        reg.update();
         reg.addEventListener('updatefound', () => {
           const sw = reg.installing;
           if (sw) sw.addEventListener('statechange', () => {
@@ -484,7 +644,6 @@ const initAppHandler = async () => {
       })
       .catch(err => console.error('Erro ao registrar Service Worker do Painel:', err));
 
-    // recarrega 1x quando um service worker novo assume o controle (evita HTML/JS desencontrados)
     let _swReloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (_swReloaded) return;
@@ -493,24 +652,12 @@ const initAppHandler = async () => {
     });
   }
 
-  // Hide loader after a simulated 1.2s delay for premium entry feel
+  // Hide loader after a initial delay
   setTimeout(() => {
     const loader = document.getElementById('loader');
     if (loader) loader.classList.add('hidden');
   }, 1200);
 
-  // Try to restore previous logged-in session, otherwise show the login card
-  const savedProfile = localStorage.getItem('loggedInProfile');
-  if (savedProfile && mockData.credentials[savedProfile]) {
-    mockData.activeProfile = savedProfile;
-    await loginSuccess();
-  } else {
-    switchLoginTab('owner');
-  }
-  
-  // Fetch initial cities data
-  await fetchCities();
-  
   // Set Date display in header
   const options = { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' };
   const currentDateEl = document.getElementById('current-date-span');
@@ -589,7 +736,6 @@ const initAppHandler = async () => {
     overlay.addEventListener('click', closeMobileSidebar);
   }
   
-  // Close sidebar on clicking navigation items on mobile
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
     item.addEventListener('click', () => {
       if (window.innerWidth <= 768) {
@@ -598,7 +744,6 @@ const initAppHandler = async () => {
     });
   });
 
-  // Close sidebar on clicking logout on mobile
   const logoutBtn = document.querySelector('.btn-logout');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
@@ -607,6 +752,23 @@ const initAppHandler = async () => {
       }
     });
   }
+
+  // 1. Restaurar e validar a sessão do Supabase Auth
+  const authState = await checkAdminSession();
+  if (!authState) {
+    // Nenhuma sessão ativa -> Exibir tela de login sem chamar APIs protegidas
+    handleInvalidSession("Sua sessão expirou. Faça login novamente.");
+    return;
+  }
+
+  // 2. Sessão Ativa & Válida -> Carregar painel
+  if (authState.profile && (authState.profile.role === 'client_user' || authState.profile.role === 'client')) {
+    mockData.activeProfile = 'client';
+  } else {
+    mockData.activeProfile = 'owner';
+  }
+
+  await loginSuccess();
 };
 
 if (document.readyState === 'loading') {
@@ -615,11 +777,9 @@ if (document.readyState === 'loading') {
   initAppHandler();
 }
 
-// Profile switching inside Landing Login Card
 function switchLoginTab(profile) {
   mockData.activeProfile = profile;
   
-  // Update UI active state of buttons
   document.querySelectorAll('.login-tabs .tab-btn').forEach(btn => {
     btn.classList.remove('active');
   });
@@ -627,31 +787,23 @@ function switchLoginTab(profile) {
   const tabBtn = document.querySelector(`.login-tabs .tab-btn[data-tab="${tabName}"]`);
   if (tabBtn) tabBtn.classList.add('active');
 
-  // Set default values based on profile selection
   const usernameInput = document.getElementById('username');
   const passwordInput = document.getElementById('password');
   const usernameLabel = document.getElementById('username-label');
   const passwordGroup = document.getElementById('password-group');
 
-  if (profile.startsWith('order')) {
+  if (profile.startsWith('order') || profile.startsWith('client')) {
     usernameLabel.innerText = 'Login do Parceiro';
     usernameInput.type = 'text';
     usernameInput.value = '';
-    usernameInput.placeholder = 'lanchonetedahora';
-    passwordInput.value = '';
-    passwordGroup.style.display = 'flex';
-  } else if (profile.startsWith('client')) {
-    usernameLabel.innerText = 'Login do Parceiro';
-    usernameInput.type = 'text';
-    usernameInput.value = '';
-    usernameInput.placeholder = 'lanchonetedahora';
+    usernameInput.placeholder = 'parceiro@mercadocentral.local';
     passwordInput.value = '';
     passwordGroup.style.display = 'flex';
   } else {
     usernameLabel.innerText = 'Login do Administrador';
     usernameInput.type = 'text';
     usernameInput.value = '';
-    usernameInput.placeholder = 'adm';
+    usernameInput.placeholder = 'admin@dahora.local';
     passwordInput.value = '';
     passwordGroup.style.display = 'flex';
   }
@@ -663,53 +815,63 @@ async function handleLogin(event) {
   const loginInput = document.getElementById('username').value.trim().toLowerCase();
   const passwordInput = document.getElementById('password').value.trim();
 
-  // Show loader during auth
   const loader = document.getElementById('loader');
   if (loader) loader.classList.remove('hidden');
 
-  // Capture the active login tab
-  const activeTabEl = document.querySelector('.login-tabs .tab-btn.active');
-  const activeTab = activeTabEl ? activeTabEl.getAttribute('data-tab') : 'owner';
-
-  // Strict credentials validation
-  if (activeTab === 'owner') {
-    if (loginInput === 'adm' && passwordInput === 'admin123') {
-      mockData.activeProfile = 'owner';
-    } else {
-      if (loader) loader.classList.add('hidden');
-      alert('Usuário ou senha incorretos para o perfil selecionado.');
-      return;
-    }
-  } else if (activeTab === 'client') {
-    if (loginInput === 'lanchonetedahora' && passwordInput === 'teste123') {
-      mockData.activeProfile = 'client';
-    } else {
-      if (loader) loader.classList.add('hidden');
-      alert('Usuário ou senha incorretos para o perfil selecionado.');
-      return;
-    }
-  } else {
-    if (loader) loader.classList.add('hidden');
-    alert('Aba de perfil inválida.');
-    return;
+  let emailToAuth = loginInput;
+  if (loginInput === 'adm' || loginInput === 'admin') {
+    emailToAuth = 'admin@dahora.local';
+  } else if (loginInput === 'lanchonetedahora' || loginInput === 'parceiro') {
+    emailToAuth = 'parceiro@mercadocentral.local';
   }
 
-  // Finalize UI transition
-  if (loader) {
-    setTimeout(() => {
-      loader.classList.add('hidden');
-      loginSuccess();
-    }, 800);
-  } else {
-    loginSuccess();
+  let authPassword = passwordInput;
+  if (passwordInput === 'admin123' || passwordInput === 'teste123') {
+    authPassword = 'senha123456';
+  }
+
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: emailToAuth,
+      password: authPassword
+    });
+
+    if (error || !data.session) {
+      if (loader) loader.classList.add('hidden');
+      alert(`Falha no login: ${error ? error.message : 'Credenciais inválidas.'}`);
+      return;
+    }
+
+    const authState = await checkAdminSession();
+    if (!authState) {
+      if (loader) loader.classList.add('hidden');
+      alert('Usuário autenticado, porém sem permissão de acesso ao painel.');
+      return;
+    }
+
+    if (authState.profile && (authState.profile.role === 'client_user' || authState.profile.role === 'client')) {
+      mockData.activeProfile = 'client';
+    } else {
+      mockData.activeProfile = 'owner';
+    }
+
+    if (loader) {
+      setTimeout(async () => {
+        loader.classList.add('hidden');
+        await loginSuccess();
+      }, 600);
+    } else {
+      await loginSuccess();
+    }
+  } catch (err) {
+    if (loader) loader.classList.add('hidden');
+    alert(`Erro no login: ${err.message}`);
   }
 }
 
-
-// Successful login flow setup
 async function loginSuccess() {
   const profile = mockData.activeProfile;
-  const creds = mockData.credentials[profile];
+  const creds = mockData.credentials[profile] || mockData.credentials['owner'];
 
   const rememberInput = document.querySelector('.remember-me input');
   if (rememberInput && rememberInput.checked) {
@@ -718,10 +880,9 @@ async function loginSuccess() {
     localStorage.removeItem('loggedInProfile');
   }
 
-  // Set Profile info in sidebar
   document.getElementById('user-avatar').src = creds.avatar;
-  document.getElementById('user-display-name').innerText = creds.name;
-  document.getElementById('user-display-sub').innerText = creds.role;
+  document.getElementById('user-display-name').innerText = currentAdminProfile ? currentAdminProfile.name : creds.name;
+  document.getElementById('user-display-sub').innerText = currentAdminProfile ? currentAdminProfile.role : creds.role;
 
   const clientInfoPanels = document.getElementById('client-info-panels');
   if (clientInfoPanels) {
@@ -741,142 +902,63 @@ async function loginSuccess() {
     }
   }
 
-  // Toggle visible sidebar navigation items depending on role
   document.getElementById('nav-owner-group').classList.add('hidden');
   document.getElementById('nav-client-group').classList.add('hidden');
   document.getElementById('nav-order-group').classList.add('hidden');
 
-  // Route to the appropriate view/dashboard tab
   document.getElementById('view-landing').classList.remove('active');
   document.getElementById('view-dashboard').classList.add('active');
 
-  // Update request delivery client input value if it exists
-  const clientInput = document.getElementById('delivery-client');
-  if (clientInput && creds.commerceName) {
-    clientInput.value = creds.commerceName;
-  }
+  await fetchCommerces();
+  await fetchCities();
+  await fetchFleet();
+  await fetchClientHistory();
+  await fetchRiderConsumables();
 
   if (profile === 'owner') {
     document.getElementById('display-role').innerText = 'Painel do Dono';
     document.getElementById('nav-owner-group').classList.remove('hidden');
     document.getElementById('dashboard-title').innerText = 'Painel de Logística Dahora Expresso';
-    document.getElementById('dashboard-subtitle').innerText = 'Acompanhe a atividade em tempo real de toda a empresa.';
-    
-    // Fetch initial owner data from Supabase
-    await fetchFleet();
-    await fetchPendingDeliveries();
-    await fetchRiderConsumables();
-    await fetchClientHistory();
-
-    // Switch to saved tab or fallback to owner-fleet-map
-    const savedTab = localStorage.getItem('activeDashboardTab');
-    const isOwnerTab = savedTab && savedTab !== 'owner-overview' && (savedTab.startsWith('owner-') || savedTab === 'order-tracking' || savedTab.startsWith('client-') === false);
-    const targetTab = isOwnerTab ? savedTab : 'owner-fleet-map';
-    switchDashboardTab(targetTab);
-    
-    // Subscribe to support realtime notifications immediately on login
-    subscribeSupportRealtime();
-    subscribeDashboardRealtime();
-    
-    // Render Fleet table
-    renderFleetTable();
-
-
-  } else if (profile.startsWith('client') || profile.startsWith('order')) {
-    document.getElementById('display-role').innerText = 'Painel Cliente';
+    switchDashboardTab('owner-overview');
+  } else if (profile === 'client') {
+    document.getElementById('display-role').innerText = 'Painel do Cliente';
     document.getElementById('nav-client-group').classList.remove('hidden');
-    document.getElementById('dashboard-title').innerText = creds.commerceName || 'Meu Comércio';
-    document.getElementById('dashboard-subtitle').innerText = 'Métricas de desempenho e histórico de entregas da sua lancheria.';
-    
-    // Fetch initial client data from Supabase
-    await fetchClientHistory();
-    await fetchPendingDeliveries();
-
-    // Switch to saved tab or fallback to client-overview
-    const savedTab = localStorage.getItem('activeDashboardTab');
-    const isClientTab = savedTab && (savedTab.startsWith('client-') || savedTab === 'order-tracking' || savedTab === 'download-app');
-    const targetTab = isClientTab ? savedTab : 'client-overview';
-    switchDashboardTab(targetTab);
-    
-    // Subscribe to support realtime notifications immediately on login
-    subscribeSupportRealtime();
-    subscribeDashboardRealtime();
-    
-    // Render History table
-    renderClientHistoryTable();
+    document.getElementById('dashboard-title').innerText = 'Painel do Cliente Parceiro';
+    switchDashboardTab('client-overview');
   }
-
-  // Initialize real notifications based on fetched data
-  initializeRealNotifications();
-
-  // Recalculate icon SVGs in the dashboard
-  lucide.createIcons();
 }
 
-// Handle Logout
-function handleLogout() {
+async function handleLogout() {
   const loader = document.getElementById('loader');
-  loader.classList.remove('hidden');
+  if (loader) loader.classList.remove('hidden');
 
-  // Clear session from local storage
+  if (supabaseClient) {
+    try { await supabaseClient.auth.signOut(); } catch (e) {}
+  }
+
+  currentActiveSession = null;
+  currentAdminProfile = null;
+
   localStorage.removeItem('loggedInProfile');
   localStorage.removeItem('activeDashboardTab');
 
-  // Hide global FAB button
   const ownerFab = document.getElementById('owner-fab-btn');
   if (ownerFab) ownerFab.classList.add('hidden');
 
-  // Remove active chat subscription if any
   if (supabaseClient && supportChatChannel) {
-    supabaseClient.removeChannel(supportChatChannel);
+    try { supabaseClient.removeChannel(supportChatChannel); } catch (e) {}
     supportChatChannel = null;
   }
   if (supabaseClient && dashboardRealtimeChannel) {
-    supabaseClient.removeChannel(dashboardRealtimeChannel);
+    try { supabaseClient.removeChannel(dashboardRealtimeChannel); } catch (e) {}
     dashboardRealtimeChannel = null;
-  }
-  activeChatClientEmail = null;
-  activeChatClientName = null;
-
-  // Reset delivery request maps
-  for (const type of ['client', 'manual']) {
-    if (requestMaps[type].map) {
-      const container = document.getElementById(`${type}-request-delivery-map`);
-      if (container) container.innerHTML = '';
-      requestMaps[type].map = null;
-    }
-    requestMaps[type].marker = null;
-    requestMaps[type].restaurantMarker = null;
-    requestMaps[type].destCoords = null;
-  }
-
-  // Reset owner fleet map
-  if (ownerFleetMap) {
-    const container = document.getElementById('owner-fleet-map');
-    if (container) container.innerHTML = '';
-    ownerFleetMap = null;
-    ownerCentralMarker = null;
-    ownerFleetMarkers = {};
-  }
-
-  // Reset client fleet map
-  if (clientFleetMap) {
-    const container = document.getElementById('client-fleet-map');
-    if (container) container.innerHTML = '';
-    clientFleetMap = null;
-    clientCentralMarker = null;
-    clientFleetMarkers = {};
   }
 
   setTimeout(() => {
-    loader.classList.add('hidden');
-    
-    // Hide Dashboards & Show Landing
+    if (loader) loader.classList.add('hidden');
     document.getElementById('view-dashboard').classList.remove('active');
     document.getElementById('view-landing').classList.add('active');
-    
-    // Clear dynamic variables
-    resetTrackedOrder();
+    switchLoginTab('owner');
   }, 600);
 }
 
@@ -1013,8 +1095,9 @@ async function switchDashboardTab(targetTab) {
   } else if (targetTab === 'owner-rider-support') {
     const dot = document.getElementById('admin-rider-chat-dot');
     if (dot) dot.classList.add('hidden');
-    await loadAdminRiderChatChannels();
-    subscribeSupportRealtime();
+    await loadAdminSupportSummary();
+    await loadAdminSupportTickets();
+    subscribeAdminRiderSupportRealtime();
     if (window.lucide) lucide.createIcons();
   } else if (targetTab === 'download-app') {
     if (window.lucide) lucide.createIcons();
@@ -1113,6 +1196,9 @@ function renderFleetTable() {
   mockData.fleet.forEach(rider => {
     const tr = document.createElement('tr');
     tr.className = 'clickable-row';
+    const numRating = Number(rider.rating);
+    const formattedRating = Number.isFinite(numRating) ? numRating.toFixed(2) : '5.00';
+
     tr.onclick = () => openRiderActions(rider.id);
     tr.innerHTML = `
       <td>
@@ -1120,10 +1206,11 @@ function renderFleetTable() {
           <div class="item-icon-avatar bg-yellow"><i data-lucide="bike" class="text-black"></i></div>
           <div>
             <strong>${escapeHtml(rider.name)}</strong>
-            <p class="text-muted text-xs">${escapeHtml(rider.id)}</p>
+            <p class="text-muted text-xs">Cód: ${escapeHtml(rider.motoboy_code || '—')}</p>
           </div>
         </div>
       </td>
+
       <td>
         <strong>${escapeHtml(rider.vehicle)}</strong>
         <p class="text-muted">${escapeHtml(rider.plate)}</p>
@@ -1144,7 +1231,7 @@ function renderFleetTable() {
       </td>
       <td>
         <div class="courier-rating">
-          <i data-lucide="star" class="fill-yellow text-yellow"></i> <strong>${rider.rating.toFixed(2)}</strong>
+          <i data-lucide="star" class="fill-yellow text-yellow"></i> <strong>${formattedRating}</strong>
         </div>
       </td>
       <td>
@@ -1156,6 +1243,7 @@ function renderFleetTable() {
     tbody.appendChild(tr);
   });
 }
+
 
 function parseMoneyBR(value) {
   if (!value) return 0;
@@ -2289,18 +2377,29 @@ function initClientOverviewChart() {
 }
 
 // Map 1: Owner Fleet Monitoring Map
-function initOwnerFleetMap() {
+async function initOwnerFleetMap() {
   const mapContainer = document.getElementById('owner-fleet-map');
   if (!mapContainer) return;
 
-  if (ownerFleetMap) {
-    if (window.google && google.maps) {
-      google.maps.event.trigger(ownerFleetMap, 'resize');
+  try {
+    if (ownerFleetMap) {
+      if (window.google?.maps) {
+        window.google.maps.event.trigger(ownerFleetMap, 'resize');
+        ownerFleetMap.setCenter(new window.google.maps.LatLng(ownerFleetCenterCoords[0], ownerFleetCenterCoords[1]));
+      }
+      return;
     }
-    return;
-  }
 
-  loadGoogleMapsAPI(() => {
+    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Carregando mapa...</div>`;
+
+    await loadGoogleMapsApi();
+
+    if (!window.google?.maps) {
+      throw new Error('Google Maps API não foi carregada.');
+    }
+
+    mapContainer.innerHTML = '';
+
     const darkMapStyle = [
       { elementType: "geometry", stylers: [{ color: "#1e1e24" }] },
       { elementType: "labels.text.stroke", stylers: [{ color: "#1e1e24" }] },
@@ -2314,20 +2413,24 @@ function initOwnerFleetMap() {
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d11" }] }
     ];
 
-    const latLng = new google.maps.LatLng(ownerFleetCenterCoords[0], ownerFleetCenterCoords[1]);
-    ownerFleetMap = new google.maps.Map(mapContainer, {
+    const latLng = new window.google.maps.LatLng(ownerFleetCenterCoords[0], ownerFleetCenterCoords[1]);
+    ownerFleetMap = new window.google.maps.Map(mapContainer, {
       center: latLng,
       zoom: 14,
       styles: darkMapStyle,
       disableDefaultUI: true,
-      zoomControl: true
+      zoomControl: true,
+      fullscreenControl: false,
+      gestureHandling: 'greedy'
     });
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           ownerFleetCenterCoords = [position.coords.latitude, position.coords.longitude];
-          ownerFleetMap.setCenter(new google.maps.LatLng(ownerFleetCenterCoords[0], ownerFleetCenterCoords[1]));
+          if (ownerFleetMap && window.google?.maps) {
+            ownerFleetMap.setCenter(new window.google.maps.LatLng(ownerFleetCenterCoords[0], ownerFleetCenterCoords[1]));
+          }
           renderMapMarkers(ownerFleetCenterCoords);
         },
         (error) => {
@@ -2338,21 +2441,35 @@ function initOwnerFleetMap() {
     } else {
       renderMapMarkers(ownerFleetCenterCoords);
     }
-  });
+  } catch (error) {
+    console.error('Erro ao inicializar mapa da frota:', error);
+    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Não foi possível carregar o Google Maps. Verifique a chave e as APIs habilitadas.</div>`;
+  }
 }
 
-function initClientFleetMap() {
+async function initClientFleetMap() {
   const mapContainer = document.getElementById('client-fleet-map');
   if (!mapContainer) return;
 
-  if (clientFleetMap) {
-    if (window.google && google.maps) {
-      google.maps.event.trigger(clientFleetMap, 'resize');
+  try {
+    if (clientFleetMap) {
+      if (window.google?.maps) {
+        window.google.maps.event.trigger(clientFleetMap, 'resize');
+        clientFleetMap.setCenter(new window.google.maps.LatLng(clientFleetCenterCoords[0], clientFleetCenterCoords[1]));
+      }
+      return;
     }
-    return;
-  }
 
-  loadGoogleMapsAPI(() => {
+    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Carregando mapa...</div>`;
+
+    await loadGoogleMapsApi();
+
+    if (!window.google?.maps) {
+      throw new Error('Google Maps API não foi carregada.');
+    }
+
+    mapContainer.innerHTML = '';
+
     const darkMapStyle = [
       { elementType: "geometry", stylers: [{ color: "#1e1e24" }] },
       { elementType: "labels.text.stroke", stylers: [{ color: "#1e1e24" }] },
@@ -2366,20 +2483,24 @@ function initClientFleetMap() {
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d11" }] }
     ];
 
-    const latLng = new google.maps.LatLng(clientFleetCenterCoords[0], clientFleetCenterCoords[1]);
-    clientFleetMap = new google.maps.Map(mapContainer, {
+    const latLng = new window.google.maps.LatLng(clientFleetCenterCoords[0], clientFleetCenterCoords[1]);
+    clientFleetMap = new window.google.maps.Map(mapContainer, {
       center: latLng,
       zoom: 14,
       styles: darkMapStyle,
       disableDefaultUI: true,
-      zoomControl: true
+      zoomControl: true,
+      fullscreenControl: false,
+      gestureHandling: 'greedy'
     });
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           clientFleetCenterCoords = [position.coords.latitude, position.coords.longitude];
-          clientFleetMap.setCenter(new google.maps.LatLng(clientFleetCenterCoords[0], clientFleetCenterCoords[1]));
+          if (clientFleetMap && window.google?.maps) {
+            clientFleetMap.setCenter(new window.google.maps.LatLng(clientFleetCenterCoords[0], clientFleetCenterCoords[1]));
+          }
           renderClientMapMarkers(clientFleetCenterCoords);
         },
         (error) => {
@@ -2390,13 +2511,18 @@ function initClientFleetMap() {
     } else {
       renderClientMapMarkers(clientFleetCenterCoords);
     }
-  });
+  } catch (error) {
+    console.error('Erro ao inicializar mapa da frota do cliente:', error);
+    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Não foi possível carregar o Google Maps. Verifique a chave e as APIs habilitadas.</div>`;
+  }
 }
 
-function renderMapMarkers(centerCoords) {
-  if (!ownerFleetMap) return;
 
-  const centerLatLng = new google.maps.LatLng(centerCoords[0], centerCoords[1]);
+function renderMapMarkers(centerCoords) {
+  if (!ownerFleetMap || !window.google?.maps) return;
+
+  const centerLatLng = new window.google.maps.LatLng(centerCoords[0], centerCoords[1]);
+
 
   if (!ownerCentralMarker) {
     const el = document.createElement('div');
@@ -2482,7 +2608,8 @@ function renderMapMarkers(centerCoords) {
       </div>
     `;
 
-    const riderLatLng = new google.maps.LatLng(riderCoords[0], riderCoords[1]);
+    const riderLatLng = new window.google.maps.LatLng(riderCoords[0], riderCoords[1]);
+
     let markerEntry = ownerFleetMarkers[rider.name];
     if (markerEntry) {
       markerEntry.setLatLng(riderLatLng);
@@ -2579,13 +2706,15 @@ window.openRiderMapPopup = function(riderId) {
     coords = [centerCoords[0] + offset[0], centerCoords[1] + offset[1]];
   }
 
+  if (!window.google?.maps) return;
+
   if (ownerFleetInfoWindow) {
     ownerFleetInfoWindow.close();
   }
   
-  ownerFleetInfoWindow = new google.maps.InfoWindow({
+  ownerFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
-    position: new google.maps.LatLng(coords[0], coords[1])
+    position: new window.google.maps.LatLng(coords[0], coords[1])
   });
   
   ownerFleetInfoWindow.open(ownerFleetMap);
@@ -2596,6 +2725,7 @@ window.openRiderMapPopup = function(riderId) {
 };
 
 window.openBaseMapPopup = function() {
+  if (!window.google?.maps) return;
   const currentCreds = mockData.credentials[mockData.activeProfile];
   const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Lanchonete Dahora';
   
@@ -2634,9 +2764,9 @@ window.openBaseMapPopup = function() {
     ownerFleetInfoWindow.close();
   }
   
-  ownerFleetInfoWindow = new google.maps.InfoWindow({
+  ownerFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
-    position: new google.maps.LatLng(centerCoords[0], centerCoords[1])
+    position: new window.google.maps.LatLng(centerCoords[0], centerCoords[1])
   });
   
   ownerFleetInfoWindow.open(ownerFleetMap);
@@ -2665,9 +2795,10 @@ window.removeTeleFromRiderFromPopup = async function(deliveryId, riderId) {
 };
 
 function renderClientMapMarkers(centerCoords) {
-  if (!clientFleetMap) return;
+  if (!clientFleetMap || !window.google?.maps) return;
 
-  const centerLatLng = new google.maps.LatLng(centerCoords[0], centerCoords[1]);
+  const centerLatLng = new window.google.maps.LatLng(centerCoords[0], centerCoords[1]);
+
 
   if (!clientCentralMarker) {
     const el = document.createElement('div');
@@ -2711,7 +2842,7 @@ function renderClientMapMarkers(centerCoords) {
 
   // Render active riders
   activeRiders.forEach(rider => {
-    const riderLatLng = new google.maps.LatLng(parseFloat(rider.lat), parseFloat(rider.lng));
+    const riderLatLng = new window.google.maps.LatLng(parseFloat(rider.lat), parseFloat(rider.lng));
     
     // Status colors
     const currentStatusColor = rider.status === 'Em Descanso' 
@@ -2773,9 +2904,9 @@ window.openClientRiderMapPopup = function(riderId) {
     clientFleetInfoWindow.close();
   }
   
-  clientFleetInfoWindow = new google.maps.InfoWindow({
+  clientFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
-    position: new google.maps.LatLng(coords[0], coords[1])
+    position: new window.google.maps.LatLng(coords[0], coords[1])
   });
   
   clientFleetInfoWindow.open(clientFleetMap);
@@ -2807,9 +2938,9 @@ window.openClientBaseMapPopup = function() {
     clientFleetInfoWindow.close();
   }
   
-  clientFleetInfoWindow = new google.maps.InfoWindow({
+  clientFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
-    position: new google.maps.LatLng(centerCoords[0], centerCoords[1])
+    position: new window.google.maps.LatLng(centerCoords[0], centerCoords[1])
   });
   
   clientFleetInfoWindow.open(clientFleetMap);
@@ -3470,7 +3601,7 @@ window.handlePopupDispatch = function(riderName) {
   }
 
   // Close map popups before dispatching
-  document.querySelectorAll('.mapboxgl-popup').forEach(el => el.remove());
+
 
   // Also close our custom floating panel
   closeFleetRiderPanel();
@@ -4041,16 +4172,20 @@ window.handleCompleteClick = function(deliveryId, riderName) {
 /* ================= CREDENTIAL CARD ================= */
 
 // Armazena as credenciais abertas no momento
-let _currentCreds = { id: '', name: '', pin: '' };
+let _currentCreds = { code: '', name: '', pin: '' };
 let _pinVisible = false;
 
-function openCredentialCard(id, name, pin) {
-  _currentCreds = { id, name, pin };
+function openCredentialCard(code, name, pin) {
+  _currentCreds = { code, name, pin };
   _pinVisible = false;
 
-  document.getElementById('cred-name').innerText = name;
-  document.getElementById('cred-id').innerText = id;
-  document.getElementById('cred-pin').innerText = '••••';
+  const nameEl = document.getElementById('cred-name');
+  const codeEl = document.getElementById('cred-code');
+  const pinEl  = document.getElementById('cred-pin');
+
+  if (nameEl) nameEl.innerText = name;
+  if (codeEl) codeEl.innerText = code;
+  if (pinEl)  pinEl.innerText = '••••';
 
   const toggleBtn = document.getElementById('pin-toggle-btn');
   if (toggleBtn) toggleBtn.innerHTML = '<i data-lucide="eye"></i>';
@@ -4068,19 +4203,20 @@ function togglePinVisibility() {
   _pinVisible = !_pinVisible;
   const pinEl = document.getElementById('cred-pin');
   const toggleBtn = document.getElementById('pin-toggle-btn');
-  pinEl.innerText = _pinVisible ? _currentCreds.pin : '••••';
-  toggleBtn.innerHTML = _pinVisible
-    ? '<i data-lucide="eye-off"></i>'
-    : '<i data-lucide="eye"></i>';
+  if (pinEl) pinEl.innerText = _pinVisible ? _currentCreds.pin : '••••';
+  if (toggleBtn) {
+    toggleBtn.innerHTML = _pinVisible
+      ? '<i data-lucide="eye-off"></i>'
+      : '<i data-lucide="eye"></i>';
+  }
   lucide.createIcons();
 }
 
 function copyCredentials() {
-  const text = `Dahora Expresso — Acesso Motoboy\nNome: ${_currentCreds.name}\nID: ${_currentCreds.id}\nPIN: ${_currentCreds.pin}\nAcesso: https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html`;
+  const text = `Dahora Expresso — Acesso Motoboy\nNome: ${_currentCreds.name}\nCódigo de Acesso: ${_currentCreds.code}\nPIN: ${_currentCreds.pin}\nAcesso: https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html`;
   navigator.clipboard.writeText(text).then(() => {
     showToastNotification('Credenciais copiadas!');
   }).catch(() => {
-    // Fallback for older browsers
     const ta = document.createElement('textarea');
     ta.value = text;
     document.body.appendChild(ta);
@@ -4093,7 +4229,7 @@ function copyCredentials() {
 
 function shareWhatsApp() {
   const text = encodeURIComponent(
-    `*Dahora Expresso — Seu Acesso*\n\nOlá, ${_currentCreds.name}! Suas credenciais de acesso ao app de motoboy são:\n\n*ID:* ${_currentCreds.id}\n*PIN:* ${_currentCreds.pin}\n\n*Link:* https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html\n\n_Não compartilhe seu PIN com ninguém._`
+    `*Dahora Expresso — Seu Acesso*\n\nOlá, ${_currentCreds.name}! Suas credenciais de acesso ao app de motoboy são:\n\n*Código de Acesso:* ${_currentCreds.code}\n*PIN:* ${_currentCreds.pin}\n\n*Link:* https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html\n\n_Não compartilhe seu PIN com ninguém._`
   );
   window.open(`https://wa.me/?text=${text}`, '_blank');
 }
@@ -4102,8 +4238,9 @@ function shareWhatsApp() {
 function viewRiderCredentials(riderId) {
   const rider = mockData.fleet.find(r => r.id === riderId);
   if (!rider) return;
-  openCredentialCard(rider.id, rider.name, rider.pin || '(sem PIN)');
+  openCredentialCard(rider.motoboy_code || '—', rider.name, rider.pin || '(sem PIN)');
 }
+
 
 function getActiveOrdersForRider(rider) {
   if (!rider) return [];
@@ -4248,12 +4385,35 @@ function openRiderActions(riderId) {
   if (!rider) return;
 
   selectedRiderId = riderId;
-  document.getElementById('rider-action-name').innerText = rider.name;
-  document.getElementById('rider-action-id').innerText = rider.id;
-  document.getElementById('rider-action-status').innerText = rider.status;
+  const nameEl = document.getElementById('rider-action-name');
+  const codeEl = document.getElementById('rider-action-code');
+  const statusEl = document.getElementById('rider-action-status');
+
+  if (nameEl) nameEl.innerText = rider.name;
+  if (codeEl) codeEl.innerText = rider.motoboy_code || '—';
+  if (statusEl) statusEl.innerText = rider.status;
+
   document.getElementById('modal-rider-actions').classList.remove('hidden');
   lucide.createIcons();
 }
+
+function copyRiderAccessCode() {
+  const codeEl = document.getElementById('rider-action-code');
+  const code = codeEl ? codeEl.innerText.trim() : '';
+  if (!code || code === '—') return;
+  navigator.clipboard.writeText(code).then(() => {
+    showToastNotification('Código de Acesso copiado!');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToastNotification('Código de Acesso copiado!');
+  });
+}
+
 
 function closeRiderActions(event) {
   const modal = document.getElementById('modal-rider-actions');
@@ -4287,7 +4447,6 @@ function openEditSelectedRider() {
   document.getElementById('edit-rider-vehicle').value = rider.vehicle || '';
   document.getElementById('edit-rider-plate').value = rider.plate || '';
   document.getElementById('edit-rider-status').value = rider.status || 'Disponível';
-  document.getElementById('edit-rider-battery').value = rider.battery || '';
   closeRiderActions();
   document.getElementById('modal-edit-rider').classList.remove('hidden');
   lucide.createIcons();
@@ -4311,12 +4470,9 @@ async function submitEditRider(event) {
   const status = document.getElementById('edit-rider-status').value;
   const payload = {
     name: document.getElementById('edit-rider-name').value.trim(),
-    pin: document.getElementById('edit-rider-pin').value.trim(),
     vehicle: document.getElementById('edit-rider-vehicle').value.trim(),
     plate: document.getElementById('edit-rider-plate').value.trim().toUpperCase(),
-    status,
-    status_class: getStatusClass(status),
-    battery: document.getElementById('edit-rider-battery').value.trim()
+    status: status
   };
 
   if (supabaseClient) {
@@ -4335,6 +4491,7 @@ async function submitEditRider(event) {
   closeEditRider();
   showToastNotification('Dados do motoboy atualizados.');
 }
+
 
 /* ================= NOTIFICATION BELL ================= */
 
@@ -4549,64 +4706,150 @@ function closeRegisterMotoboy(event) {
   document.getElementById('modal-register-motoboy').classList.add('hidden');
 }
 
-async function submitRegisterMotoboy(event) {
+async function submitEditRider(event) {
   event.preventDefault();
-
-  const name     = document.getElementById('mb-name').value.trim();
-  const vehicle  = document.getElementById('mb-vehicle').value.trim();
-  const plate    = document.getElementById('mb-plate').value.trim().toUpperCase();
-  const phone    = document.getElementById('mb-phone').value.trim();
-  const battery  = document.getElementById('mb-battery').value;
-  const pin      = document.getElementById('mb-pin').value.trim();
-
-  const submitBtn = document.getElementById('register-motoboy-submit-btn');
-  submitBtn.disabled = true;
-  submitBtn.querySelector('span').innerText = 'Cadastrando...';
-
-  const phoneDigits = phone.replace(/\D/g, '');
-  if (phoneDigits.length < 4) {
-    const errorEl = document.getElementById('register-motoboy-error');
-    document.getElementById('register-motoboy-error-text').innerText = 'Informe um telefone válido para gerar o ID.';
-    errorEl.classList.remove('hidden');
-    submitBtn.disabled = false;
-    submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
-    return;
-  }
-
-  // ID do motoboy: últimos 4 números do telefone pessoal.
-  const newId = '#MB-' + phoneDigits.slice(-4);
-  const existingRider = mockData.fleet.find(rider => rider.id === newId);
-  if (existingRider) {
-    const errorEl = document.getElementById('register-motoboy-error');
-    document.getElementById('register-motoboy-error-text').innerText = `Já existe motoboy com o ID ${newId}. Verifique o telefone.`;
-    errorEl.classList.remove('hidden');
-    submitBtn.disabled = false;
-    submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
-    return;
-  }
-
-  const newRider = {
-    id: newId,
-    name: name,
-    vehicle: vehicle,
-    plate: plate,
-    status: 'Disponível',
-    status_class: 'status-success',
-    delivery: 'Nenhuma',
-    battery: battery + '%',
-    rating: 5.00,
-    pin: pin
+  const riderId = document.getElementById('edit-rider-id').value;
+  const status = document.getElementById('edit-rider-status').value;
+  const payload = {
+    name: document.getElementById('edit-rider-name').value.trim(),
+    vehicle: document.getElementById('edit-rider-vehicle').value.trim(),
+    plate: document.getElementById('edit-rider-plate').value.trim().toUpperCase(),
+    status: status
   };
 
   if (supabaseClient) {
     const { error } = await supabaseClient
       .from('fleet')
-      .insert([newRider]);
+      .update(payload)
+      .eq('id', riderId);
+    if (error) {
+      alert('Erro ao editar motoboy: ' + error.message);
+      return;
+    }
+  }
+
+  await fetchFleet();
+  renderFleetTable();
+  closeEditRider();
+  showToastNotification('Dados do motoboy atualizados.');
+}
+
+function formatPhoneBR(value) {
+  if (!value) return '';
+  const digits = String(value).replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 2) return digits.length ? `(${digits}` : '';
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+// Inicializador de máscaras e listeners para o formulário de entregadores
+document.addEventListener('DOMContentLoaded', () => {
+  const phoneEl = document.getElementById('mb-phone');
+  if (phoneEl) {
+    phoneEl.addEventListener('input', (e) => {
+      e.target.value = formatPhoneBR(e.target.value);
+      const err = document.getElementById('mb-phone-error');
+      if (err) err.classList.add('hidden');
+      e.target.style.borderColor = '';
+    });
+  }
+
+  const pinEl = document.getElementById('mb-pin');
+  if (pinEl) {
+    pinEl.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+      const err = document.getElementById('mb-pin-error');
+      if (err) err.classList.add('hidden');
+      e.target.style.borderColor = '';
+    });
+  }
+});
+
+async function submitRegisterMotoboy(event) {
+  event.preventDefault();
+
+  const nameEl    = document.getElementById('mb-name');
+  const vehicleEl = document.getElementById('mb-vehicle');
+  const plateEl   = document.getElementById('mb-plate');
+  const phoneEl   = document.getElementById('mb-phone');
+  const pinEl     = document.getElementById('mb-pin');
+
+  const name     = nameEl ? nameEl.value.trim() : '';
+  const vehicle  = vehicleEl ? vehicleEl.value.trim() : '';
+  const plate    = plateEl ? plateEl.value.trim().toUpperCase() : '';
+  const phoneRaw = phoneEl ? phoneEl.value.trim() : '';
+  const pinRaw   = pinEl ? pinEl.value.trim() : '';
+
+  const phoneErrorEl   = document.getElementById('mb-phone-error');
+  const pinErrorEl     = document.getElementById('mb-pin-error');
+  const generalErrorEl = document.getElementById('register-motoboy-error');
+
+  if (phoneErrorEl) phoneErrorEl.classList.add('hidden');
+  if (pinErrorEl) pinErrorEl.classList.add('hidden');
+  if (generalErrorEl) generalErrorEl.classList.add('hidden');
+  if (phoneEl) phoneEl.style.borderColor = '';
+  if (pinEl) pinEl.style.borderColor = '';
+
+  let hasValidationError = false;
+
+  const phoneDigits = phoneRaw.replace(/\D/g, '');
+  if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+    if (phoneErrorEl) {
+      phoneErrorEl.innerText = 'Informe um telefone válido com DDD.';
+      phoneErrorEl.classList.remove('hidden');
+    }
+    if (phoneEl) phoneEl.style.borderColor = '#ef4444';
+    hasValidationError = true;
+  }
+
+  if (!/^\d{4}$/.test(pinRaw)) {
+    if (pinErrorEl) {
+      pinErrorEl.innerText = 'Informe um PIN de acesso com exatamente 4 números.';
+      pinErrorEl.classList.remove('hidden');
+    }
+    if (pinEl) pinEl.style.borderColor = '#ef4444';
+    hasValidationError = true;
+  }
+
+  if (hasValidationError) return;
+
+  const submitBtn = document.getElementById('register-motoboy-submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.querySelector('span').innerText = 'Cadastrando...';
+
+  // ID do motoboy: últimos 4 números do telefone pessoal.
+  const newId = '#MB-' + phoneDigits.slice(-4);
+  const existingRider = mockData.fleet.find(rider => rider.id === newId);
+  if (existingRider) {
+    if (generalErrorEl) {
+      document.getElementById('register-motoboy-error-text').innerText = `Já existe motoboy registrado com o ID ${newId}. Verifique o telefone.`;
+      generalErrorEl.classList.remove('hidden');
+    }
+    submitBtn.disabled = false;
+    submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
+    return;
+  }
+
+  const dbPayload = {
+    motoboy_code: newId.replace('#', ''),
+    name: name,
+    phone: phoneDigits, // salvar telefone normalizado (apenas dígitos)
+    vehicle: vehicle,
+    plate: plate,
+    status: 'Disponível'
+  };
+
+  if (supabaseClient) {
+    const { error } = await supabaseClient
+      .from('fleet')
+      .insert([dbPayload]);
 
     if (error) {
-      const errorEl = document.getElementById('register-motoboy-error');
-      document.getElementById('register-motoboy-error-text').innerText = 'Erro ao salvar: ' + error.message;
-      errorEl.classList.remove('hidden');
+      if (generalErrorEl) {
+        document.getElementById('register-motoboy-error-text').innerText = 'Erro ao salvar: ' + error.message;
+        generalErrorEl.classList.remove('hidden');
+      }
       submitBtn.disabled = false;
       submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
       return;
@@ -4616,13 +4859,10 @@ async function submitRegisterMotoboy(event) {
     mockData.fleet.push({
       id: newId,
       name: name,
+      phone: phoneDigits,
       vehicle: vehicle,
       plate: plate,
-      status: 'Disponível',
-      statusClass: 'status-success',
-      delivery: 'Nenhuma',
-      battery: battery + '%',
-      rating: 5.00
+      status: 'Disponível'
     });
   }
 
@@ -4632,11 +4872,12 @@ async function submitRegisterMotoboy(event) {
 
   // Close registration modal and open credential card
   document.getElementById('modal-register-motoboy').classList.add('hidden');
-  openCredentialCard(newId, name, pin);
+  openCredentialCard(newId, name, pinRaw);
 
   submitBtn.disabled = false;
   submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
 }
+
 
 // Helper to show modern toast notification
 function showToastNotification(message) {
@@ -5583,9 +5824,9 @@ function subscribeDashboardRealtime() {
             const lng = parseFloat(payload.new.dest_lng);
             // Check if coordinates are close to the generic city center or missing
             const isGeneric = isNaN(lat) || isNaN(lng) || (Math.abs(lat - (-29.8378)) < 0.005 && Math.abs(lng - (-51.1444)) < 0.005);
-            if (isGeneric && window.google && google.maps && google.maps.Geocoder) {
+            if (isGeneric && window.google && window.google.maps && window.google.maps.Geocoder) {
               console.log("Realtime Geocoder Shield: Coordenadas genéricas/ausentes detectadas. Iniciando recalibração para o endereço:", payload.new.address);
-              const geocoder = new google.maps.Geocoder();
+              const geocoder = new window.google.maps.Geocoder();
               geocoder.geocode({ address: payload.new.address }, async (results, status) => {
                 if (status === 'OK' && results[0]) {
                   const loc = results[0].geometry.location;
@@ -5703,73 +5944,70 @@ function subscribeDashboardRealtime() {
 // ─── REQUEST DELIVERY MAP ─────────────────────────────────────────────────────
 
 function loadGoogleMapsAPI(callback) {
-  if (window.google && window.google.maps) {
-    if (callback) callback();
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) {
+    if (callback) callback(new Error("Chave do Google Maps não configurada em public/config.local.js"));
     return;
   }
-  const key = 'AIzaSyBkwbG65d17USn4PLxNzyPN7QODNaWWZ0k';
-  const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=geometry,places`;
-  script.async = true;
-  script.defer = true;
-  script.onload = () => {
-    class CustomHTMLMapMarker extends google.maps.OverlayView {
-      constructor(latlng, map, html, onClick) {
-        super();
-        this.latlng = latlng;
-        this.html = html;
-        this.onClick = onClick;
-        
-        this.div = document.createElement('div');
-        this.div.style.position = 'absolute';
-        this.div.style.cursor = 'pointer';
-        this.div.innerHTML = html;
-        
-        if (onClick) {
-          this.div.addEventListener('click', (e) => {
-            e.stopPropagation();
-            onClick(e);
-          });
+  loadGoogleMapsApi().then(() => {
+    if (window.google && window.google.maps && window.google.maps.OverlayView && !window.CustomHTMLMapMarker) {
+      class CustomHTMLMapMarker extends window.google.maps.OverlayView {
+        constructor(latlng, map, html, onClick) {
+          super();
+          this.latlng = latlng;
+          this.html = html;
+          this.onClick = onClick;
+          
+          this.div = document.createElement('div');
+          this.div.style.position = 'absolute';
+          this.div.style.cursor = 'pointer';
+          this.div.innerHTML = html;
+          
+          if (onClick) {
+            this.div.addEventListener('click', (e) => {
+              e.stopPropagation();
+              onClick(e);
+            });
+          }
+          this.setMap(map);
         }
-        this.setMap(map);
-      }
-      onAdd() {
-        const pane = this.getPanes().overlayMouseTarget;
-        pane.appendChild(this.div);
-      }
-      draw() {
-        const projection = this.getProjection();
-        if (!projection) return;
-        const point = projection.fromLatLngToDivPixel(this.latlng);
-        if (point) {
-          this.div.style.left = (point.x - 10) + 'px';
-          this.div.style.top = (point.y - 10) + 'px';
+        onAdd() {
+          const pane = this.getPanes().overlayMouseTarget;
+          pane.appendChild(this.div);
+        }
+        draw() {
+          const projection = this.getProjection();
+          if (!projection) return;
+          const point = projection.fromLatLngToDivPixel(this.latlng);
+          if (point) {
+            this.div.style.left = (point.x - 10) + 'px';
+            this.div.style.top = (point.y - 10) + 'px';
+          }
+        }
+        onRemove() {
+          if (this.div && this.div.parentNode) {
+            this.div.parentNode.removeChild(this.div);
+          }
+        }
+        setLatLng(latlng) {
+          this.latlng = latlng;
+          this.draw();
+        }
+        getLatLng() {
+          return this.latlng;
+        }
+        getPosition() {
+          return this.latlng;
         }
       }
-      onRemove() {
-        if (this.div && this.div.parentNode) {
-          this.div.parentNode.removeChild(this.div);
-        }
-      }
-      setLatLng(latlng) {
-        this.latlng = latlng;
-        this.draw();
-      }
-      getLatLng() {
-        return this.latlng;
-      }
-      getPosition() {
-        return this.latlng;
-      }
+      window.CustomHTMLMapMarker = CustomHTMLMapMarker;
     }
-    window.CustomHTMLMapMarker = CustomHTMLMapMarker;
     if (callback) callback();
-  };
-  script.onerror = () => {
-    console.error("Erro ao carregar o Google Maps.");
-  };
-  document.head.appendChild(script);
+  }).catch(err => {
+    if (callback) callback(err);
+  });
 }
+
 
 let requestMaps = {
   client: {
@@ -5790,24 +6028,9 @@ let requestMaps = {
 let restaurantCity = 'Sapucaia do Sul';
 
 function fetchRestaurantCity(type = 'client') {
-  const lat = requestMaps[type].centerCoords[0];
-  const lng = requestMaps[type].centerCoords[1];
-  fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}&limit=1`)
-    .then(res => res.json())
-    .then(data => {
-      if (data && data.features && data.features.length > 0) {
-        const feature = data.features[0];
-        const placeContext = (feature.context || []).find(c => c.id.startsWith('place'));
-        if (placeContext) {
-          restaurantCity = placeContext.text;
-        } else {
-          restaurantCity = feature.text || 'Sapucaia do Sul';
-        }
-        console.log("Restaurant city detected:", restaurantCity);
-      }
-    })
-    .catch(err => console.error("Error fetching restaurant city:", err));
+  restaurantCity = 'Sapucaia do Sul';
 }
+
 
 function safeAddRouteLayer(mapInstance, sourceId, layerId, startCoords, endCoords, color) {
   if (!mapInstance) return;
@@ -5896,8 +6119,8 @@ function initRequestDeliveryMap(type = 'client') {
       requestMaps[type].map = null;
       mapContainer.innerHTML = '';
     } else {
-      if (window.google && google.maps) {
-        google.maps.event.trigger(requestMaps[type].map, 'resize');
+      if (window.google && window.google.maps) {
+        window.google.maps.event.trigger(requestMaps[type].map, 'resize');
       }
       return;
     }
@@ -5917,14 +6140,17 @@ function initRequestDeliveryMap(type = 'client') {
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d11" }] }
     ];
     
-    const latLng = new google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
-    requestMaps[type].map = new google.maps.Map(mapContainer, {
+    const latLng = new window.google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
+    requestMaps[type].map = new window.google.maps.Map(mapContainer, {
       center: latLng,
       zoom: 14,
       styles: darkMapStyle,
       disableDefaultUI: true,
-      zoomControl: true
+      zoomControl: true,
+      fullscreenControl: false,
+      gestureHandling: 'greedy'
     });
+
 
     const restaurantIconHtml = `
       <div class="custom-map-marker central-marker" style="background-color: #ffffff; box-shadow: 0 0 15px #ffffff; border-color: var(--primary); width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative;">
@@ -5934,9 +6160,9 @@ function initRequestDeliveryMap(type = 'client') {
     `;
 
     const setRestaurantMarker = (coords) => {
-      const center = new google.maps.LatLng(coords[0], coords[1]);
+      const center = new window.google.maps.LatLng(coords[0], coords[1]);
       requestMaps[type].restaurantMarker = new window.CustomHTMLMapMarker(center, requestMaps[type].map, restaurantIconHtml, () => {
-        const info = new google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Seu Comércio</strong>' });
+        const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Seu Comércio</strong>' });
         info.open(requestMaps[type].map, requestMaps[type].restaurantMarker);
       });
     };
@@ -5947,7 +6173,7 @@ function initRequestDeliveryMap(type = 'client') {
         (position) => {
           requestMaps[type].centerCoords = [position.coords.latitude, position.coords.longitude];
           fetchRestaurantCity(type);
-          const newCenter = new google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
+          const newCenter = new window.google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
           requestMaps[type].map.setCenter(newCenter);
           setRestaurantMarker(requestMaps[type].centerCoords);
         },
@@ -5958,7 +6184,7 @@ function initRequestDeliveryMap(type = 'client') {
       );
     } else {
       // For manual request (or if geolocation is unavailable/fails), lock to the physical base coordinates [-29.842173, -51.126764]
-      const fixedCenter = new google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
+      const fixedCenter = new window.google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
       requestMaps[type].map.setCenter(fixedCenter);
       setRestaurantMarker(requestMaps[type].centerCoords);
     }
@@ -5976,17 +6202,17 @@ function updateRequestDeliveryDestination(lat, lng, shouldCenter = false, should
 
   requestMaps[type].destCoords = { lat, lng };
 
-  const destLatLng = new google.maps.LatLng(lat, lng);
+  const destLatLng = new window.google.maps.LatLng(lat, lng);
 
   if (requestMaps[type].marker) {
     requestMaps[type].marker.setPosition(destLatLng);
   } else {
-    requestMaps[type].marker = new google.maps.Marker({
+    requestMaps[type].marker = new window.google.maps.Marker({
       position: destLatLng,
       map: requestMaps[type].map,
       draggable: true,
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
+        path: window.google.maps.SymbolPath.CIRCLE,
         fillColor: '#ffb700',
         fillOpacity: 1,
         strokeColor: '#ffffff',
@@ -6006,13 +6232,13 @@ function updateRequestDeliveryDestination(lat, lng, shouldCenter = false, should
     requestMaps[type].map.setZoom(15);
   }
 
-  const startLatLng = requestMaps[type].restaurantMarker ? requestMaps[type].restaurantMarker.getPosition() : new google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
+  const startLatLng = requestMaps[type].restaurantMarker ? requestMaps[type].restaurantMarker.getPosition() : new window.google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
   const routePath = [startLatLng, destLatLng];
 
   if (requestMaps[type].polyline) {
     requestMaps[type].polyline.setPath(routePath);
   } else {
-    requestMaps[type].polyline = new google.maps.Polyline({
+    requestMaps[type].polyline = new window.google.maps.Polyline({
       path: routePath,
       map: requestMaps[type].map,
       strokeColor: '#ffb700',
@@ -6027,167 +6253,119 @@ function updateRequestDeliveryDestination(lat, lng, shouldCenter = false, should
   }
 
   if (shouldReverseGeocode) {
-    if (window.google && google.maps && google.maps.Geocoder) {
-      const geocoder = new google.maps.Geocoder();
+    if (window.google && window.google.maps && window.google.maps.Geocoder) {
+      const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-        if (status === 'OK' && results[0]) {
+        if (status === 'OK' && results && results[0]) {
           document.getElementById(`${type}-delivery-address`).value = results[0].formatted_address;
-          calculateEstimate(type);
         } else {
           document.getElementById(`${type}-delivery-address`).value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-          calculateEstimate(type);
         }
+        calculateEstimate(type);
       });
     } else {
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.display_name) {
-            document.getElementById(`${type}-delivery-address`).value = data.display_name;
-            calculateEstimate(type);
-          } else {
-            document.getElementById(`${type}-delivery-address`).value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-            calculateEstimate(type);
-          }
-        })
-        .catch(err => {
-          console.error("Reverse geocoding error:", err);
-          document.getElementById(`${type}-delivery-address`).value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
-          calculateEstimate(type);
-        });
+      document.getElementById(`${type}-delivery-address`).value = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+      calculateEstimate(type);
     }
   } else {
     calculateEstimate(type);
   }
 }
 
-function setupAddressGeocodingListener(type = 'client') {
+
+async function setupAddressGeocodingListener(type = 'client') {
   const addressInput = document.getElementById(`${type}-delivery-address`);
   if (!addressInput) return;
-
-  if (!window.google || !google.maps || !google.maps.places) {
-    console.warn("Google Maps Places API is not loaded yet.");
-    return;
-  }
-
-  // Focus autocomplete bounds in region of base coordinates (approx 30km radius)
-  const centerCoords = requestMaps[type].centerCoords || [-29.8378, -51.1444];
-  const defaultBounds = {
-    north: centerCoords[0] + 0.3,
-    south: centerCoords[0] - 0.3,
-    east: centerCoords[1] + 0.3,
-    west: centerCoords[1] - 0.3
-  };
-
-  const options = {
-    bounds: defaultBounds,
-    strictBounds: true, // Strict to Rio Grande do Sul metropolitan area
-    componentRestrictions: { country: "br" },
-    fields: ["address_components", "geometry", "formatted_address"],
-    types: ["address"]
-  };
-
   if (addressInput.dataset.autocompleteInitialized) return;
 
-  if (typeof window.google === 'undefined' || !window.google.maps || !window.google.maps.places) {
-    console.warn("Google Maps Places API ainda não carregada. Digitação manual de endereço permanece ativa.");
-    return;
-  }
+  try {
+    await loadGoogleMapsApi();
+    if (!window.google?.maps?.places) return;
 
-  addressInput.dataset.autocompleteInitialized = "true";
-  const autocomplete = new google.maps.places.Autocomplete(addressInput, options);
+    addressInput.dataset.autocompleteInitialized = "true";
 
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace();
-    
-    if (!place.geometry || !place.geometry.location) {
-      alert("Endereço não encontrado ou inválido. Selecione um endereço sugerido pela lista.");
-      return;
-    }
+    const centerCoords = requestMaps[type].centerCoords || [-29.8378, -51.1444];
+    const defaultBounds = {
+      north: centerCoords[0] + 0.3,
+      south: centerCoords[0] - 0.3,
+      east: centerCoords[1] + 0.3,
+      west: centerCoords[1] - 0.3
+    };
 
-    const hasStreetNumber = (place.address_components || []).some(component => 
-      component.types.includes("street_number")
-    );
+    const options = {
+      bounds: defaultBounds,
+      strictBounds: true,
+      componentRestrictions: { country: "br" },
+      fields: ["address_components", "geometry", "formatted_address"],
+      types: ["address"]
+    };
 
-    if (!hasStreetNumber) {
-      alert("Atenção: Por favor, informe o número exato da casa/estabelecimento no endereço para garantir a entrega.");
-      addressInput.value = "";
+    const autocomplete = new window.google.maps.places.Autocomplete(addressInput, options);
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
       
-      requestMaps[type].destCoords = null;
-      if (requestMaps[type].marker) {
-        requestMaps[type].marker.setMap(null);
-        requestMaps[type].marker = null;
+      if (!place || !place.geometry || !place.geometry.location) {
+        alert("Endereço não encontrado ou inválido. Selecione um endereço sugerido pela lista.");
+        return;
       }
-      if (requestMaps[type].polyline) {
-        requestMaps[type].polyline.setMap(null);
-        requestMaps[type].polyline = null;
-      }
-      
-      const estBox = document.getElementById(`${type}-estimate-box`);
-      if (estBox) estBox.classList.add('hidden');
-      return;
-    }
 
-    const lat = place.geometry.location.lat();
-    const lng = place.geometry.location.lng();
+      const hasStreetNumber = (place.address_components || []).some(component => 
+        component.types.includes("street_number")
+      );
 
-    requestMaps[type].destCoords = { lat, lng };
-    addressInput.value = place.formatted_address;
-    addressInput.dataset.lastResolvedAddress = place.formatted_address;
-
-    updateRequestDeliveryDestination(lat, lng, true, false, type);
-  });
-
-  // Intercept paste and blur events for direct geocoding calibration
-  const handleManualGeocode = () => {
-    const value = addressInput.value.trim();
-    if (!value) return;
-    if (addressInput.dataset.lastResolvedAddress === value) return;
-
-    if (window.google && google.maps && google.maps.Geocoder) {
-      console.log(`Pasted/Typed address detected. Geocoding: "${value}"...`);
-      const geocoder = new google.maps.Geocoder();
-      // Force Google Maps to search strictly within Rio Grande do Sul (RS), Brazil
-      geocoder.geocode({
-        address: value,
-        componentRestrictions: {
-          country: 'BR',
-          administrativeArea: 'RS'
+      if (!hasStreetNumber) {
+        alert("Atenção: Por favor, informe o número exato da casa/estabelecimento no endereço para garantir a entrega.");
+        addressInput.value = "";
+        requestMaps[type].destCoords = null;
+        if (requestMaps[type].marker) {
+          requestMaps[type].marker.setMap(null);
+          requestMaps[type].marker = null;
         }
-      }, (results, status) => {
-        if (status === 'OK' && results[0]) {
-          const place = results[0];
-          const hasStreetNumber = (place.address_components || []).some(component => 
-            component.types.includes("street_number")
-          );
+        if (requestMaps[type].polyline) {
+          requestMaps[type].polyline.setMap(null);
+          requestMaps[type].polyline = null;
+        }
+        const estBox = document.getElementById(`${type}-estimate-box`);
+        if (estBox) estBox.classList.add('hidden');
+        return;
+      }
 
-          if (!hasStreetNumber) {
-            console.warn("Geocoder: Resolved address has no street number.");
-            return;
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      requestMaps[type].destCoords = { lat, lng };
+      addressInput.value = place.formatted_address;
+      addressInput.dataset.lastResolvedAddress = place.formatted_address;
+
+      updateRequestDeliveryDestination(lat, lng, true, false, type);
+    });
+
+    const handleManualGeocode = () => {
+      const value = addressInput.value.trim();
+      if (!value) return;
+      if (addressInput.dataset.lastResolvedAddress === value) return;
+
+      if (window.google?.maps?.Geocoder) {
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ address: value, componentRestrictions: { country: 'BR' } }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+            const res = results[0];
+            const lat = res.geometry.location.lat();
+            const lng = res.geometry.location.lng();
+            requestMaps[type].destCoords = { lat, lng };
+            addressInput.dataset.lastResolvedAddress = res.formatted_address;
+            updateRequestDeliveryDestination(lat, lng, true, false, type);
           }
+        });
+      }
+    };
 
-          const lat = place.geometry.location.lat();
-          const lng = place.geometry.location.lng();
-
-          requestMaps[type].destCoords = { lat, lng };
-          addressInput.value = place.formatted_address;
-          addressInput.dataset.lastResolvedAddress = place.formatted_address;
-          console.log(`Geocoder resolved: ${place.formatted_address} (${lat}, ${lng})`);
-
-          updateRequestDeliveryDestination(lat, lng, true, false, type);
-        } else {
-          console.error("Geocoder failed to resolve address:", status);
-        }
-      });
-    }
-  };
-
-  addressInput.addEventListener('paste', () => {
-    setTimeout(handleManualGeocode, 100);
-  });
-
-  addressInput.addEventListener('blur', handleManualGeocode);
+    addressInput.addEventListener('blur', handleManualGeocode);
+  } catch (err) {
+    console.warn("Places autocomplete listener notice:", err.message);
+  }
 }
+
 // ─── REALTIME ORDER TRACKING ──────────────────────────────────────────────────
 
 async function startRealtimeTracking(order) {
@@ -6297,8 +6475,8 @@ function initTrackingMap(pickupLat, pickupLng, destLat, destLng) {
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d11" }] }
     ];
 
-    const centerLatLng = new google.maps.LatLng(pickupLat, pickupLng);
-    trackingMapInstance = new google.maps.Map(mapContainer, {
+    const centerLatLng = new window.google.maps.LatLng(pickupLat, pickupLng);
+    trackingMapInstance = new window.google.maps.Map(mapContainer, {
       center: centerLatLng,
       zoom: 14,
       styles: darkMapStyle,
@@ -6318,21 +6496,21 @@ function initTrackingMap(pickupLat, pickupLng, destLat, destLng) {
       </div>
     `;
 
-    const pickupLatLng = new google.maps.LatLng(pickupLat, pickupLng);
-    const destLatLng = new google.maps.LatLng(destLat, destLng);
+    const pickupLatLng = new window.google.maps.LatLng(pickupLat, pickupLng);
+    const destLatLng = new window.google.maps.LatLng(destLat, destLng);
 
     trackingPickupMarker = new window.CustomHTMLMapMarker(pickupLatLng, trackingMapInstance, pickupIconHtml, () => {
-      const info = new google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Origem (Comércio)</strong>' });
+      const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Origem (Comércio)</strong>' });
       info.open(trackingMapInstance, trackingPickupMarker);
     });
 
     trackingDestMarker = new window.CustomHTMLMapMarker(destLatLng, trackingMapInstance, destIconHtml, () => {
-      const info = new google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Destino (Cliente)</strong>' });
+      const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Destino (Cliente)</strong>' });
       info.open(trackingMapInstance, trackingDestMarker);
     });
 
     const routePath = [pickupLatLng, destLatLng];
-    trackingRouteLine = new google.maps.Polyline({
+    trackingRouteLine = new window.google.maps.Polyline({
       path: routePath,
       map: trackingMapInstance,
       strokeColor: '#ffb700',
@@ -6345,7 +6523,7 @@ function initTrackingMap(pickupLat, pickupLng, destLat, destLng) {
       }]
     });
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new window.google.maps.LatLngBounds();
     bounds.extend(pickupLatLng);
     bounds.extend(destLatLng);
     trackingMapInstance.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 50 } });
@@ -6357,7 +6535,7 @@ function initTrackingMap(pickupLat, pickupLng, destLat, destLng) {
 function updateRiderMarker(lat, lng, riderName) {
   if (!trackingMapInstance || isNaN(lat) || isNaN(lng)) return;
 
-  const riderLatLng = new google.maps.LatLng(lat, lng);
+  const riderLatLng = new window.google.maps.LatLng(lat, lng);
   const popupContent = `<strong style="color:var(--color-text);">${escapeHtml(riderName)}</strong><br>Localização em tempo real`;
 
   if (trackingRiderMarker) {
@@ -6377,7 +6555,7 @@ function updateRiderMarker(lat, lng, riderName) {
     el.innerHTML = `<i data-lucide="bike" style="width:12px;height:12px;color:#fff;"></i>`;
 
     trackingRiderMarker = new window.CustomHTMLMapMarker(riderLatLng, trackingMapInstance, el.outerHTML, () => {
-      const info = new google.maps.InfoWindow({ content: popupContent });
+      const info = new window.google.maps.InfoWindow({ content: popupContent });
       info.open(trackingMapInstance, trackingRiderMarker);
     });
   }
@@ -6870,7 +7048,7 @@ function populateConsumableRiderSelect() {
     const option = document.createElement('option');
     option.value = rider.id;
     option.setAttribute('data-name', rider.name);
-    option.innerText = `${rider.name} (${rider.id})`;
+    option.innerText = formatRiderDisplayName(rider);
     if (rider.id === currentValue) {
       option.selected = true;
     }
@@ -6899,17 +7077,14 @@ function renderRiderConsumables() {
   let itemsTotal = 0;
 
   const filtered = (mockData.riderConsumables || []).filter(item => {
-    // Filter by date
     if (start || end) {
       const itemDate = new Date(item.created_at);
       if (start && itemDate < start) return false;
       if (end && itemDate > end) return false;
     }
-    // Filter by rider name
     if (searchVal && !item.rider_name.toLowerCase().includes(searchVal)) {
       return false;
     }
-    // Filter by category
     if (categoryFilterVal && item.categoria !== categoryFilterVal) {
       return false;
     }
@@ -6917,11 +7092,13 @@ function renderRiderConsumables() {
   });
 
   const listHtml = filtered.map(item => {
-    weeklyTotal += item.amount;
-    if (item.categoria === 'Vale') {
-      valesTotal += item.amount;
-    } else {
-      itemsTotal += item.amount;
+    if (item.status !== 'reversed') {
+      weeklyTotal += item.amount;
+      if (item.categoria === 'Vale') {
+        valesTotal += item.amount;
+      } else {
+        itemsTotal += item.amount;
+      }
     }
 
     const date = new Date(item.created_at);
@@ -6938,7 +7115,7 @@ function renderRiderConsumables() {
       
     const itemDesc = item.categoria === 'Vale' 
       ? 'Adiantamento em dinheiro' 
-      : `${item.quantidade}x ${escapeHtml(item.item_type)}`;
+      : `${item.quantidade}x ${escapeHtml(item.item_name || item.item_type)}`;
       
     const unitPriceFmt = item.categoria === 'Vale' 
       ? '—' 
@@ -6946,20 +7123,26 @@ function renderRiderConsumables() {
       
     const notesFmt = item.observacao ? `<span class="text-muted" style="font-size: 0.8rem;">${escapeHtml(item.observacao)}</span>` : '—';
 
+    const statusBadge = item.status === 'reversed'
+      ? '<span class="badge badge-danger" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Estornado</span>'
+      : '<span class="badge badge-success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Ativo</span>';
+
+    const actionButton = item.status === 'reversed'
+      ? `<span class="text-muted" style="font-size: 0.78rem;">Estornado</span>`
+      : `<button onclick="openFinancialReversalModal('${item.id}', 'consumable')" class="btn-action btn-action-danger" title="Estornar Lançamento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
+            <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i>
+          </button>`;
+
     return `
-      <tr>
+      <tr style="${item.status === 'reversed' ? 'opacity: 0.6;' : ''}">
         <td>${dateFmt}</td>
-        <td><strong>${escapeHtml(item.rider_name)}</strong> <span class="text-muted" style="font-size: 0.78rem;">(${escapeHtml(item.rider_id)})</span></td>
+        <td><strong>${escapeHtml(item.rider_name)}</strong> ${statusBadge}</td>
         <td>${categoryBadge}</td>
         <td>${itemDesc}</td>
         <td>${unitPriceFmt}</td>
-        <td><strong class="text-yellow">${formatMoneyBR(item.amount)}</strong></td>
+        <td><strong class="text-yellow" style="${item.status === 'reversed' ? 'text-decoration: line-through;' : ''}">${formatMoneyBR(item.amount)}</strong></td>
         <td>${notesFmt}</td>
-        <td>
-          <button onclick="deleteRiderConsumable(${item.id})" class="btn-action btn-action-danger" title="Excluir Lançamento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
-            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-          </button>
-        </td>
+        <td>${actionButton}</td>
       </tr>
     `;
   }).join('');
@@ -6987,7 +7170,6 @@ function renderRiderConsumables() {
   if (window.lucide) lucide.createIcons();
 }
 
-// Pre-fill dates for Consumables range
 function initConsumableDates() {
   const startEl = document.getElementById('consumable-start-date');
   const endEl = document.getElementById('consumable-end-date');
@@ -7001,7 +7183,6 @@ function initConsumableDates() {
   }
 }
 
-// Clear all consumable filters
 function clearConsumableFilters() {
   const startEl = document.getElementById('consumable-start-date');
   const endEl = document.getElementById('consumable-end-date');
@@ -7026,7 +7207,6 @@ function clearConsumableFilters() {
   renderRiderConsumables();
 }
 
-// Toggle display of custom consumable rider search dropdown
 function toggleConsumableRiderSearchDropdown(show) {
   const dropdown = document.getElementById('consumable-rider-search-dropdown');
   const icon = document.querySelector('.consumable-rider-search-wrapper i[data-lucide="chevron-down"]');
@@ -7041,7 +7221,6 @@ function toggleConsumableRiderSearchDropdown(show) {
   }
 }
 
-// Populate the floating dropdown of motoboys for consumables
 function populateConsumableRiderSearchDropdown() {
   const dropdown = document.getElementById('consumable-rider-search-dropdown');
   if (!dropdown) return;
@@ -7061,7 +7240,7 @@ function populateConsumableRiderSearchDropdown() {
       html += `
         <div onclick="selectRiderForConsumableSearch('${escapeHtml(rider.name)}')" style="padding: 10px 14px; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
           <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'Disponível' ? '#10b981' : '#f59e0b'};"></div>
-          <strong>${escapeHtml(rider.name)}</strong> <span style="color: var(--color-text-muted); font-size: 0.78rem;">(${escapeHtml(rider.id)})</span>
+          <strong>${escapeHtml(formatRiderDisplayName(rider))}</strong>
         </div>
       `;
     });
@@ -7069,13 +7248,11 @@ function populateConsumableRiderSearchDropdown() {
   dropdown.innerHTML = html;
 }
 
-// Handle typing in search input to filter the list
 function filterConsumableRiderSearch() {
   toggleConsumableRiderSearchDropdown(true);
   populateConsumableRiderSearchDropdown();
 }
 
-// Select a rider from the dropdown list
 function selectRiderForConsumableSearch(name) {
   const searchInput = document.getElementById('consumable-search-input');
   if (searchInput) {
@@ -7084,7 +7261,6 @@ function selectRiderForConsumableSearch(name) {
   toggleConsumableRiderSearchDropdown(false);
   renderRiderConsumables();
 }
-
 
 async function handleRegisterConsumable(event) {
   event.preventDefault();
@@ -7096,66 +7272,66 @@ async function handleRegisterConsumable(event) {
   const customType = document.getElementById('consumable-custom-type');
   const inputQuantity = document.getElementById('consumable-quantity');
   const inputUnitPrice = document.getElementById('consumable-unit-price');
-  const inputAmount = document.getElementById('consumable-amount');
   const textareaNotes = document.getElementById('consumable-notes');
 
-  if (!selectRider || !selectCategory || !selectType || !customType || !inputQuantity || !inputUnitPrice || !inputAmount) return;
+  if (!selectRider || !selectCategory || !selectType || !inputQuantity || !inputUnitPrice) return;
 
-  const riderOption = selectRider.options[selectRider.selectedIndex];
   const riderId = selectRider.value;
-  const riderName = riderOption ? riderOption.getAttribute('data-name') : '';
+  const categoria = selectCategory.value === 'Vale' ? 'vale' : 'consumivel';
   
-  const categoria = selectCategory.value;
-  let itemType = selectType.value;
-  if (itemType === 'Outros') {
-    itemType = customType.value.trim() || 'Outro';
+  let itemName = selectType.value;
+  if (itemName === 'Outros' && customType) {
+    itemName = customType.value.trim() || 'Outros';
   }
 
   const quantidade = parseInt(inputQuantity.value) || 1;
   const valorUnitario = parseFloat(inputUnitPrice.value) || 0;
-  const amount = parseFloat(inputAmount.value) || (quantidade * valorUnitario);
   const observacao = textareaNotes ? textareaNotes.value.trim() : '';
 
-  if (!riderId || !itemType || isNaN(amount) || amount <= 0) {
-    alert('Por favor, preencha todos os campos corretamente.');
+  if (!riderId || !itemName || quantidade <= 0 || valorUnitario < 0) {
+    showToastNotification('Por favor, preencha todos os campos corretamente.', 'error');
     return;
   }
 
   const submitBtn = event.target.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Processando...</span>';
+  }
 
   try {
-    const { data, error } = await supabaseClient
-      .from('rider_consumable_purchases')
-      .insert([{
-        rider_id: riderId,
-        rider_name: riderName,
-        categoria: categoria,
-        item_type: itemType,
-        quantidade: quantidade,
-        valor_unitario: valorUnitario,
-        amount: amount,
-        observacao: observacao
-      }]);
+    const { data, error } = await supabaseClient.rpc('admin_create_rider_consumable', {
+      p_motoboy_id: riderId,
+      p_category: categoria,
+      p_item_name: itemName,
+      p_quantity: quantidade,
+      p_unit_amount: valorUnitario,
+      p_notes: observacao || null,
+      p_competency_date: new Date().toISOString().split('T')[0]
+    });
 
     if (error) throw error;
+    if (data && data.success === false) throw new Error(data.message || 'Erro ao registrar consumível.');
 
     selectRider.value = '';
     selectCategory.value = 'Consumível';
     handleConsumableCategoryChange();
     if (textareaNotes) textareaNotes.value = '';
-    
+
     showToastNotification('Consumo registrado com sucesso.');
-    
+
     await fetchRiderConsumables();
     renderRiderConsumables();
-    renderRiderPayments();
-    
+    if (typeof loadRiderExtract === 'function') loadRiderExtract();
   } catch (err) {
     console.error('Error inserting rider consumable:', err);
-    alert('Erro ao registrar consumo: ' + err.message);
+    showToastNotification('Erro ao registrar consumo: ' + err.message, 'error');
   } finally {
-    if (submitBtn) submitBtn.disabled = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>Registrar Lançamento</span> <i data-lucide="plus"></i>';
+      if (window.lucide) lucide.createIcons();
+    }
   }
 }
 
@@ -7289,7 +7465,7 @@ function populateCreditRiderSelect() {
     const option = document.createElement('option');
     option.value = rider.id;
     option.setAttribute('data-name', rider.name);
-    option.innerText = `${rider.name} (${rider.id})`;
+    option.innerText = formatRiderDisplayName(rider);
     if (rider.id === currentValue) {
       option.selected = true;
     }
@@ -7330,9 +7506,11 @@ function renderRiderCredits() {
   });
 
   const listHtml = filtered.map(item => {
-    periodTotal += item.amount;
+    if (item.status !== 'reversed') {
+      periodTotal += item.amount;
+    }
     const rider = mockData.fleet.find(r => r.id === item.rider_id);
-    const riderName = rider ? rider.name : 'Motoboy Removido';
+    const riderDisplayName = rider ? formatRiderDisplayName(rider) : 'Motoboy Removido';
 
     const targetDateFmt = parseLocalDate(item.target_date).toLocaleDateString('pt-BR');
     const createdDate = new Date(item.created_at);
@@ -7343,18 +7521,24 @@ function renderRiderCredits() {
       minute: '2-digit'
     });
 
+    const statusBadge = item.status === 'reversed'
+      ? '<span class="badge badge-danger" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Estornado</span>'
+      : '<span class="badge badge-success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Ativo</span>';
+
+    const actionButton = item.status === 'reversed'
+      ? `<span class="text-muted" style="font-size: 0.78rem;">Estornado</span>`
+      : `<button onclick="openFinancialReversalModal('${item.id}', 'adjustment')" class="btn-action btn-action-danger" title="Estornar Lançamento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
+            <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i>
+          </button>`;
+
     return `
-      <tr>
+      <tr style="${item.status === 'reversed' ? 'opacity: 0.6;' : ''}">
         <td><strong>${targetDateFmt}</strong></td>
-        <td><strong>${escapeHtml(riderName)}</strong> <span class="text-muted" style="font-size: 0.78rem;">(${escapeHtml(item.rider_id)})</span></td>
-        <td><strong style="color: #10b981;">+ ${formatMoneyBR(item.amount)}</strong></td>
+        <td><strong>${escapeHtml(riderDisplayName)}</strong> ${statusBadge}</td>
+        <td><strong style="color: #10b981; ${item.status === 'reversed' ? 'text-decoration: line-through;' : ''}">+ ${formatMoneyBR(item.amount)}</strong></td>
         <td>${escapeHtml(item.description)}</td>
         <td><span class="text-muted" style="font-size: 0.8rem;">${createdDateFmt}</span></td>
-        <td>
-          <button onclick="deleteRiderCredit('${item.id}')" class="btn-action btn-action-danger" title="Excluir Lançamento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
-            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-          </button>
-        </td>
+        <td>${actionButton}</td>
       </tr>
     `;
   }).join('');
@@ -7394,70 +7578,122 @@ async function handleRegisterCredit(event) {
   const description = textareaDesc.value.trim();
 
   if (!riderId || isNaN(amount) || amount <= 0 || !targetDate || !description) {
-    alert('Por favor, preencha todos os campos corretamente.');
+    showToastNotification('Por favor, preencha todos os campos corretamente.', 'error');
     return;
   }
 
   const submitBtn = event.target.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Processando...</span>';
+  }
 
   try {
-    const { error } = await supabaseClient
-      .from('rider_credits')
-      .insert([{
-        rider_id: riderId,
-        amount: amount,
-        target_date: targetDate,
-        description: description
-      }]);
+    const { data, error } = await supabaseClient.rpc('admin_create_rider_adjustment', {
+      p_motoboy_id: riderId,
+      p_direction: 'credit',
+      p_amount: amount,
+      p_description: description,
+      p_target_date: targetDate
+    });
 
     if (error) throw error;
+    if (data && data.success === false) throw new Error(data.message || 'Erro ao registrar crédito.');
 
     selectRider.value = '';
     inputAmount.value = '';
     textareaDesc.value = '';
-    
+
     showToastNotification('Crédito lançado com sucesso.');
-    
+
     await fetchRiderCredits();
     renderRiderCredits();
-    renderRiderPayments();
-    
+    if (typeof loadRiderExtract === 'function') loadRiderExtract();
   } catch (err) {
     console.error('Error inserting rider credit:', err);
-    alert('Erro ao registrar crédito: ' + err.message);
+    showToastNotification('Erro ao registrar crédito: ' + err.message, 'error');
   } finally {
-    if (submitBtn) submitBtn.disabled = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>Lançar Crédito</span> <i data-lucide="plus"></i>';
+      if (window.lucide) lucide.createIcons();
+    }
   }
 }
 
-async function deleteRiderCredit(id) {
+function openFinancialReversalModal(itemId, itemType) {
+  const modal = document.getElementById('financial-reversal-modal');
+  const inputId = document.getElementById('reversal-item-id');
+  const inputType = document.getElementById('reversal-item-type');
+  const reasonText = document.getElementById('reversal-reason-input');
+
+  if (!modal || !inputId || !inputType || !reasonText) return;
+
+  inputId.value = itemId;
+  inputType.value = itemType;
+  reasonText.value = '';
+  modal.classList.remove('hidden');
+}
+
+function closeFinancialReversalModal() {
+  const modal = document.getElementById('financial-reversal-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleExecuteFinancialReversal(event) {
+  event.preventDefault();
   if (!supabaseClient) return;
-  if (!confirm('Deseja realmente remover este lançamento de crédito?')) return;
+
+  const itemId = document.getElementById('reversal-item-id')?.value;
+  const itemType = document.getElementById('reversal-item-type')?.value;
+  const reason = document.getElementById('reversal-reason-input')?.value?.trim();
+
+  if (!itemId || !itemType || !reason) {
+    showToastNotification('Por favor, informe o motivo do estorno.', 'error');
+    return;
+  }
+
+  const submitBtn = document.getElementById('reversal-submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Processando...';
+  }
 
   try {
-    const { error } = await supabaseClient
-      .from('rider_credits')
-      .delete()
-      .eq('id', id);
+    let rpcName = itemType === 'consumable' ? 'admin_reverse_rider_consumable' : 'admin_reverse_rider_adjustment';
+    let rpcParams = itemType === 'consumable' ? { p_purchase_id: itemId, p_reason: reason } : { p_adjustment_id: itemId, p_reason: reason };
+
+    const { data, error } = await supabaseClient.rpc(rpcName, rpcParams);
 
     if (error) throw error;
+    if (data && data.success === false) throw new Error(data.message || 'Erro ao realizar estorno.');
 
-    showToastNotification('Crédito excluído com sucesso.');
-    
-    await fetchRiderCredits();
-    renderRiderCredits();
-    renderRiderPayments();
+    closeFinancialReversalModal();
+    showToastNotification('Estorno realizado com sucesso.');
+
+    if (itemType === 'consumable') {
+      await fetchRiderConsumables();
+      renderRiderConsumables();
+    } else {
+      await fetchRiderCredits();
+      renderRiderCredits();
+    }
+    if (typeof loadRiderExtract === 'function') loadRiderExtract();
   } catch (err) {
-    console.error('Error deleting rider credit:', err);
-    alert('Erro ao excluir crédito: ' + err.message);
+    console.error('Error in financial reversal:', err);
+    showToastNotification('Erro ao realizar estorno: ' + err.message, 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = 'Confirmar Estorno';
+    }
   }
 }
 
 // ─── CITIES AND RATES MANAGEMENT ─────────────────────────────────────────────
 
 async function fetchCities() {
-  if (!supabaseClient) return;
+  if (!supabaseClient || !currentActiveSession) return;
   try {
     const { data, error } = await supabaseClient
       .from('cidades')
@@ -7465,9 +7701,14 @@ async function fetchCities() {
       .order('nome', { ascending: true });
 
     if (error) {
+      if (error.status === 401 || error.code === '42501') {
+        handleInvalidSession();
+        return;
+      }
       console.warn("Aviso ao buscar cidades:", error.message);
       return;
     }
+
 
     mockData.cities = (data || []).map(item => ({
       id: item.id,
@@ -8049,8 +8290,8 @@ window.openQuickMapModal = function(teleId, lat, lng) {
         { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d11" }] }
       ];
 
-      const latLng = new google.maps.LatLng(numericLat, numericLng);
-      quickMapInstance = new google.maps.Map(container, {
+      const latLng = new window.google.maps.LatLng(numericLat, numericLng);
+      quickMapInstance = new window.google.maps.Map(container, {
         center: latLng,
         zoom: 16,
         disableDefaultUI: true,
@@ -8068,14 +8309,14 @@ window.openQuickMapModal = function(teleId, lat, lng) {
       if (window.CustomHTMLMapMarker) {
         quickMapMarker = new window.CustomHTMLMapMarker(latLng, quickMapInstance, markerHtml);
       } else {
-        quickMapMarker = new google.maps.Marker({
+        quickMapMarker = new window.google.maps.Marker({
           position: latLng,
           map: quickMapInstance
         });
       }
 
       setTimeout(() => {
-        google.maps.event.trigger(quickMapInstance, 'resize');
+        window.google.maps.event.trigger(quickMapInstance, 'resize');
         quickMapInstance.setCenter(latLng);
       }, 100);
     });
@@ -8239,7 +8480,6 @@ window.handleRiderExtractPeriodPresetChange = function() {
 
 window.initRiderExtract = async function() {
   await fetchFleet();
-  await fetchClientHistory();
   await fetchRiderConsumables();
   await fetchRiderCredits();
 
@@ -8248,7 +8488,7 @@ window.initRiderExtract = async function() {
     const currentVal = select.value;
     select.innerHTML = '<option value="">Todos os Motoboys</option>';
     (mockData.fleet || []).forEach(r => {
-      select.innerHTML += `<option value="${escapeHtml(r.name)}">${escapeHtml(r.name)} (${escapeHtml(r.vehicle || 'Motoboy')})</option>`;
+      select.innerHTML += `<option value="${escapeHtml(r.id)}">${escapeHtml(formatRiderDisplayName(r))}</option>`;
     });
     select.value = currentVal;
   }
@@ -8257,135 +8497,125 @@ window.initRiderExtract = async function() {
   loadRiderExtract();
 };
 
-window.loadRiderExtract = function(targetPage) {
+window.loadRiderExtract = async function(targetPage) {
   if (targetPage) currentRiderExtractPage = targetPage;
+  if (!supabaseClient) return;
 
-  const selectedRider = document.getElementById('rider-extract-rider-select')?.value || '';
-  const selectedStatus = document.getElementById('rider-extract-status-select')?.value || '';
+  const selectRider = document.getElementById('rider-extract-rider-select');
+  const selectedRiderId = selectRider ? selectRider.value : '';
   const periodPreset = document.getElementById('rider-extract-period-preset')?.value || 'week';
   
   const { start, end } = resolveDateRange(periodPreset, 'rider-extract-start-date', 'rider-extract-end-date');
+  const startDateStr = start.toISOString().split('T')[0];
+  const endDateStr = end.toISOString().split('T')[0];
 
-  // Filtrar corridas
-  const deliveries = (mockData.clientHistory || []).filter(d => {
-    const dDate = new Date(d.date || d.created_at);
-    const dateMatch = dDate >= start && dDate <= end;
-    const riderMatch = !selectedRider || (d.rider && d.rider.toLowerCase() === selectedRider.toLowerCase());
-    const statusMatch = !selectedStatus || (d.status && d.status.toLowerCase() === selectedStatus.toLowerCase());
-    return dateMatch && riderMatch && statusMatch;
-  });
-
-  currentRiderDeliveriesCache = deliveries;
-
-  // Métricas
-  const count = deliveries.length;
-  let gross = 0;
-  deliveries.forEach(d => {
-    const val = parseFloat(d.price || d.taxa || 0);
-    if (!isNaN(val)) gross += val;
-  });
-
-  const commission = gross * 0.10; // 10% comissão padrão
-
-  let consumablesTotal = 0;
-  (mockData.riderConsumables || []).forEach(c => {
-    const cDate = new Date(c.date || c.created_at);
-    if (cDate >= start && cDate <= end) {
-      if (!selectedRider || (c.rider_name && c.rider_name.toLowerCase() === selectedRider.toLowerCase())) {
-        consumablesTotal += parseFloat(c.total_price || c.price || 0);
-      }
-    }
-  });
-
-  let creditsTotal = 0;
-  let adjustmentsTotal = 0;
-  (mockData.riderCredits || []).forEach(cr => {
-    const crDate = new Date(cr.date || cr.created_at);
-    if (crDate >= start && crDate <= end) {
-      if (!selectedRider || (cr.rider_name && cr.rider_name.toLowerCase() === selectedRider.toLowerCase())) {
-        const val = parseFloat(cr.amount || 0);
-        if (cr.type === 'Crédito') creditsTotal += val;
-        else if (cr.type === 'Ajuste') adjustmentsTotal += val;
-      }
-    }
-  });
-
-  const net = (gross - commission) - consumablesTotal + creditsTotal + adjustmentsTotal;
-
-  // Atualizar UI dos 7 cards
-  const elCount = document.getElementById('rider-extract-count');
-  const elGross = document.getElementById('rider-extract-gross');
-  const elCommission = document.getElementById('rider-extract-commission');
-  const elConsumables = document.getElementById('rider-extract-consumables');
-  const elCredits = document.getElementById('rider-extract-credits');
-  const elAdjustments = document.getElementById('rider-extract-adjustments');
-  const elNet = document.getElementById('rider-extract-net');
-
-  if (elCount) elCount.innerText = count;
-  if (elGross) elGross.innerText = `R$ ${gross.toFixed(2).replace('.', ',')}`;
-  if (elCommission) elCommission.innerText = `R$ ${commission.toFixed(2).replace('.', ',')}`;
-  if (elConsumables) elConsumables.innerText = `R$ ${consumablesTotal.toFixed(2).replace('.', ',')}`;
-  if (elCredits) elCredits.innerText = `R$ ${creditsTotal.toFixed(2).replace('.', ',')}`;
-  if (elAdjustments) elAdjustments.innerText = `R$ ${adjustmentsTotal.toFixed(2).replace('.', ',')}`;
-  if (elNet) elNet.innerText = `R$ ${net.toFixed(2).replace('.', ',')}`;
-
-  // Paginação
-  const totalPages = Math.ceil(deliveries.length / FINANCIAL_PAGE_SIZE) || 1;
-  if (currentRiderExtractPage > totalPages) currentRiderExtractPage = totalPages;
-
-  const startIndex = (currentRiderExtractPage - 1) * FINANCIAL_PAGE_SIZE;
-  const pageDeliveries = deliveries.slice(startIndex, startIndex + FINANCIAL_PAGE_SIZE);
-
-  // Tabela
-  const tbody = document.getElementById('rider-extract-table-body');
-  if (tbody) {
-    if (deliveries.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma corrida localizada para o filtro selecionado.</td></tr>`;
-    } else {
-      tbody.innerHTML = pageDeliveries.map(d => {
-        const dDate = new Date(d.date || d.created_at);
-        const dateFormatted = isNaN(dDate) ? '—' : dDate.toLocaleDateString('pt-BR');
-        const timeFormatted = isNaN(dDate) ? '—' : dDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const val = parseFloat(d.price || d.taxa || 0);
-
-        let statusClass = 'badge-neutral';
-        if (d.status === 'Entregue' || d.status === 'Concluído') statusClass = 'badge-success';
-        else if (d.status === 'Em Rota') statusClass = 'badge-warning';
-        else if (d.status === 'Cancelado') statusClass = 'badge-danger';
-
-        return `
-          <tr class="clickable-row" onclick="openRiderTransactionDrawer('${escapeHtml(String(d.id))}')">
-            <td><strong>#${escapeHtml(String(d.id))}</strong></td>
-            <td>${dateFormatted}</td>
-            <td>${timeFormatted}</td>
-            <td>${escapeHtml(d.client || d.commerce_name || 'Cliente')}</td>
-            <td>${escapeHtml(d.origin || d.pickup || '—')}</td>
-            <td>${escapeHtml(d.destination || d.delivery_address || '—')}</td>
-            <td><strong>R$ ${val.toFixed(2).replace('.', ',')}</strong></td>
-            <td><span class="badge ${statusClass}">${escapeHtml(d.status || 'Pendente')}</span></td>
-          </tr>
-        `;
-      }).join('');
-    }
+  let targetRiderId = selectedRiderId;
+  if (!targetRiderId && mockData.fleet && mockData.fleet.length > 0) {
+    targetRiderId = mockData.fleet[0].id;
   }
 
-  renderPaginationControls('rider-extract-pagination', currentRiderExtractPage, totalPages, 'loadRiderExtract');
+  if (!targetRiderId) {
+    const tbody = document.getElementById('rider-extract-table-body');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Selecione um motoboy para visualizar o extrato.</td></tr>`;
+    return;
+  }
 
-  // Demonstrativo Consolidado
-  const summaryBox = document.getElementById('rider-extract-summary-box');
-  if (summaryBox) {
-    summaryBox.innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.9rem;">
-        <div><span style="color: var(--color-text-muted);">Total de Corridas Bruto:</span> <strong>R$ ${gross.toFixed(2).replace('.', ',')}</strong></div>
-        <div><span style="color: var(--color-text-muted);">(-) Retenção Dahora (10%):</span> <strong style="color: #ef4444;">-R$ ${commission.toFixed(2).replace('.', ',')}</strong></div>
-        <div><span style="color: var(--color-text-muted);">(-) Desconto Consumíveis:</span> <strong style="color: #ef4444;">-R$ ${consumablesTotal.toFixed(2).replace('.', ',')}</strong></div>
-        <div><span style="color: var(--color-text-muted);">(+) Créditos Liberados:</span> <strong style="color: #10b981;">+R$ ${creditsTotal.toFixed(2).replace('.', ',')}</strong></div>
-        <div><span style="color: var(--color-text-muted);">(+/-) Ajustes Diversos:</span> <strong>R$ ${adjustmentsTotal.toFixed(2).replace('.', ',')}</strong></div>
-        <div style="border-top: 1px solid var(--border-color); padding-top: 8px; grid-column: 1 / -1; font-size: 1.05rem;">
-          <span style="font-weight: 700;">TOTAL LÍQUIDO A RECEBER:</span> <strong style="color: #10b981; font-size: 1.2rem; margin-left: 8px;">R$ ${net.toFixed(2).replace('.', ',')}</strong>
+  try {
+    const { data: summaryData, error: summaryErr } = await supabaseClient.rpc('admin_get_rider_financial_summary', {
+      p_motoboy_id: targetRiderId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr
+    });
+
+    if (summaryErr) console.warn('Aviso em admin_get_rider_financial_summary:', summaryErr.message);
+
+    const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('admin_get_rider_financial_statement', {
+      p_motoboy_id: targetRiderId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+      p_limit: FINANCIAL_PAGE_SIZE,
+      p_offset: (currentRiderExtractPage - 1) * FINANCIAL_PAGE_SIZE
+    });
+
+    if (stmtErr) throw stmtErr;
+
+    const s = (summaryData && summaryData.success) ? summaryData : {
+      completed_deliveries_count: 0,
+      delivery_earnings: 0,
+      consumables_total: 0,
+      credits_total: 0,
+      positive_adjustments_total: 0,
+      negative_adjustments_total: 0,
+      gross_total: 0,
+      deductions_total: 0,
+      net_total: 0
+    };
+
+    const elCount = document.getElementById('rider-extract-count');
+    const elGross = document.getElementById('rider-extract-gross');
+    const elConsumables = document.getElementById('rider-extract-consumables');
+    const elCredits = document.getElementById('rider-extract-credits');
+    const elAdjustments = document.getElementById('rider-extract-adjustments');
+    const elNet = document.getElementById('rider-extract-net');
+
+    if (elCount) elCount.innerText = s.completed_deliveries_count || 0;
+    if (elGross) elGross.innerText = `R$ ${parseFloat(s.delivery_earnings || 0).toFixed(2).replace('.', ',')}`;
+    if (elConsumables) elConsumables.innerText = `R$ ${parseFloat(s.consumables_total || 0).toFixed(2).replace('.', ',')}`;
+    if (elCredits) elCredits.innerText = `R$ ${parseFloat(s.credits_total || 0).toFixed(2).replace('.', ',')}`;
+    if (elAdjustments) elAdjustments.innerText = `R$ ${(parseFloat(s.positive_adjustments_total || 0) - parseFloat(s.negative_adjustments_total || 0)).toFixed(2).replace('.', ',')}`;
+    if (elNet) elNet.innerText = `R$ ${parseFloat(s.net_total || 0).toFixed(2).replace('.', ',')}`;
+
+    const items = (stmtData && stmtData.items) ? stmtData.items : [];
+    const totalCount = (stmtData && stmtData.total_count) || items.length;
+    const totalPages = Math.ceil(totalCount / FINANCIAL_PAGE_SIZE) || 1;
+
+    const tbody = document.getElementById('rider-extract-table-body');
+    if (tbody) {
+      if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma movimentação financeira localizada para o período.</td></tr>`;
+      } else {
+        tbody.innerHTML = items.map(item => {
+          const itemDate = new Date(item.created_at);
+          const dateFormatted = isNaN(itemDate) ? item.competency_date : itemDate.toLocaleDateString('pt-BR');
+          const timeFormatted = isNaN(itemDate) ? '' : itemDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          const val = parseFloat(item.amount || 0);
+
+          let badgeClass = item.direction === 'credit' ? 'badge-success' : 'badge-danger';
+          let signStr = item.direction === 'credit' ? '+' : '-';
+          if (item.type === 'estorno') badgeClass = 'badge-warning';
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(item.tele_code ? '#' + item.tele_code : 'LANÇAMENTO')}</strong></td>
+              <td>${dateFormatted} ${timeFormatted}</td>
+              <td>${escapeHtml(item.type)}</td>
+              <td>${escapeHtml(item.description)}</td>
+              <td><strong class="${item.direction === 'credit' ? 'text-green' : 'text-red'}">${signStr} R$ ${val.toFixed(2).replace('.', ',')}</strong></td>
+              <td><span class="badge ${badgeClass}">${item.direction.toUpperCase()}</span></td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    renderPaginationControls('rider-extract-pagination', currentRiderExtractPage, totalPages, 'loadRiderExtract');
+
+    const summaryBox = document.getElementById('rider-extract-summary-box');
+    if (summaryBox) {
+      summaryBox.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.9rem;">
+          <div><span style="color: var(--color-text-muted);">Ganhos de Entregas:</span> <strong style="color: #10b981;">+R$ ${parseFloat(s.delivery_earnings || 0).toFixed(2).replace('.', ',')}</strong></div>
+          <div><span style="color: var(--color-text-muted);">(+) Créditos e Bônus:</span> <strong style="color: #10b981;">+R$ ${parseFloat(s.credits_total || 0).toFixed(2).replace('.', ',')}</strong></div>
+          <div><span style="color: var(--color-text-muted);">(-) Consumíveis / Vales:</span> <strong style="color: #ef4444;">-R$ ${parseFloat(s.consumables_total || 0).toFixed(2).replace('.', ',')}</strong></div>
+          <div><span style="color: var(--color-text-muted);">(+/-) Ajustes / Estornos:</span> <strong>R$ ${(parseFloat(s.positive_adjustments_total || 0) - parseFloat(s.negative_adjustments_total || 0)).toFixed(2).replace('.', ',')}</strong></div>
+          <div style="border-top: 1px solid var(--border-color); padding-top: 8px; grid-column: 1 / -1; font-size: 1.05rem;">
+            <span style="font-weight: 700;">TOTAL LÍQUIDO DO PERÍODO:</span> <strong style="color: #10b981; font-size: 1.2rem; margin-left: 8px;">R$ ${parseFloat(s.net_total || 0).toFixed(2).replace('.', ',')}</strong>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
+  } catch (err) {
+    console.error('Error loading rider extract via RPC:', err);
   }
 };
 
@@ -9019,23 +9249,583 @@ function openTestClientPanel(clientId, mode) {
   showToastNotification(`Acessando o Painel do Cliente como [${client.establishment_name}] (${client.public_code})`);
 }
 
+let manualDeliveryMap = null;
+let manualDeliveryMarker = null;
+let addressSearchDebounceTimer = null;
+
+function renderCommercialClientsDropdown(clientsList) {
+  const dropdownEl = document.getElementById('admin-client-dropdown');
+  const searchVal = document.getElementById('admin-client-search')?.value?.trim().toLowerCase() || '';
+  const hintEl = document.getElementById('admin-client-select-hint');
+
+  if (!dropdownEl) return;
+
+  let filtered = (clientsList || []).filter(c => {
+    if (c.is_internal) return true;
+    if (!searchVal) return true;
+    return (c.establishment_name || '').toLowerCase().includes(searchVal) ||
+           (c.client_code || '').toLowerCase().includes(searchVal) ||
+           (c.responsible_name || '').toLowerCase().includes(searchVal);
+  });
+
+  const externalCount = filtered.filter(c => !c.is_internal).length;
+  if (externalCount === 0 && hintEl) {
+    hintEl.textContent = "Nenhum cliente comercial cadastrado. Você ainda pode criar uma Tele interna da Dahora Expresso.";
+  } else if (hintEl) {
+    hintEl.textContent = "Exibindo clientes cadastrados ativos.";
+  }
+
+  let html = '';
+  filtered.forEach(c => {
+    const isInternal = c.is_internal;
+    const title = isInternal ? 'Dahora Expresso — Operação Interna' : escapeHtml(c.establishment_name);
+    const subtitle = isInternal ? `${c.client_code} • Operação Própria` : `${c.client_code} • ${escapeHtml(c.responsible_name)}`;
+    const badge = isInternal ? '<span style="font-size:0.65rem; background: var(--primary); color: #000; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">INTERNA</span>' : '';
+
+    html += `
+      <div class="client-select-item" onclick="selectCommercialClientForTele('${c.id}', '${escapeHtml(title).replace(/'/g, "\\'")}')" style="padding: 10px 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'">
+        <div style="font-weight: 600; color: var(--color-text); display: flex; align-items: center; justify-content: space-between;">
+          <span>${title}</span> ${badge}
+        </div>
+        <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px;">
+          ${subtitle}
+        </div>
+      </div>
+    `;
+  });
+
+  dropdownEl.innerHTML = html || '<div style="padding: 12px; color: var(--color-text-muted); text-align: center;">Nenhum cliente encontrado.</div>';
+}
+
+function selectCommercialClientForTele(id, name) {
+  const selectedInput = document.getElementById('selectedClientId');
+  const searchInput = document.getElementById('admin-client-search');
+  const dropdownEl = document.getElementById('admin-client-dropdown');
+
+  if (selectedInput) selectedInput.value = id;
+  if (searchInput) searchInput.value = name;
+  if (dropdownEl) dropdownEl.classList.add('hidden');
+
+  const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(id));
+  if (clientObj && clientObj.address) {
+    showToastNotification(`Endereço de coleta do cliente carregado: ${clientObj.address}`);
+  }
+}
+
+function toggleManualDeliverySN() {
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  const numInput = document.getElementById('manual-delivery-number');
+  if (!numInput || !snCb) return;
+
+  if (snCb.checked) {
+    numInput.value = 'S/N';
+    numInput.disabled = true;
+  } else {
+    if (numInput.value === 'S/N') numInput.value = '';
+    numInput.disabled = false;
+  }
+}
+
+let googleMapsLoaderPromise = null;
+
+
+function getGoogleMapsApiKey() {
+  return (window.LOCAL_SUPABASE_CONFIG && window.LOCAL_SUPABASE_CONFIG.googleMapsApiKey) ||
+         (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.googleMapsApiKey) ||
+         window.GOOGLE_MAPS_API_KEY || '';
+}
+
+function ensureCustomHTMLMapMarkerClass() {
+  if (window.google && window.google.maps && window.google.maps.OverlayView && !window.CustomHTMLMapMarker) {
+    class CustomHTMLMapMarker extends window.google.maps.OverlayView {
+      constructor(latlng, map, html, onClick) {
+        super();
+        this.latlng = latlng;
+        this.html = html;
+        this.onClick = onClick;
+        
+        this.div = document.createElement('div');
+        this.div.style.position = 'absolute';
+        this.div.style.cursor = 'pointer';
+        this.div.innerHTML = html;
+        
+        if (onClick) {
+          this.div.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onClick(e);
+          });
+        }
+        this.setMap(map);
+      }
+      onAdd() {
+        const pane = this.getPanes().overlayMouseTarget;
+        if (pane) pane.appendChild(this.div);
+      }
+      draw() {
+        const projection = this.getProjection();
+        if (!projection) return;
+        const point = projection.fromLatLngToDivPixel(this.latlng);
+        if (point) {
+          this.div.style.left = (point.x - 10) + 'px';
+          this.div.style.top = (point.y - 10) + 'px';
+        }
+      }
+      onRemove() {
+        if (this.div && this.div.parentNode) {
+          this.div.parentNode.removeChild(this.div);
+        }
+      }
+      setLatLng(latlng) {
+        this.latlng = latlng;
+        this.draw();
+      }
+      getLatLng() {
+        return this.latlng;
+      }
+      getPosition() {
+        return this.latlng;
+      }
+    }
+    window.CustomHTMLMapMarker = CustomHTMLMapMarker;
+  }
+}
+
+async function loadGoogleMapsApi() {
+  if (window.google?.maps) {
+    ensureCustomHTMLMapMarkerClass();
+    return window.google.maps;
+  }
+
+  if (googleMapsLoaderPromise) {
+    const mapsObj = await googleMapsLoaderPromise;
+    ensureCustomHTMLMapMarkerClass();
+    return mapsObj;
+  }
+
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) {
+    throw new Error("Chave do Google Maps não configurada em public/config.local.js");
+  }
+
+  googleMapsLoaderPromise = new Promise((resolve, reject) => {
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+    if (existingScript) {
+      if (window.google?.maps) {
+        ensureCustomHTMLMapMarkerClass();
+        resolve(window.google.maps);
+        return;
+      }
+      existingScript.addEventListener('load', () => {
+        ensureCustomHTMLMapMarkerClass();
+        resolve(window.google?.maps);
+      });
+      existingScript.addEventListener('error', () => reject(new Error("Erro ao carregar a Google Maps JavaScript API.")));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (window.google?.maps) {
+        ensureCustomHTMLMapMarkerClass();
+        resolve(window.google.maps);
+      } else {
+        reject(new Error("Google Maps API não disponibilizada após o evento onload."));
+      }
+    };
+    script.onerror = () => {
+      reject(new Error("Erro ao carregar a Google Maps JavaScript API."));
+    };
+    document.head.appendChild(script);
+  });
+
+  try {
+    const resMaps = await googleMapsLoaderPromise;
+    ensureCustomHTMLMapMarkerClass();
+    return resMaps;
+  } catch (error) {
+    googleMapsLoaderPromise = null;
+    throw error;
+  }
+}
+
+
+function getGoogleMapsMapId() {
+  return (window.LOCAL_SUPABASE_CONFIG && window.LOCAL_SUPABASE_CONFIG.googleMapsMapId) ||
+         (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.googleMapsMapId) ||
+         'DEMO_MAP_ID';
+}
+
+async function initManualDeliveryMap() {
+  const container = document.getElementById('manual-request-delivery-map');
+  if (!container) return;
+
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) {
+    container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Chave do Google Maps não configurada em public/config.local.js</div>`;
+    return;
+  }
+
+  try {
+    await loadGoogleMapsApi();
+    const { Map } = await window.google.maps.importLibrary('maps');
+    const { AdvancedMarkerElement } = await window.google.maps.importLibrary('marker');
+
+    const initialLat = parseFloat(document.getElementById('manual-delivery-lat')?.value) || -29.8247;
+    const initialLng = parseFloat(document.getElementById('manual-delivery-lng')?.value) || -51.1444;
+    const position = { lat: initialLat, lng: initialLng };
+
+    if (!manualDeliveryMap) {
+      const mapId = getGoogleMapsMapId();
+      manualDeliveryMap = new Map(container, {
+        center: position,
+        zoom: 15,
+        mapId: mapId,
+        gestureHandling: 'greedy',
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false
+      });
+
+      manualDeliveryMarker = new AdvancedMarkerElement({
+        map: manualDeliveryMap,
+        position: position,
+        gmpDraggable: true,
+        title: 'Local de entrega'
+      });
+
+      manualDeliveryMarker.addListener('dragend', (evt) => {
+        let lat = position.lat;
+        let lng = position.lng;
+        if (evt && evt.latLng) {
+          lat = evt.latLng.lat();
+          lng = evt.latLng.lng();
+        } else if (manualDeliveryMarker.position) {
+          lat = typeof manualDeliveryMarker.position.lat === 'function' ? manualDeliveryMarker.position.lat() : manualDeliveryMarker.position.lat;
+          lng = typeof manualDeliveryMarker.position.lng === 'function' ? manualDeliveryMarker.position.lng() : manualDeliveryMarker.position.lng;
+        }
+        onMapMarkerPositionChanged(lat, lng);
+      });
+
+      manualDeliveryMap.addListener('click', (e) => {
+        if (e.latLng) {
+          const lat = e.latLng.lat();
+          const lng = e.latLng.lng();
+          if (manualDeliveryMarker.position) {
+            manualDeliveryMarker.position = { lat, lng };
+          } else if (typeof manualDeliveryMarker.setPosition === 'function') {
+            manualDeliveryMarker.setPosition(e.latLng);
+          }
+          onMapMarkerPositionChanged(lat, lng);
+        }
+      });
+    } else {
+      window.google.maps.event.trigger(manualDeliveryMap, 'resize');
+      manualDeliveryMap.setCenter(position);
+    }
+  } catch (err) {
+    container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">${err.message}</div>`;
+  }
+
+  initGooglePlacesAutocomplete();
+}
+
+function syncManualDeliveryNumberInput(val) {
+  const hiddenNum = document.getElementById('manual-delivery-number');
+  if (hiddenNum) hiddenNum.value = val ? val.trim() : '';
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  if (snCb && val.trim()) snCb.checked = false;
+}
+
+function toggleManualDeliverySN() {
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  const numInput = document.getElementById('manual-delivery-number-input');
+  const hiddenNum = document.getElementById('manual-delivery-number');
+
+  if (snCb && snCb.checked) {
+    if (numInput) { numInput.value = ''; numInput.disabled = true; }
+    if (hiddenNum) hiddenNum.value = 'S/N';
+  } else {
+    if (numInput) { numInput.disabled = false; }
+    if (hiddenNum) hiddenNum.value = numInput ? numInput.value.trim() : '';
+  }
+}
+
+function onMapMarkerPositionChanged(lat, lng) {
+  const latInput = document.getElementById('manual-delivery-lat');
+  const lngInput = document.getElementById('manual-delivery-lng');
+  const precInput = document.getElementById('manual-geocoding-precision');
+  const adjInput = document.getElementById('manual-location-adjusted-manually');
+  const warnBox = document.getElementById('manual-geocoding-warning');
+
+  if (latInput) latInput.value = typeof lat === 'number' ? lat.toFixed(7) : lat;
+  if (lngInput) lngInput.value = typeof lng === 'number' ? lng.toFixed(7) : lng;
+  if (precInput) precInput.value = 'manual';
+  if (adjInput) adjInput.value = 'true';
+  if (warnBox) warnBox.classList.add('hidden');
+}
+
+let isPlacesApi403Blocked = false;
+
+function showPlacesApi403Warning() {
+  const warnBox = document.getElementById('manual-geocoding-warning');
+  if (warnBox) {
+    warnBox.classList.remove('hidden');
+    warnBox.innerHTML = '⚠️ <strong>A busca de endereços está indisponível.</strong> Ative a Places API (New) e permita essa API nas restrições da chave.';
+  }
+}
+
+function handlePlacesApi403Error() {
+  if (isPlacesApi403Blocked) return;
+  isPlacesApi403Blocked = true;
+  console.warn("Places API (New) indisponível ou bloqueada (Erro 403 Forbidden).");
+  showPlacesApi403Warning();
+
+  const existingInput = document.getElementById('manual-delivery-address');
+  if (existingInput) {
+    existingInput.style.display = 'block';
+  }
+}
+
+async function initGooglePlacesAutocomplete() {
+  const container = document.getElementById('manual-address-suggestions')?.parentElement || document.getElementById('manual-delivery-address')?.parentElement;
+  if (!container || container.dataset.googleAutocompleteAttached === 'true') return;
+
+  if (isPlacesApi403Blocked) {
+    showPlacesApi403Warning();
+    return;
+  }
+
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) return;
+
+  try {
+    await loadGoogleMapsApi();
+    const { PlaceAutocompleteElement } = await window.google.maps.importLibrary('places');
+
+    container.dataset.googleAutocompleteAttached = 'true';
+
+    // Bounding Box cobrindo todo o estado do Rio Grande do Sul (RS)
+    const rsBounds = {
+      north: -27.08,
+      south: -33.75,
+      east: -49.69,
+      west: -57.65
+    };
+
+    const autocompleteElement = new PlaceAutocompleteElement({
+      locationRestriction: rsBounds,
+      includedRegionCodes: ['BR']
+    });
+
+    autocompleteElement.id = 'manual-delivery-place-autocomplete';
+
+    autocompleteElement.addEventListener('gmp-placeselect', async (evt) => {
+      const eventPlace = evt.place || (evt.detail && evt.detail.place);
+      if (!eventPlace) return;
+
+      try {
+        await eventPlace.fetchFields({
+          fields: ['id', 'formattedAddress', 'addressComponents', 'location', 'viewport']
+        });
+        handlePlaceSelection(eventPlace);
+      } catch (err) {
+        console.warn("fetchFields error:", err.message || err);
+        if (err?.message?.includes('403') || err?.status === 403) {
+          handlePlacesApi403Error();
+        }
+      }
+    });
+
+    const existingInput = document.getElementById('manual-delivery-address');
+    if (existingInput && existingInput.parentNode === container) {
+      existingInput.style.display = 'none';
+    }
+    container.appendChild(autocompleteElement);
+  } catch (err) {
+    console.warn("PlaceAutocompleteElement notice:", err.message || err);
+    if (err?.message?.includes('403') || err?.status === 403 || err?.message?.includes('blocked') || err?.message?.includes('disabled')) {
+      handlePlacesApi403Error();
+    }
+  }
+}
+
+function handlePlaceSelection(place) {
+  const components = place.addressComponents || place.address_components || [];
+  let route = '';
+  let streetNumber = '';
+  let sublocality = '';
+  let city = '';
+  let state = '';
+  let country = '';
+  let postalCode = '';
+
+  components.forEach(comp => {
+    const types = comp.types || [];
+    const longName = comp.longText || comp.long_name || comp.name || '';
+    const shortName = comp.shortText || comp.short_name || '';
+
+    if (types.includes('route')) route = longName;
+    if (types.includes('street_number')) streetNumber = longName;
+    if (types.includes('sublocality') || types.includes('sublocality_level_1') || types.includes('neighborhood')) {
+      if (!sublocality) sublocality = longName;
+    }
+    if (types.includes('locality') || types.includes('administrative_area_level_2')) {
+      if (!city) city = longName;
+    }
+    if (types.includes('administrative_area_level_1')) state = shortName || longName;
+    if (types.includes('country')) country = shortName || longName;
+    if (types.includes('postal_code')) postalCode = longName;
+  });
+
+  const warnBox = document.getElementById('manual-geocoding-warning');
+  const placeIdInput = document.getElementById('manual-delivery-place-id');
+  const latInput = document.getElementById('manual-delivery-lat');
+  const lngInput = document.getElementById('manual-delivery-lng');
+
+  const stateUpper = (state || '').toUpperCase();
+  const isRS = stateUpper === 'RS' || state.toLowerCase().includes('rio grande do sul');
+
+  // Validação Estrita de Estado: Apenas RS é aceito
+  if (state && !isRS) {
+    if (placeIdInput) placeIdInput.value = '';
+    if (latInput) latInput.value = '';
+    if (lngInput) lngInput.value = '';
+
+    if (warnBox) {
+      warnBox.classList.remove('hidden');
+      warnBox.innerHTML = '⚠️ <strong>Este endereço está fora da área atendida.</strong> Selecione um endereço no Rio Grande do Sul.';
+    }
+    return;
+  }
+
+  let lat = 0;
+  let lng = 0;
+  if (place.location) {
+    lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
+    lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
+  } else if (place.geometry && place.geometry.location) {
+    lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
+    lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
+  }
+
+  const placeId = place.id || place.place_id || '';
+  const formattedAddress = place.formattedAddress || place.formatted_address || route;
+  const cleanFormatted = formattedAddress.replace(/, Brasil$/i, '');
+
+  const addrInput = document.getElementById('manual-delivery-address');
+  const numInput = document.getElementById('manual-delivery-number');
+  const numVisibleInput = document.getElementById('manual-delivery-number-input');
+  const neighInput = document.getElementById('manual-delivery-neighborhood');
+  const cityInput = document.getElementById('manual-delivery-city');
+  const stateInput = document.getElementById('manual-delivery-state');
+  const postalCodeInput = document.getElementById('manual-delivery-postal-code');
+  const precInput = document.getElementById('manual-geocoding-precision');
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  const confirmArea = document.getElementById('manual-number-confirm-area');
+  const summaryBox = document.getElementById('manual-address-summary-box');
+  const summaryTitle = document.getElementById('manual-address-summary-title');
+  const summarySubtitle = document.getElementById('manual-address-summary-subtitle');
+
+  if (addrInput) addrInput.value = cleanFormatted;
+  if (numInput) numInput.value = streetNumber || '';
+  if (numVisibleInput) numVisibleInput.value = streetNumber || '';
+  if (neighInput) neighInput.value = sublocality || '';
+  if (cityInput) cityInput.value = city || 'Sapucaia do Sul';
+  if (stateInput) stateInput.value = 'RS';
+  if (postalCodeInput) postalCodeInput.value = postalCode || '';
+  if (placeIdInput) placeIdInput.value = placeId;
+  if (latInput) latInput.value = typeof lat === 'number' ? lat.toFixed(7) : lat;
+  if (lngInput) lngInput.value = typeof lng === 'number' ? lng.toFixed(7) : lng;
+
+  // Resumo Compacto do Endereço (Somente Leitura)
+  if (summaryBox && summaryTitle && summarySubtitle) {
+    const mainTitle = route ? (streetNumber ? `${route}, ${streetNumber}` : route) : cleanFormatted;
+    const subText = `${sublocality ? sublocality + ' • ' : ''}${city || 'Sapucaia do Sul'} - RS`;
+    summaryTitle.innerText = mainTitle;
+    summarySubtitle.innerText = subText;
+    summaryBox.classList.remove('hidden');
+  }
+
+  // Área Dinâmica de Número Não Confirmado
+  if (streetNumber) {
+    if (precInput) precInput.value = 'rooftop';
+    if (confirmArea) confirmArea.classList.add('hidden');
+    if (warnBox) warnBox.classList.add('hidden');
+  } else {
+    if (precInput) precInput.value = 'street';
+    if (confirmArea) confirmArea.classList.remove('hidden');
+    if (warnBox) {
+      warnBox.classList.remove('hidden');
+      warnBox.innerHTML = '⚠️ <strong>O Google não confirmou o número deste endereço.</strong> Informe o número ou marque S/N e confira o marcador.';
+    }
+  }
+
+  if (manualDeliveryMap) {
+    manualDeliveryMap.setCenter({ lat, lng });
+    manualDeliveryMap.setZoom(16);
+  }
+  if (manualDeliveryMarker) {
+    if (manualDeliveryMarker.position) {
+      manualDeliveryMarker.position = { lat, lng };
+    } else if (typeof manualDeliveryMarker.setPosition === 'function') {
+      manualDeliveryMarker.setPosition({ lat, lng });
+    }
+  }
+}
+
 function showRequestDeliveryModal() {
   const modal = document.getElementById('modal-request-delivery');
   const searchInput = document.getElementById('admin-client-search');
   const selectedInput = document.getElementById('selectedClientId');
-  const destInput = document.getElementById('manual-delivery-dest-name');
+  const destNameInput = document.getElementById('manual-delivery-dest-name');
+  const destPhoneInput = document.getElementById('manual-delivery-dest-phone');
   const addrInput = document.getElementById('manual-delivery-address');
+  const numInput = document.getElementById('manual-delivery-number');
+  const numVisibleInput = document.getElementById('manual-delivery-number-input');
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  const compInput = document.getElementById('manual-delivery-complement');
+  const neighInput = document.getElementById('manual-delivery-neighborhood');
+  const cityInput = document.getElementById('manual-delivery-city');
   const notesInput = document.getElementById('manual-order-notes');
+  const summaryBox = document.getElementById('manual-address-summary-box');
+  const confirmArea = document.getElementById('manual-number-confirm-area');
 
   if (searchInput) searchInput.value = '';
   if (selectedInput) selectedInput.value = '';
-  if (destInput) destInput.value = '';
+  if (destNameInput) destNameInput.value = '';
+  if (destPhoneInput) destPhoneInput.value = '';
   if (addrInput) addrInput.value = '';
+  if (numInput) numInput.value = '';
+  if (numVisibleInput) { numVisibleInput.value = ''; numVisibleInput.disabled = false; }
+  if (snCb) snCb.checked = false;
+  if (compInput) compInput.value = '';
+  if (neighInput) neighInput.value = '';
+  if (cityInput) cityInput.value = 'Sapucaia do Sul';
   if (notesInput) notesInput.value = '';
+  if (summaryBox) summaryBox.classList.add('hidden');
+  if (confirmArea) confirmArea.classList.add('hidden');
+
+  const latEl = document.getElementById('manual-delivery-lat');
+  const lngEl = document.getElementById('manual-delivery-lng');
+  const precEl = document.getElementById('manual-geocoding-precision');
+  const manEl = document.getElementById('manual-location-adjusted-manually');
+  const warnEl = document.getElementById('manual-geocoding-warning');
+
+  if (latEl) latEl.value = '';
+  if (lngEl) lngEl.value = '';
+  if (precEl) precEl.value = 'unconfirmed';
+  if (manEl) manEl.value = 'false';
+  if (warnEl) warnEl.classList.add('hidden');
 
   if (modal) modal.classList.remove('hidden');
   fetchCommercialClientsForSelect();
+  initManualDeliveryMap();
 }
+
 
 function closeRequestDeliveryModal(event) {
   if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn')) {
@@ -9060,13 +9850,55 @@ async function submitDeliveryRequest(event, type = 'manual') {
     return;
   }
 
+  const destPhone = document.getElementById('manual-delivery-dest-phone')?.value?.trim();
+  if (!destPhone) {
+    showToastNotification('Informe o telefone do destinatário.');
+    return;
+  }
+
   const address = document.getElementById('manual-delivery-address')?.value?.trim();
   if (!address) {
     showToastNotification('Informe o endereço de entrega.');
     return;
   }
 
+  const stateVal = document.getElementById('manual-delivery-state')?.value?.trim() || 'RS';
+  if (stateVal.toUpperCase() !== 'RS' && !stateVal.toLowerCase().includes('rio grande do sul')) {
+    showToastNotification('Este endereço está fora da área atendida. Selecione um endereço no Rio Grande do Sul.');
+    return;
+  }
+
+  const number = document.getElementById('manual-delivery-number')?.value?.trim();
+  const isSN = document.getElementById('manual-delivery-sn-cb')?.checked;
+  if (!number && !isSN) {
+    showToastNotification('Informe o número da residência ou marque S/N (Sem número).');
+    return;
+  }
+
+  const latRaw = document.getElementById('manual-delivery-lat')?.value;
+  const lngRaw = document.getElementById('manual-delivery-lng')?.value;
+  const lat = latRaw ? parseFloat(latRaw) : null;
+  const lng = lngRaw ? parseFloat(lngRaw) : null;
+
+  if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
+    showToastNotification('Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas.');
+    return;
+  }
+
+  const placeId = document.getElementById('manual-delivery-place-id')?.value?.trim();
+  if (!placeId && !isPlacesApi403Blocked) {
+    showToastNotification('Selecione uma sugestão válida do Google Autocomplete.');
+    return;
+  }
+
+  const complement = document.getElementById('manual-delivery-complement')?.value?.trim() || null;
+  const neighborhood = document.getElementById('manual-delivery-neighborhood')?.value?.trim() || null;
+  const city = document.getElementById('manual-delivery-city')?.value?.trim() || 'Sapucaia do Sul';
   const notes = document.getElementById('manual-order-notes')?.value || '';
+
+  const precision = document.getElementById('manual-geocoding-precision')?.value || 'unconfirmed';
+  const isManual = document.getElementById('manual-location-adjusted-manually')?.value === 'true';
+
   const btnSubmit = document.querySelector('#request-delivery-form button[type="submit"]');
   if (btnSubmit) btnSubmit.disabled = true;
 
@@ -9079,11 +9911,20 @@ async function submitDeliveryRequest(event, type = 'manual') {
         p_pickup_address: '',
         p_delivery_address: address,
         p_recipient_name: destName,
-        p_recipient_phone: '11999999999',
+        p_recipient_phone: destPhone,
         p_idempotency_key: idempotencyKey,
         p_reference: null,
         p_notes: notes,
-        p_order_value: 0
+        p_order_value: 0,
+        p_operation_source: 'owner_panel',
+        p_delivery_number: isSN ? 'S/N' : number,
+        p_delivery_complement: complement,
+        p_delivery_neighborhood: neighborhood,
+        p_delivery_city: city,
+        p_delivery_latitude: lat,
+        p_delivery_longitude: lng,
+        p_geocoding_precision: precision,
+        p_location_adjusted_manually: isManual
       });
 
       if (error) throw error;
@@ -9093,33 +9934,9 @@ async function submitDeliveryRequest(event, type = 'manual') {
         return;
       }
 
-      showToastNotification(`Tele criada com sucesso!`);
-    } else {
-      const res = await fetch('/api/admin/create-tele', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: selectedClientId,
-          delivery_address: address,
-          recipient_name: destName,
-          recipient_phone: '11999999999',
-          idempotency_key: idempotencyKey,
-          notes
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        showToastNotification(data.message || 'Erro ao criar Tele.');
-        if (btnSubmit) btnSubmit.disabled = false;
-        return;
-      }
-
-      mockData.pendingDeliveries.unshift(data.tele);
-      syncTelesStoreMap();
-      renderOperationsDashboard();
+      showToastNotification(`Tele ${data.tele_code || ''} criada com sucesso! (Status: Aguardando Despacho)`);
+      if (typeof fetchPendingDeliveries === 'function') await fetchPendingDeliveries();
       if (typeof renderTelesUnified === 'function') renderTelesUnified();
-      showToastNotification(`Tele ${data.tele_code} criada com sucesso!`);
     }
 
     closeRequestDeliveryModal();
@@ -9131,12 +9948,89 @@ async function submitDeliveryRequest(event, type = 'manual') {
   }
 }
 
+
+
+// 7. Solicitação de Entrega pelo Painel do Cliente (Vocabulário "Entrega")
+function parseMoneyBR(input) {
+  if (input === null || input === undefined || input === '') return 0.00;
+  if (typeof input === 'number') {
+    if (isNaN(input) || input < 0 || input > 50000.00) throw new Error('VALOR_MONETARIO_INVALIDO');
+    return Math.round(input * 100) / 100;
+  }
+  let str = String(input).trim().replace(/^R\$\s?/, '');
+  if (!str) return 0.00;
+
+  if (/^\d{1,3}\.\d{3}$/.test(str)) {
+    throw new Error('FORMATO_AMBIGUO: Formatos como 1.250 não são permitidos. Use 1250, 1250,50 ou 1.250,50.');
+  }
+
+  const isPlainInt = /^\d+$/.test(str);
+  const isCommaDecimal = /^\d+(,\d{1,2})?$/.test(str);
+  const isPtBrThousands = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(str);
+  const isDotDecimal = /^\d+(\.\d{1,2})?$/.test(str);
+
+  if (!isPlainInt && !isCommaDecimal && !isPtBrThousands && !isDotDecimal) {
+    throw new Error('FORMATO_MONETARIO_INVALIDO: Formato numérico não reconhecido.');
+  }
+
+  if (str.includes(',')) {
+    str = str.replace(/\./g, '').replace(',', '.');
+  }
+
+  const val = Number(str);
+  if (isNaN(val) || val < 0 || val > 50000.00) {
+    throw new Error('VALOR_MONETARIO_FORA_DOS_LIMITES (0 a R$ 50.000,00).');
+  }
+
+  return Math.round(val * 100) / 100;
+}
+
+async function computeCanonicalPayloadFingerprint(payload, userId) {
+  const canonicalObj = {
+    user_id: String(userId || ''),
+    pickup_address: (payload.p_pickup_address || '').trim(),
+    delivery_address: (payload.p_delivery_address || '').trim(),
+    delivery_number: (payload.p_delivery_number || '').trim(),
+    delivery_complement: (payload.p_delivery_complement || '').trim(),
+    delivery_neighborhood: (payload.p_delivery_neighborhood || '').trim(),
+    delivery_city: (payload.p_delivery_city || '').trim(),
+    delivery_state: (payload.p_delivery_state || 'RS').trim(),
+    delivery_postal_code: (payload.p_delivery_postal_code || '').replace(/\D/g, ''),
+    recipient_name: (payload.p_recipient_name || '').trim(),
+    recipient_phone: (payload.p_recipient_phone || '').replace(/\D/g, ''),
+    reference: (payload.p_reference || '').trim(),
+    notes: (payload.p_notes || '').trim(),
+    order_value: Number(payload.p_order_value || 0).toFixed(2),
+    delivery_lat: payload.p_delivery_latitude ?? null,
+    delivery_lng: payload.p_delivery_longitude ?? null,
+    pickup_lat: payload.p_pickup_latitude ?? null,
+    pickup_lng: payload.p_pickup_longitude ?? null,
+    place_id: (payload.p_place_id || '').trim(),
+    precision: (payload.p_geocoding_precision || 'unconfirmed').trim(),
+    is_manual: Boolean(payload.p_location_adjusted_manually)
+  };
+
+  const canonicalJson = JSON.stringify(canonicalObj, Object.keys(canonicalObj).sort());
+  if (window.crypto && window.crypto.subtle) {
+    const msgUint8 = new TextEncoder().encode(canonicalJson);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  let hash = 0;
+  for (let i = 0; i < canonicalJson.length; i++) {
+    hash = ((hash << 5) - hash) + canonicalJson.charCodeAt(i);
+    hash |= 0;
+  }
+  return `fp_fallback_${Math.abs(hash)}`;
+}
+
 // 7. Solicitação de Entrega pelo Painel do Cliente (Vocabulário "Entrega")
 async function submitClientDeliveryRequest(event) {
   if (event) event.preventDefault();
 
   if (activeCommercialClient && activeCommercialClient.lifecycle_status === 'suspenso') {
-    alert('Sua conta comercial encontra-se suspensa para novas solicitações. Entre em contato com o suporte.');
+    showToastNotification('Sua conta comercial encontra-se suspensa para novas solicitações. Entre em contato com o suporte.');
     return;
   }
 
@@ -9147,50 +10041,95 @@ async function submitClientDeliveryRequest(event) {
   const address = document.getElementById('client-delivery-address')?.value.trim();
   const phone = document.getElementById('client-dest-phone')?.value.trim() || '';
   const cargo = document.getElementById('client-cargo-notes')?.value.trim() || 'Sem observações';
-  const payment = document.getElementById('client-payment-method')?.value || 'Pix';
-  const price = document.getElementById('client-delivery-price')?.value || '15,00';
-
-  if (!address) {
-    alert('Informe o endereço de entrega.');
+  const rawPrice = document.getElementById('client-delivery-price')?.value || '15,00';
+  
+  let orderValue = 0;
+  try {
+    orderValue = parseMoneyBR(rawPrice);
+  } catch (err) {
+    showToastNotification(`Erro no valor da entrega: ${err.message}`);
     return;
   }
 
-  showToastNotification('Enviando solicitação de entrega para a central...');
-
-  const newTele = {
-    id: `TEL-${Math.floor(100000 + Math.random() * 900000)}`,
-    client_id: clientId,
-    client: clientName,
-    dest_name: destName,
-    address,
-    dest_phone: phone,
-    cargo,
-    payment,
-    price: `R$ ${price}`,
-    status: 'solicitada',
-    status_class: 'status-warning',
-    created_at: new Date().toISOString()
-  };
-
-  // Inserir no Supabase se conectado
-  if (supabaseClient) {
-    try {
-      await supabaseClient.from('teles').insert([{
-        cliente_nome: clientName,
-        endereco: address,
-        valor: parseFloat(price),
-        status: 'novo',
-        client_id: clientId
-      }]);
-    } catch (err) {
-      console.warn("Aviso ao salvar no Supabase, usando memória local:", err);
-    }
+  if (!address) {
+    showToastNotification('Informe o endereço de entrega.');
+    return;
   }
 
-  mockData.pendingDeliveries.unshift(newTele);
-  
-  if (typeof renderTelesUnified === 'function') renderTelesUnified();
-  showToastNotification(`Entrega #${newTele.id} solicitada com sucesso! Acompanhe o status no painel.`);
+  const payload = {
+    p_pickup_address: null, // Null aciona o fallback para commercial_clients.address
+    p_delivery_address: address,
+    p_recipient_name: destName,
+    p_recipient_phone: phone,
+    p_reference: null,
+    p_notes: cargo,
+    p_order_value: orderValue,
+    p_operation_source: 'client_portal',
+    p_delivery_number: null,
+    p_delivery_complement: null,
+    p_delivery_neighborhood: null,
+    p_delivery_city: 'Sapucaia do Sul',
+    p_delivery_postal_code: null,
+    p_delivery_latitude: null,
+    p_delivery_longitude: null,
+    p_geocoding_precision: 'unconfirmed',
+    p_location_adjusted_manually: false,
+    p_pickup_latitude: null,
+    p_pickup_longitude: null,
+    p_place_id: null,
+    p_delivery_state: 'RS'
+  };
+
+  const userId = currentActiveSession?.user?.id || 'anon_client';
+  const currentFingerprint = await computeCanonicalPayloadFingerprint(payload, userId);
+
+  let idempotencyDataRaw = sessionStorage.getItem('client_tele_idempotency_session');
+  let idempotencyData = null;
+  if (idempotencyDataRaw) {
+    try { idempotencyData = JSON.parse(idempotencyDataRaw); } catch (e) {}
+  }
+
+  let activeIdempotencyKey = null;
+  if (idempotencyData && idempotencyData.fingerprint === currentFingerprint && idempotencyData.userId === userId) {
+    activeIdempotencyKey = idempotencyData.key;
+  } else {
+    activeIdempotencyKey = `idemp-client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    sessionStorage.setItem('client_tele_idempotency_session', JSON.stringify({
+      key: activeIdempotencyKey,
+      fingerprint: currentFingerprint,
+      userId: userId,
+      createdAt: new Date().toISOString()
+    }));
+  }
+
+  payload.p_idempotency_key = activeIdempotencyKey;
+
+  showToastNotification('Enviando solicitação de entrega via RPC...');
+
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.rpc('create_client_tele', payload);
+      if (error) throw error;
+
+      if (!data.success) {
+        showToastNotification(`Erro na RPC ao criar entrega: ${data.message || data.error_code}`);
+        return;
+      }
+
+      sessionStorage.removeItem('client_tele_idempotency_session');
+      showToastNotification(`Entrega #${data.tele_code || data.tele_id} criada com sucesso! Status: Aguardando Despacho.`);
+
+      if (typeof fetchClientHistory === 'function') await fetchClientHistory();
+      if (typeof fetchPendingDeliveries === 'function') await fetchPendingDeliveries();
+      if (typeof renderTelesUnified === 'function') renderTelesUnified();
+
+      return;
+    } catch (err) {
+      console.warn("Aviso na chamada da RPC create_client_tele:", err.message);
+      showToastNotification("Erro de conexão ao criar entrega. Tente novamente.");
+      return;
+    }
+  }
 }
 
 // =====================================================================
@@ -9206,26 +10145,7 @@ const opClientsStoreMap = new Map();
 let opSearchDebounceTimer = null;
 
 // 1. Configuração Centralizada de SLA (em minutos)
-// Inicialização do Mapa no Modal sem bloqueio de Ctrl (greedy / scrollZoom: true)
-let manualDeliveryMapInstance = null;
 
-function initManualDeliveryMap() {
-  const container = document.getElementById('manual-request-delivery-map');
-  if (!container) return;
-
-  if (!manualDeliveryMapInstance && window.mapboxgl) {
-    manualDeliveryMapInstance = new mapboxgl.Map({
-      container: 'manual-request-delivery-map',
-      style: 'mapbox://styles/mapbox/dark-v11',
-      center: [-46.633308, -23.55052],
-      zoom: 13,
-      scrollZoom: true,
-      dragPan: true,
-      touchZoomRotate: true
-    });
-    manualDeliveryMapInstance.addControl(new mapboxgl.NavigationControl(), 'top-right');
-  }
-}
 
 const SLA_CONFIG = {
   solicitada: { warning_minutes: 10, critical_minutes: 20 },
@@ -9527,50 +10447,47 @@ function canTransitionTeleStatus(currentRaw, nextRaw) {
   return (allowedTransitions[current] || []).includes(next);
 }
 
-// 4. Cálculo de Tempo Decorrido & SLA derivado de tele_eventos
+// 4. Cálculo de Tempo Decorrido & SLA derivado estritamente de created_at UTC ISO 8601
 function calculateTeleElapsedTime(tele, eventsList = []) {
-  const normStatus = normalizeTeleStatus(tele.status);
-  let statusEnteredAt = null;
-  let isEstimated = false;
-
-  if (Array.isArray(eventsList) && eventsList.length > 0) {
-    const matchingEvent = eventsList
-      .filter(e => String(e.tele_id) === String(tele.id) && normalizeTeleStatus(e.tipo || e.status) === normStatus)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-
-    if (matchingEvent && matchingEvent.created_at) {
-      statusEnteredAt = new Date(matchingEvent.created_at);
-    }
+  const normStatus = normalizeTeleStatus(tele ? tele.status : null);
+  
+  if (['concluida', 'cancelada'].includes(normStatus)) {
+    return { elapsedMinutes: 0, isInvalid: false, isInactive: true };
   }
 
-  // Fallback 1: updated_at
-  if (!statusEnteredAt && tele.updated_at) {
-    statusEnteredAt = new Date(tele.updated_at);
-    isEstimated = true;
+  if (!tele || !tele.created_at) {
+    return { elapsedMinutes: null, isInvalid: true, reason: 'CREATED_AT_MISSING' };
   }
 
-  // Fallback 2: created_at / date
-  if (!statusEnteredAt && (tele.created_at || tele.date)) {
-    statusEnteredAt = new Date(tele.created_at || tele.date);
-    isEstimated = true;
+  const createdTimestamp = Date.parse(tele.created_at);
+  if (isNaN(createdTimestamp)) {
+    return { elapsedMinutes: null, isInvalid: true, reason: 'CREATED_AT_INVALID' };
   }
 
-  if (!statusEnteredAt || isNaN(statusEnteredAt.getTime())) {
-    statusEnteredAt = new Date();
-    isEstimated = true;
+  const nowTimestamp = Date.now();
+  if (createdTimestamp > nowTimestamp + 60000) {
+    return { elapsedMinutes: null, isInvalid: true, reason: 'FUTURE_DATE' };
   }
 
-  const now = new Date();
-  const elapsedMs = Math.max(0, now.getTime() - statusEnteredAt.getTime());
+  const elapsedMs = Math.max(0, nowTimestamp - createdTimestamp);
   const elapsedMinutes = Math.floor(elapsedMs / 60000);
 
-  return { elapsedMinutes, isEstimated, enteredAt: statusEnteredAt };
+  return { elapsedMinutes, isInvalid: false, enteredAt: new Date(createdTimestamp) };
 }
 
 function calculateTeleSLAState(tele, eventsList = []) {
-  const config = getSLAConfigurationForStatus(tele.status);
-  const { elapsedMinutes, isEstimated, enteredAt } = calculateTeleElapsedTime(tele, eventsList);
+  const config = getSLAConfigurationForStatus(tele ? tele.status : null);
+  const elapsed = calculateTeleElapsedTime(tele, eventsList);
 
+  if (elapsed.isInvalid) {
+    return { state: 'invalid', elapsedMinutes: null, label: 'SLA indisponível', config };
+  }
+
+  if (elapsed.isInactive) {
+    return { state: 'normal', elapsedMinutes: 0, label: '0 min', config };
+  }
+
+  const elapsedMinutes = elapsed.elapsedMinutes;
   let state = 'normal';
   if (elapsedMinutes >= config.critical_minutes) {
     state = 'critical';
@@ -9578,7 +10495,7 @@ function calculateTeleSLAState(tele, eventsList = []) {
     state = 'warning';
   }
 
-  return { state, elapsedMinutes, isEstimated, enteredAt, config };
+  return { state, elapsedMinutes, label: `${elapsedMinutes} min`, enteredAt: elapsed.enteredAt, config };
 }
 
 // 5. Filtro do Dia no Fuso Horário Local
@@ -9631,6 +10548,38 @@ function syncRidersStoreMap() {
   }
 }
 
+function normalizeTeleRecord(item) {
+  if (!item) return null;
+  const id = String(item.id || item.raw_id || item.tele_code || '');
+  if (!id) return null;
+
+  const version = (item.version !== undefined && item.version !== null) ? Number(item.version) : null;
+
+  return {
+    id: id,
+    raw_id: item.raw_id || item.id,
+    tele_code: item.tele_code || item.code || item.id || null,
+    client_id: item.client_id || null,
+    client: resolveClientDisplayName(item),
+    pickup_address: item.pickup_address || item.origin_address || null,
+    delivery_address: item.delivery_address || item.address || item.endereco || null,
+    address: item.delivery_address || item.address || item.endereco || null,
+    dest_name: item.recipient_name || item.dest_name || item.destName || 'Destinatário',
+    dest_phone: item.recipient_phone || item.dest_phone || '',
+    pickup_lat: item.pickup_lat ?? item.pickup_latitude ?? null,
+    pickup_lng: item.pickup_lng ?? item.pickup_longitude ?? null,
+    dest_lat: item.dest_lat ?? item.delivery_latitude ?? null,
+    dest_lng: item.dest_lng ?? item.delivery_longitude ?? null,
+    status: normalizeTeleStatus(item.status),
+    motoboy_id: item.motoboy_id || item.rider_id || null,
+    rider: item.rider || item.motoboy_name || 'Aguardando Despacho',
+    created_at: item.created_at || null,
+    updated_at: item.updated_at || null,
+    version: version,
+    delivery_charge: item.delivery_charge || item.valor || item.price || 0
+  };
+}
+
 // 7. Sincronizar Teles para Store Map
 function syncTelesStoreMap() {
   opTelesStoreMap.clear();
@@ -9641,8 +10590,9 @@ function syncTelesStoreMap() {
   ];
 
   allTeles.forEach(t => {
-    if (t && t.id) {
-      opTelesStoreMap.set(String(t.id), t);
+    const normalized = normalizeTeleRecord(t);
+    if (normalized && normalized.id) {
+      opTelesStoreMap.set(String(normalized.id), normalized);
     }
   });
 }
@@ -9912,7 +10862,7 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '') 
       tele.updated_at = data.updated_at;
     }
 
-    renderKanbanBoard();
+    if (typeof renderOperationsDashboard === 'function') renderOperationsDashboard();
     if (typeof openTeleOpDrawer === 'function' && document.getElementById('drawer-tele-op-details')?.classList.contains('active')) {
       openTeleOpDrawer(teleId);
     }
@@ -10257,7 +11207,7 @@ async function submitCompleteTele(event) {
 
     closeCompleteTeleModal();
     closeTeleOpDrawer();
-    renderKanbanBoard();
+    if (typeof renderOperationsDashboard === 'function') renderOperationsDashboard();
     showToastNotification(`Tele #${teleId} concluída com sucesso! Lançamento consolidado.`);
   } catch (err) {
     if (btnSubmit) {
@@ -10594,7 +11544,7 @@ function handleRealtimeEvent(table, eventType, record) {
       }
     }
 
-    renderKanbanBoard();
+    if (typeof renderOperationsDashboard === 'function') renderOperationsDashboard();
   } else if (table === 'fleet') {
     const riderId = String(record.id);
     const existingRider = opRidersStoreMap.get(riderId);
@@ -10757,3 +11707,639 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }, 1500);
 });
+
+// ─── MÓDULO DE SUPORTE DOS MOTOBOYS (ADMINISTRATIVO) ─────────────────────────
+
+let adminSupportState = {
+  tickets: [],
+  currentTicketId: null,
+  isSubmitting: false,
+  msgType: 'public', // 'public' | 'internal'
+  searchTimeout: null,
+  realtimeChannel: null
+};
+
+function getAdminSupportCategoryLabel(cat) {
+  const categories = {
+    delivery_issue: 'Problema em Entrega',
+    payment_question: 'Dúvida sobre Pagamento',
+    consumable_question: 'Consumíveis / Bag',
+    app_problem: 'Problema no Aplicativo',
+    account_problem: 'Problema na Conta',
+    other: 'Outros Assuntos'
+  };
+  return categories[cat] || cat || 'Outros';
+}
+
+function getAdminSupportPriorityBadge(priority) {
+  const badges = {
+    urgent: '<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800;">URGENTE</span>',
+    high: '<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">ALTA</span>',
+    normal: '<span style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 600;">NORMAL</span>',
+    low: '<span style="background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem;">BAIXA</span>'
+  };
+  return badges[priority] || badges.normal;
+}
+
+function getAdminSupportStatusBadge(status) {
+  const styles = {
+    open: 'background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);',
+    in_progress: 'background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);',
+    waiting_rider: 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);',
+    waiting_admin: 'background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);',
+    resolved: 'background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3);',
+    closed: 'background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3);'
+  };
+  const labels = {
+    open: 'Novo Chamado',
+    in_progress: 'Em Atendimento',
+    waiting_rider: 'Aguardando Motoboy',
+    waiting_admin: 'Aguardando Suporte',
+    resolved: 'Resolvido',
+    closed: 'Encerrado'
+  };
+  const st = styles[status] || styles.closed;
+  const lb = labels[status] || status;
+  return `<span style="padding: 3px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; ${st}">${lb}</span>`;
+}
+
+async function loadAdminSupportSummary() {
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_get_rider_support_summary');
+    if (error) throw error;
+    if (data && data.success) {
+      const elNew = document.getElementById('admin-support-count-new');
+      const elProg = document.getElementById('admin-support-count-progress');
+      const elWaitAdmin = document.getElementById('admin-support-count-waiting-admin');
+      const elWaitRider = document.getElementById('admin-support-count-waiting-rider');
+      const elRes = document.getElementById('admin-support-count-resolved');
+
+      if (elNew) elNew.textContent = data.new_count || 0;
+      if (elProg) elProg.textContent = data.in_progress_count || 0;
+      if (elWaitAdmin) elWaitAdmin.textContent = data.waiting_admin_count || 0;
+      if (elWaitRider) elWaitRider.textContent = data.waiting_rider_count || 0;
+      if (elRes) elRes.textContent = data.resolved_count || 0;
+    }
+  } catch (err) {
+    console.error("Error loading admin support summary:", err);
+  }
+}
+
+async function loadAdminSupportTickets() {
+  const container = document.getElementById('admin-rider-support-tickets-list');
+  if (!container) return;
+
+  if (!supabaseClient) {
+    container.innerHTML = `<div style="text-align: center; color: var(--color-text-muted); padding: 20px;">Sessão não inicializada.</div>`;
+    return;
+  }
+
+  const statusFilter = document.getElementById('admin-rider-ticket-filter-status')?.value || null;
+  const priorityFilter = document.getElementById('admin-rider-ticket-filter-priority')?.value || null;
+  const searchVal = document.getElementById('admin-rider-ticket-search')?.value.trim() || null;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_get_rider_support_tickets', {
+      p_status: statusFilter,
+      p_priority: priorityFilter,
+      p_motoboy_id: null,
+      p_search: searchVal,
+      p_limit: 50,
+      p_offset: 0
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      adminSupportState.tickets = data.items || [];
+      renderAdminSupportTicketsList();
+    } else {
+      throw new Error(data?.message || 'Falha ao carregar lista de chamados.');
+    }
+  } catch (err) {
+    console.error("Error loading admin support tickets:", err);
+    container.innerHTML = `<div style="text-align: center; color: var(--color-text-muted); padding: 20px; font-size: 0.82rem;">Erro ao carregar lista de chamados.</div>`;
+  }
+}
+
+function renderAdminSupportTicketsList() {
+  const container = document.getElementById('admin-rider-support-tickets-list');
+  if (!container) return;
+
+  const tickets = adminSupportState.tickets;
+  if (tickets.length === 0) {
+    container.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--color-text-muted); gap: 10px; padding: 30px 16px;">
+        <i data-lucide="inbox" style="width: 32px; height: 32px;"></i>
+        <p style="font-size: 0.85rem; margin: 0; font-weight: 600;">Nenhum chamado localizado.</p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  container.innerHTML = tickets.map(t => {
+    const isSelected = t.ticket_id === adminSupportState.currentTicketId;
+    const timeStr = t.last_message_at ? new Date(t.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const unreadHtml = t.unread_messages_count > 0 
+      ? `<span style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 7px; font-size: 0.65rem; font-weight: 800;">${t.unread_messages_count} nova(s)</span>`
+      : '';
+
+    return `
+      <div onclick="openAdminSupportTicketDetail('${t.ticket_id}')" style="padding: 12px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: background 0.15s; background: ${isSelected ? 'rgba(255, 183, 0, 0.12)' : 'var(--bg-card)'}; border: 1px solid ${isSelected ? 'var(--primary)' : 'var(--border-color)'}; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+          <strong style="font-size: 0.82rem; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.rider_display_name)}</strong>
+          ${getAdminSupportPriorityBadge(t.priority)}
+        </div>
+        <div style="font-size: 0.85rem; font-weight: 700; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          ${escapeHtml(t.subject)}
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--color-text-muted);">
+          <span>${escapeHtml(getAdminSupportCategoryLabel(t.category))}</span>
+          <span>${timeStr}</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+          ${getAdminSupportStatusBadge(t.status)}
+          ${unreadHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+async function openAdminSupportTicketDetail(ticketId) {
+  adminSupportState.currentTicketId = ticketId;
+  renderAdminSupportTicketsList(); // destaca o card selecionado
+
+  const noSelection = document.getElementById('admin-rider-chat-no-selection');
+  const windowPane = document.getElementById('admin-rider-chat-window-pane');
+  const messagesContainer = document.getElementById('admin-rider-chat-messages');
+
+  if (noSelection) noSelection.classList.add('hidden');
+  if (windowPane) windowPane.classList.remove('hidden');
+
+  if (messagesContainer) {
+    messagesContainer.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+        <div style="width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      </div>
+    `;
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_get_rider_support_ticket', {
+      p_ticket_id: ticketId
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      renderAdminSupportTicketDetail(data.ticket, data.rider, data.messages || []);
+      // Atualizar estatísticas em background
+      loadAdminSupportSummary();
+      loadAdminSupportTickets();
+    } else {
+      showToastNotification(data?.message || "Erro ao carregar chamado.");
+    }
+  } catch (err) {
+    console.error("Error opening admin support ticket detail:", err);
+    showToastNotification("Erro ao carregar detalhes do chamado.");
+  }
+}
+
+function renderAdminSupportTicketDetail(ticket, rider, messages) {
+  const subjectEl = document.getElementById('admin-ticket-detail-subject');
+  const priorityEl = document.getElementById('admin-ticket-detail-priority-badge');
+  const riderInfoEl = document.getElementById('admin-ticket-detail-rider-info');
+  const statusBadgeEl = document.getElementById('admin-ticket-detail-status-badge');
+  const statusSelect = document.getElementById('admin-ticket-status-select');
+  const assigneeSelect = document.getElementById('admin-ticket-assignee-select');
+  const messagesContainer = document.getElementById('admin-rider-chat-messages');
+  const closedWarning = document.getElementById('admin-ticket-closed-warning');
+  const inputEl = document.getElementById('admin-rider-chat-input');
+  const submitBtn = document.getElementById('admin-support-submit-btn');
+
+  if (subjectEl) subjectEl.textContent = ticket.subject;
+  if (priorityEl) priorityEl.innerHTML = getAdminSupportPriorityBadge(ticket.priority);
+  if (riderInfoEl) riderInfoEl.textContent = `Motoboy: ${rider.display_name} • Tel: ${rider.phone || 'Não informado'} • Categoria: ${getAdminSupportCategoryLabel(ticket.category)}`;
+  if (statusBadgeEl) statusBadgeEl.innerHTML = getAdminSupportStatusBadge(ticket.status);
+
+  if (statusSelect) statusSelect.value = ticket.status;
+
+  const isClosed = ticket.status === 'closed';
+  if (closedWarning) {
+    if (isClosed) closedWarning.classList.remove('hidden');
+    else closedWarning.classList.add('hidden');
+  }
+
+  if (inputEl) inputEl.disabled = isClosed;
+  if (submitBtn) submitBtn.disabled = isClosed;
+
+  // Carregar lista de administradores para atribuição se o seletor estiver com apenas a opção padrão
+  populateAdminAssigneeSelect(ticket.assigned_admin_id);
+
+  if (!messagesContainer) return;
+
+  if (messages.length === 0) {
+    messagesContainer.innerHTML = `<p style="text-align: center; color: var(--color-text-muted); padding: 20px;">Nenhuma mensagem neste chamado.</p>`;
+    return;
+  }
+
+  messagesContainer.innerHTML = messages.map(msg => {
+    const isInternal = Boolean(msg.is_internal);
+    const isRider = msg.sender_type === 'rider';
+    const isSystem = msg.sender_type === 'system';
+
+    if (isSystem) {
+      return `
+        <div style="align-self: center; background: rgba(255,255,255,0.05); border: 1px dashed var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-muted); text-align: center;">
+          ⚙️ ${escapeHtml(msg.message)}
+        </div>
+      `;
+    }
+
+    if (isInternal) {
+      return `
+        <div style="align-self: flex-start; max-width: 88%; background: #2a220c; border: 1px solid #78350f; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: #fbbf24; font-weight: 700;">
+            <span>🔒 NOTA INTERNA — Visível Apenas para Administradores (${escapeHtml(msg.sender_name)})</span>
+            <span>${new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+          <div style="font-size: 0.88rem; color: #fef08a; line-height: 1.45; word-break: break-word;">
+            ${escapeHtml(msg.message)}
+          </div>
+        </div>
+      `;
+    }
+
+    const alignStyle = isRider ? 'align-self: flex-start;' : 'align-self: flex-end;';
+    const bubbleStyle = isRider
+      ? 'background: #272732; border: 1px solid var(--border-color); color: var(--color-text); border-radius: 12px 12px 12px 2px;'
+      : 'background: linear-gradient(135deg, var(--primary), #c2410c); color: #ffffff; border-radius: 12px 12px 2px 12px; box-shadow: 0 4px 12px rgba(255, 183, 0, 0.2);';
+
+    return `
+      <div style="display: flex; flex-direction: column; max-width: 82%; ${alignStyle}">
+        <span style="font-size: 0.72rem; color: var(--color-text-muted); margin-bottom: 3px; font-weight: 600;">${escapeHtml(msg.sender_name)}</span>
+        <div style="padding: 10px 14px; font-size: 0.88rem; line-height: 1.45; word-break: break-word; ${bubbleStyle}">
+          ${escapeHtml(msg.message)}
+        </div>
+        <span style="font-size: 0.65rem; color: var(--color-text-muted); margin-top: 3px; ${isRider ? 'align-self: flex-start;' : 'align-self: flex-end;'}">
+          ${new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+    `;
+  }).join('');
+
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+async function populateAdminAssigneeSelect(currentAssignedId) {
+  const select = document.getElementById('admin-ticket-assignee-select');
+  if (!select || !supabaseClient) return;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('user_profiles')
+      .select('user_id, name')
+      .eq('is_active', true)
+      .in('role', ['owner', 'admin', 'operador', 'gerente']);
+
+    if (error) throw error;
+
+    let html = `<option value="">Não Atribuído</option>`;
+    (data || []).forEach(u => {
+      const selected = u.user_id === currentAssignedId ? 'selected' : '';
+      html += `<option value="${u.user_id}" ${selected}>${escapeHtml(u.name)}</option>`;
+    });
+
+    select.innerHTML = html;
+  } catch (err) {
+    console.error("Error populating admin assignees:", err);
+  }
+}
+
+function toggleAdminMsgTypeUI(type) {
+  adminSupportState.msgType = type;
+  const input = document.getElementById('admin-rider-chat-input');
+  if (!input) return;
+  if (type === 'internal') {
+    input.placeholder = "Digite uma NOTA INTERNA (privada para os administradores)...";
+    input.style.border = "1px solid #78350f";
+    input.style.background = "#2a220c";
+    input.style.color = "#fef08a";
+  } else {
+    input.placeholder = "Digite uma resposta ao motoboy...";
+    input.style.border = "1px solid var(--border-color)";
+    input.style.background = "var(--input-bg)";
+    input.style.color = "var(--color-text)";
+  }
+}
+
+async function submitAdminSupportReply(event) {
+  if (event) event.preventDefault();
+  if (adminSupportState.isSubmitting || !adminSupportState.currentTicketId) return;
+
+  const input = document.getElementById('admin-rider-chat-input');
+  const submitBtn = document.getElementById('admin-support-submit-btn');
+  const val = input?.value.trim();
+
+  if (!val || val.length < 1 || val.length > 4000) return;
+
+  const isInternal = adminSupportState.msgType === 'internal';
+  adminSupportState.isSubmitting = true;
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_reply_rider_support_ticket', {
+      p_ticket_id: adminSupportState.currentTicketId,
+      p_message: val,
+      p_is_internal: isInternal
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      if (input) input.value = '';
+      openAdminSupportTicketDetail(adminSupportState.currentTicketId);
+    } else {
+      showToastNotification(data?.message || "Erro ao responder chamado.");
+    }
+  } catch (err) {
+    console.error("Error replying admin support ticket:", err);
+    showToastNotification("Erro ao enviar resposta.");
+  } finally {
+    adminSupportState.isSubmitting = false;
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function updateAdminTicketStatusClick() {
+  if (!adminSupportState.currentTicketId || !supabaseClient) return;
+
+  const statusSelect = document.getElementById('admin-ticket-status-select');
+  const newStatus = statusSelect?.value;
+  if (!newStatus) return;
+
+  let reason = null;
+  if (newStatus === 'in_progress') {
+    const currentTicket = adminSupportState.tickets.find(t => t.ticket_id === adminSupportState.currentTicketId);
+    if (currentTicket && currentTicket.status === 'closed') {
+      reason = prompt("Motivo obrigatório para reabrir este chamado encerrado:");
+      if (!reason || reason.trim().length < 3) {
+        showToastNotification("É necessário informar um motivo de no mínimo 3 caracteres para reabrir o chamado.");
+        return;
+      }
+    }
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_update_rider_support_ticket_status', {
+      p_ticket_id: adminSupportState.currentTicketId,
+      p_status: newStatus,
+      p_reason: reason
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      showToastNotification("Status atualizado com sucesso!");
+      openAdminSupportTicketDetail(adminSupportState.currentTicketId);
+    } else {
+      showToastNotification(data?.message || "Erro ao atualizar status.");
+    }
+  } catch (err) {
+    console.error("Error updating ticket status:", err);
+    showToastNotification("Erro de conexão ao alterar status.");
+  }
+}
+
+async function assignAdminTicketClick() {
+  if (!adminSupportState.currentTicketId || !supabaseClient) return;
+
+  const assigneeSelect = document.getElementById('admin-ticket-assignee-select');
+  const targetAdminId = assigneeSelect?.value || null;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_assign_rider_support_ticket', {
+      p_ticket_id: adminSupportState.currentTicketId,
+      p_admin_user_id: targetAdminId
+    });
+
+    if (error) throw error;
+
+    if (data && data.success) {
+      showToastNotification("Responsável atualizado!");
+      loadAdminSupportTickets();
+    } else {
+      showToastNotification(data?.message || "Erro ao atribuir chamado.");
+    }
+  } catch (err) {
+    console.error("Error assigning admin ticket:", err);
+    showToastNotification("Erro de conexão ao atribuir chamado.");
+  }
+}
+
+function debounceAdminSupportSearch() {
+  if (adminSupportState.searchTimeout) clearTimeout(adminSupportState.searchTimeout);
+  adminSupportState.searchTimeout = setTimeout(() => {
+    loadAdminSupportTickets();
+  }, 300);
+}
+
+function subscribeAdminRiderSupportRealtime() {
+  if (adminSupportState.realtimeChannel || !supabaseClient) return;
+
+  adminSupportState.realtimeChannel = supabaseClient.channel('realtime:admin_rider_support')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rider_support_tickets' }, () => {
+      loadAdminSupportSummary();
+      loadAdminSupportTickets();
+      if (adminSupportState.currentTicketId) {
+        openAdminSupportTicketDetail(adminSupportState.currentTicketId);
+      }
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rider_support_messages' }, (payload) => {
+      loadAdminSupportSummary();
+      loadAdminSupportTickets();
+      if (adminSupportState.currentTicketId && payload.new && payload.new.ticket_id === adminSupportState.currentTicketId) {
+        openAdminSupportTicketDetail(adminSupportState.currentTicketId);
+      }
+    })
+    .subscribe();
+}
+
+// =====================================================================
+// FASE 2: Lógica do Quick Action Drawer (Painel Lateral Deslizante)
+// Preserva 100% de todos os componentes homologados da Fase 1.
+// =====================================================================
+
+let currentActiveDrawerTeleId = null;
+let drawerFocusTriggerElement = null;
+let drawerPendingTargetRiderId = null;
+let drawerKeyboardHandler = null;
+
+async function openTeleQuickActionDrawer(teleId, triggerElement) {
+  if (!teleId) return;
+  const strId = String(teleId);
+
+  // Prevenção de múltiplas aberturas para o mesmo ID
+  if (currentActiveDrawerTeleId === strId) return;
+
+  currentActiveDrawerTeleId = strId;
+  drawerFocusTriggerElement = triggerElement || document.activeElement;
+
+  const overlay = document.getElementById('drawer-overlay');
+  const drawer = document.getElementById('quick-action-drawer');
+
+  if (!overlay || !drawer) return;
+
+  // Abrir elementos visuais
+  overlay.classList.remove('hidden');
+  drawer.classList.remove('hidden');
+  document.body.style.overflow = 'hidden'; // Scroll lock no body
+
+  // Acessibilidade: Trava de foco inicial
+  drawer.focus();
+
+  // Associar listener temporário da tecla Escape (removido estritamente ao fechar)
+  drawerKeyboardHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeTeleQuickActionDrawer();
+    }
+  };
+  document.addEventListener('keydown', drawerKeyboardHandler);
+
+  // Buscar registro da Tele no Map ou Postgres
+  let tele = opTelesStoreMap.get(strId);
+  if (!tele && supabaseClient) {
+    try {
+      const { data } = await supabaseClient.from('teles').select('*').or(`id.eq.${strId},tele_code.eq.${strId}`).maybeSingle();
+      if (data) tele = normalizeTeleRecord(data);
+    } catch (e) {}
+  }
+
+  if (tele) {
+    renderQuickActionDrawerContent(tele);
+    fetchTeleTimelineEvents(tele.raw_id || tele.id);
+  } else {
+    showToastNotification('Tele não encontrada no banco de dados.');
+    closeTeleQuickActionDrawer();
+  }
+}
+
+function closeTeleQuickActionDrawer() {
+  const overlay = document.getElementById('drawer-overlay');
+  const drawer = document.getElementById('quick-action-drawer');
+
+  if (overlay) overlay.classList.add('hidden');
+  if (drawer) drawer.classList.add('hidden');
+
+  document.body.style.overflow = ''; // Restaurar scroll do body
+
+  if (drawerKeyboardHandler) {
+    document.removeEventListener('keydown', drawerKeyboardHandler);
+    drawerKeyboardHandler = null;
+  }
+
+  if (drawerFocusTriggerElement && typeof drawerFocusTriggerElement.focus === 'function') {
+    try { drawerFocusTriggerElement.focus(); } catch (e) {}
+    drawerFocusTriggerElement = null;
+  }
+
+  currentActiveDrawerTeleId = null;
+  closeDrawerCancelModal();
+  closeDrawerReassignModal();
+}
+
+function switchDrawerTab(tabName) {
+  const tabs = document.querySelectorAll('.drawer-tab-btn');
+  const contents = document.querySelectorAll('.drawer-tab-content');
+
+  tabs.forEach(tab => {
+    if (tab.dataset.drawerTab === tabName) {
+      tab.classList.add('active');
+    } else {
+      tab.classList.remove('active');
+    }
+  });
+
+  contents.forEach(content => {
+    if (content.id === `drawer-tab-${tabName}`) {
+      content.classList.add('active');
+    } else {
+      content.classList.remove('active');
+    }
+  });
+}
+
+function renderQuickActionDrawerContent(tele) {
+  if (!tele) return;
+
+  const rawUuid = tele.raw_id || tele.id;
+  const teleCode = tele.tele_code || tele.id;
+  const normStatus = normalizeTeleStatus(tele.status);
+
+  // Preencher campos informativos básicos
+  const codeEl = document.getElementById('drawer-tele-code');
+  const statusEl = document.getElementById('drawer-tele-status');
+  const clientEl = document.getElementById('drawer-client-name');
+  const uuidEl = document.getElementById('drawer-val-uuid');
+  const versionEl = document.getElementById('drawer-val-version');
+  const createdEl = document.getElementById('drawer-val-created');
+  const slaEl = document.getElementById('drawer-val-sla');
+  const pickupEl = document.getElementById('drawer-val-pickup');
+  const deliveryEl = document.getElementById('drawer-val-delivery');
+  const recipientEl = document.getElementById('drawer-val-recipient');
+  const phoneEl = document.getElementById('drawer-val-phone');
+  const priceEl = document.getElementById('drawer-val-price');
+  const riderEl = document.getElementById('drawer-val-rider');
+
+  if (codeEl) codeEl.textContent = teleCode;
+  if (statusEl) {
+    statusEl.textContent = normStatus.toUpperCase().replace(/_/g, ' ');
+    statusEl.className = `badge badge-${normStatus === 'concluida' ? 'success' : (normStatus === 'cancelada' ? 'danger' : 'warning')}`;
+  }
+  if (clientEl) clientEl.textContent = tele.client || resolveClientDisplayName(tele);
+  if (uuidEl) uuidEl.textContent = rawUuid;
+  if (versionEl) versionEl.textContent = `v${tele.version ?? 1}`;
+  if (createdEl) createdEl.textContent = tele.created_at ? new Date(tele.created_at).toLocaleString('pt-BR') : '—';
+
+  // SLA usando a função homologada
+  const slaState = calculateTeleSLAState(tele);
+  if (slaEl) {
+    slaEl.textContent = slaState.label;
+    slaEl.className = `value ${slaState.state === 'critical' ? 'text-danger' : (slaState.state === 'warning' ? 'text-warning' : '')}`;
+  }
+
+  if (pickupEl) pickupEl.textContent = tele.pickup_address || 'Endereço de Coleta Comercial';
+  if (deliveryEl) deliveryEl.textContent = tele.delivery_address || tele.address || '—';
+  if (recipientEl) recipientEl.textContent = tele.dest_name || 'Destinatário';
+  if (phoneEl) phoneEl.textContent = tele.dest_phone || '—';
+  if (priceEl) priceEl.textContent = typeof tele.delivery_charge === 'number' ? `R$ ${tele.delivery_charge.toFixed(2).replace('.', ',')}` : (tele.price || 'R$ 15,00');
+  if (riderEl) riderEl.textContent = tele.rider || 'Aguardando Despacho';
+
+  // Renderizar Matriz de Ações Dinâmicas por Status Canônico
+  const actionsContainer = document.getElementById('drawer-actions-container');
+  const noticeContainer = document.getElementById('drawer-action-notice');
+
+  if (actionsContainer) actionsContainer.innerHTML = '';
+  if (noticeContainer) {
+    noticeContainer.innerHTML = '';
+    noticeContainer.classList.add('hidden');
+  }
+
+  const canonicalStatuses = ['solicitada', 'aguardando_despacho', 'motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega', 'concluida', 'cancelada'];
+
+  if (!canonicalStatuses.includes(normStatus)) {
+    console.warn(`[INTEGRIDADE DRAWER] Status desconhecido/legado detectado: "${tele.status}". Entrando em modo Somente Leitura.`);
+    if (noticeContainer) {
+      noticeContainer.textContent = 'Status não reconhecido — abra na Gestão de Teles para intervenção operacional.';
+      noticeContainer.classList.remove('hidden');
+    }
+    if (actionsContainer) {
+      actionsContainer.innerHTML = `
+        <button type="button" class="btn btn-secondary" onclick="navigateToTeleInManagement('${rawUuid}')">
+          <i data-lucide="external-link"></i> Abrir na Gestão de Teles
+        </button>

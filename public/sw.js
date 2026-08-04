@@ -1,5 +1,5 @@
-// Dahora Expresso - Service Worker Otimizado
-const CACHE_NAME = 'dahora-expresso-cache-v3';
+// Dahora Expresso - Service Worker Otimizado com Suporte a Web Push
+const CACHE_NAME = 'dahora-expresso-cache-v5';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -14,11 +14,11 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 [Service Worker] Fazendo cache dos arquivos estáticos v3');
+      console.log('📦 [Service Worker] Fazendo cache dos arquivos estáticos v5');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
-  self.skipWaiting(); // Força o SW novo a ativar imediatamente
+  self.skipWaiting();
 });
 
 // Ativação e Limpeza de Caches Antigos
@@ -35,46 +35,51 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  self.clients.claim(); // Assume o controle das abas abertas imediatamente
+  self.clients.claim();
 });
 
 // Interceptação de Requisições de Rede (Fetch)
 self.addEventListener('fetch', (event) => {
-  // 🔥 CORREÇÃO DO BUG CRÍTICO: 
-  // APIs de cache só suportam o método GET. Se for POST (como as requisições do Supabase),
-  // nós ignoramos o Service Worker e deixamos a requisição passar direto para a internet.
   if (event.request.method !== 'GET') {
-    return; 
+    return;
   }
 
-  // Bypass service worker for cross-origin requests (like Supabase API)
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) {
     return;
   }
 
-  // Lógica de Cache para requisições GET (HTML, CSS, JS, Imagens)
+  // Network-Only para endpoints da API e configurações locais estáticas dinâmicas
+  if (url.pathname.startsWith('/api/') || url.pathname.includes('config.local.js')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  if (url.pathname.includes('config.js') || url.pathname.includes('motoboy.html') || url.pathname.includes('motoboy.js')) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
+
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Se estiver no cache, devolve imediatamente, mas busca uma versão nova em background (Stale-While-Revalidate)
         fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
           }
-        }).catch(() => console.log('[Service Worker] Rodando em modo offline para esta requisição GET'));
-        
+        }).catch(() => console.log('[Service Worker] Modo offline para requisição GET'));
+
         return cachedResponse;
       }
 
-      // Se não estiver no cache, busca normal na internet
       return fetch(event.request).then((networkResponse) => {
-        // Não cacheia respostas inválidas ou de extensões do navegador
         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
         }
 
-        // Guarda uma cópia no cache e devolve a resposta para a tela
         const responseToCache = networkResponse.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseToCache);
@@ -86,7 +91,87 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Escuta mensagens do painel administrativo para pular linha de espera
+// Escuta eventos PUSH em segundo plano
+self.addEventListener('push', (event) => {
+  let data = { type: 'NEW_TELE', tele_id: null, title: 'Nova Tele atribuída', body: 'Nova entrega disponível. Toque para visualizar.' };
+
+  if (event.data) {
+    try {
+      data = Object.assign({}, data, event.data.json());
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+
+  let options = {};
+
+  if (data.type === 'SUPPORT_MESSAGE') {
+    const convId = data.conversation_id || 'central';
+    options = {
+      title: data.title || 'Nova mensagem da Central',
+      body: data.body || 'Você recebeu uma nova mensagem operacional.',
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: `support-${convId}`,
+      renotify: true,
+      vibrate: [250, 120, 250],
+      data: {
+        type: 'SUPPORT_MESSAGE',
+        url: '/motoboy.html?view=support'
+      }
+    };
+  } else {
+    // NEW_TELE por padrão
+    const teleId = data.tele_id || 'new';
+    options = {
+      title: data.title || 'Nova Tele atribuída',
+      body: data.body || 'Nova entrega disponível. Toque para visualizar.',
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: `tele-${teleId}`,
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      vibrate: [600, 250, 600, 250, 900],
+      actions: [
+        { action: 'open_tele', title: 'Abrir Tele' }
+      ],
+      data: {
+        type: 'NEW_TELE',
+        tele_id: teleId,
+        url: `/motoboy.html?view=tele&tele_id=${teleId}`
+      }
+    };
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(options.title, options)
+  );
+});
+
+// Clique na notificação Push
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data?.url || '/motoboy.html';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (let client of windowClients) {
+        if (client.url.includes('motoboy.html') && 'focus' in client) {
+          if ('navigate' in client) {
+            client.navigate(urlToOpen);
+          }
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+
 self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') {
     self.skipWaiting();

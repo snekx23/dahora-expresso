@@ -3,10 +3,35 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { processNotificationOutbox } from './server/push-service.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = 8000;
 const HOST = '0.0.0.0';
+
+const ENABLE_PUSH_WORKER = false;
+
+let pushWorkerRunning = false;
+
+async function runPushWorker() {
+  if (pushWorkerRunning) return;
+  pushWorkerRunning = true;
+  try {
+    await processNotificationOutbox();
+  } catch (error) {
+    console.error('[PUSH WORKER] Falha resumida:', error.message);
+  } finally {
+    pushWorkerRunning = false;
+  }
+}
+
+if (ENABLE_PUSH_WORKER) {
+  setInterval(runPushWorker, 5000);
+}
+
+
+
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -45,7 +70,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (reqUrl === '/api/vapid-public-key' && req.method === 'GET') {
+    const publicKey = process.env.VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa40yY5z2L9n-0-0-0-0-0-0-0-0-0-0-0-0-0-0';
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ publicKey }));
+    return;
+  }
+
   // Handle Secure Backend API Route (Dev Adapter)
+
   if (reqUrl === '/api/admin/create-client' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });

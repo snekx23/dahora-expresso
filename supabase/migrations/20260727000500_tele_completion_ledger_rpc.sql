@@ -160,7 +160,7 @@ BEGIN
   INSERT INTO public.rider_financial_transactions (
     rider_id, tele_id, type, direction, amount, description, idempotency_key, created_at
   ) VALUES (
-    v_tele.motoboy_id::text, p_tele_id, 'credito_entrega', 'credit', v_valor_motoboy,
+    v_tele.motoboy_id, p_tele_id, 'credito_entrega', 'credit', v_valor_motoboy,
     pg_catalog.format('Crédito de entrega #%s', p_tele_id), v_key_rider, v_now
   ) ON CONFLICT (idempotency_key) DO NOTHING;
 

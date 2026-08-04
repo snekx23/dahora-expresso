@@ -11,10 +11,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <!-- Mapbox GL JS CSS & JS for Real Map -->
-  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
   <!-- CSS Stylesheet -->
+
   <link rel="stylesheet" href="style.css?v=20260709_v1">
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -644,24 +642,27 @@
                     <tbody id="owner-fleet-table-body">
                       <!-- Rendered by JS -->
                     </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 4. Owner Rider Weekly Payments -->
+                <!-- 4. Owner Rider Weekly Payments (Fase 3B.2A) -->
           <div id="tab-owner-rider-payments" class="dashboard-tab-content">
-            <!-- Date & Rider Filter Card -->
+            <!-- Period & Rider Filter Card -->
             <div class="card" style="margin-bottom: 20px; overflow: visible;">
               <div class="card-body" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 16px; overflow: visible;">
+                
+                <!-- Period Shortcut Selector -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
-                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Data de Início</label>
-                  <input type="date" id="rider-payment-start-date" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 160px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Período Semanal</label>
+                  <select id="rider-payment-period-shortcut" onchange="handleRiderPaymentPeriodShortcutChange(this.value)" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 170px;">
+                    <option value="current_week">Semana Atual</option>
+                    <option value="previous_week">Semana Anterior</option>
+                    <option value="custom_week">Selecionar por Calendário</option>
+                  </select>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 6px;">
-                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Data de Fim</label>
-                  <input type="date" id="rider-payment-end-date" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 160px;">
+
+                <div id="rider-payment-custom-date-container" style="display: none; gap: 12px; align-items: flex-end;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Data da Semana</label>
+                    <input type="date" id="rider-payment-start-date" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 160px;">
+                  </div>
                 </div>
                 
                 <!-- Custom Rider Search Select Dropdown -->
@@ -669,6 +670,7 @@
                   <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Entregador</label>
                   <div style="position: relative; min-width: 220px;">
                     <input type="text" id="rider-search-input" placeholder="Todos os entregadores" onfocus="toggleRiderSearchDropdown(true)" oninput="filterRiderSearch()" style="padding: 10px 12px; padding-right: 32px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%; cursor: pointer;" autocomplete="off">
+                    <input type="hidden" id="rider-search-id" value="">
                     <i data-lucide="chevron-down" style="position: absolute; right: 10px; top: 12px; width: 16px; height: 16px; color: var(--color-text-muted); pointer-events: none; transition: transform 0.2s;"></i>
                   </div>
                   <div id="rider-search-dropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.5); margin-top: 4px; padding: 4px 0;">
@@ -676,53 +678,114 @@
                   </div>
                 </div>
 
+                <!-- Status Filter Dropdown -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Status do Fechamento</label>
+                  <select id="rider-settlement-status-filter" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 170px;">
+                    <option value="">Todos os Status</option>
+                    <option value="not_calculated">Não calculado</option>
+                    <option value="open">Em andamento</option>
+                    <option value="calculated">Calculado</option>
+                    <option value="pending">Pendente de pagamento</option>
+                    <option value="partially_blocked">Parcialmente bloqueado</option>
+                    <option value="paid">Pago</option>
+                    <option value="reopened">Reaberto</option>
+                    <option value="reversed">Pagamento estornado</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                </div>
+
                 <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-primary" onclick="renderRiderPayments()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
+                  <button class="btn btn-primary" onclick="fetchAdminRiderWeeklySettlements()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
                     <i data-lucide="filter" style="width: 16px; height: 16px;"></i> <span>Filtrar</span>
                   </button>
                   <button class="btn btn-secondary" onclick="clearRiderPaymentFilters()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text);">
                     <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> <span>Limpar</span>
                   </button>
+                  <button class="btn btn-secondary" onclick="fetchAdminRiderWeeklySettlements(true)" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text);">
+                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> <span>Atualizar</span>
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div class="metrics-grid">
+            <!-- Banner de Pagamento Incompleto em Andamento (Recuperável via sessionStorage) -->
+            <div id="rider-payment-recovery-banner" class="hidden" style="margin-bottom: 20px; background: rgba(245, 158, 11, 0.12); border: 1px solid #f59e0b; border-radius: var(--border-radius-md); padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <i data-lucide="alert-triangle" style="width: 24px; height: 24px; color: #f59e0b; flex-shrink: 0;"></i>
+                <div>
+                  <strong style="color: #f59e0b; font-size: 0.95rem; display: block;">Pagamento em andamento detectado</strong>
+                  <span id="rider-payment-recovery-text" style="font-size: 0.85rem; color: var(--color-text-muted);">Existe uma tentativa de pagamento não finalizada para este entregador.</span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                <button class="btn btn-primary btn-sm" onclick="resumePendingPaymentAttempt()" style="font-weight: 600;">Continuar Pagamento</button>
+                <button class="btn btn-secondary btn-sm" onclick="cancelPendingPaymentAttempt()" style="border: 1px solid var(--border-color);">Descartar Tentativa</button>
+              </div>
+            </div>
+
+            <!-- Metrics Grid (Rótulo explícito "Nesta página") -->
+            <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Semana Atual</span>
-                  <i data-lucide="calendar-days" class="text-blue"></i>
+                  <span>Fechamentos Exibidos</span>
+                  <i data-lucide="users" class="text-blue"></i>
                 </div>
                 <div class="metric-card-body">
-                  <h3 id="rider-week-range">Segunda a Domingo</h3>
-                  <p class="text-muted">Acumula todas as teles concluídas da semana.</p>
+                  <h3 id="rider-week-count-total">0</h3>
+                  <p class="text-muted" id="rider-week-range">Nesta página</p>
                 </div>
               </div>
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Dia de Pagamento</span>
-                  <i data-lucide="badge-dollar-sign" class="text-green"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3>Quarta-feira</h3>
-                  <p class="text-muted">Repasse calculado sobre segunda a domingo.</p>
-                </div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Total a Repassar</span>
+                  <span>Líquido Total (Nesta página)</span>
                   <i data-lucide="wallet" class="text-yellow"></i>
                 </div>
                 <div class="metric-card-body">
-                  <h3 id="rider-week-total">R$ 0,00</h3>
-                  <p class="text-muted">Líquido (Faturamento - 10% de taxa).</p>
+                  <h3 id="rider-week-net-total">R$ 0,00</h3>
+                  <p class="text-muted">Total líquido calculado</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Elegível Não Pago (Nesta página)</span>
+                  <i data-lucide="badge-dollar-sign" class="text-green"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-week-unpaid-eligible-total" style="color: #10b981;">R$ 0,00</h3>
+                  <p class="text-muted">Liberado para repasse</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Bloqueado por Clientes (Nesta página)</span>
+                  <i data-lucide="lock" style="color: #ef4444;"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-week-blocked-total" style="color: #ef4444;">R$ 0,00</h3>
+                  <p class="text-muted">Aguardando clientes</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Total Já Pago (Nesta página)</span>
+                  <i data-lucide="check-circle-2" style="color: #3b82f6;"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-week-paid-total" style="color: #3b82f6;">R$ 0,00</h3>
+                  <p class="text-muted">Repassado em lotes</p>
                 </div>
               </div>
             </div>
+
+            <!-- Table Card -->
             <div class="card mt-4">
-              <div class="card-header">
-                <h3>Valores Feitos por Motoboy</h3>
-                <p class="text-muted">Resumo semanal por entregador, com pagamento programado para quarta-feira.</p>
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h3>Repasses Semanais dos Entregadores</h3>
+                  <p class="text-muted">Fechamentos calculados pelo banco de dados em janela semanal (Segunda a Domingo).</p>
+                </div>
+                <span id="rider-settlement-pagination-info" style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 500;">Exibindo 0 registros</span>
               </div>
               <div class="card-body no-padding">
                 <div class="table-responsive">
@@ -730,17 +793,39 @@
                     <thead>
                       <tr>
                         <th>Motoboy</th>
-                        <th>Teles Concluídas</th>
-                        <th>Faturamento Bruto</th>
-                        <th>Taxa Dahora (10%)</th>
+                        <th>Período</th>
+                        <th>Status</th>
+                        <th>Base Motoboy</th>
                         <th>Consumíveis</th>
-                        <th>Créditos / Ajustes</th>
-                        <th>Valor Líquido (A Pagar)</th>
-                        <th>Média por Tele</th>
-                        <th>Status Pagamento</th>
+                        <th>Créditos</th>
+                        <th>Ajustes</th>
+                        <th>Líquido</th>
+                        <th>Elegível</th>
+                        <th>Bloqueado</th>
+                        <th>Pago</th>
+                        <th>Elegível Não Pago</th>
+                        <th>Teles</th>
+                        <th>Clientes Bloq.</th>
+                        <th style="text-align: right;">Ações</th>
                       </tr>
                     </thead>
                     <tbody id="rider-payments-table-body"></tbody>
+                  </table>
+                </div>
+
+                <!-- Paginação -->
+                <div id="rider-settlement-pagination" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-top: 1px solid var(--border-color);">
+                  <button id="rider-settlement-prev-page" class="btn btn-secondary btn-sm" onclick="changeRiderSettlementPage(-1)" disabled style="border: 1px solid var(--border-color);">
+                    <i data-lucide="chevron-left"></i> Anterior
+                  </button>
+                  <span id="rider-settlement-page-text" style="font-size: 0.85rem; color: var(--color-text-muted);">Página 1</span>
+                  <button id="rider-settlement-next-page" class="btn btn-secondary btn-sm" onclick="changeRiderSettlementPage(1)" disabled style="border: 1px solid var(--border-color);">
+                    Próxima <i data-lucide="chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>ody>
                   </table>
                 </div>
               </div>
@@ -2138,52 +2223,164 @@
 
           <!-- 7.5. Admin Rider Support Chat Tab -->
           <div id="tab-owner-rider-support" class="dashboard-tab-content">
-            <div class="owner-chat-wrapper" style="display: flex; height: calc(100vh - 200px); min-height: 480px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
-               <!-- Conversations Sidebar (Left) -->
-              <div class="chat-sidebar-pane" style="width: 280px; flex-shrink: 0; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; background: var(--secondary); height: 100%;">
-                <div style="padding: 20px 16px; border-bottom: 1px solid var(--border-color);">
-                  <h3 style="font-family: var(--font-display); font-size: 0.85rem; font-weight: 700; color: var(--color-text-muted); margin: 0; text-transform: uppercase; letter-spacing: 1px;">Suporte dos Motoboys</h3>
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+              <!-- 5 KPI Summary Cards -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
+                <div class="card" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #3b82f6;">
+                  <div>
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Novos</span>
+                    <h3 id="admin-support-count-new" style="font-size: 1.5rem; font-weight: 900; margin: 4px 0 0 0; color: #60a5fa;">0</h3>
+                  </div>
+                  <i data-lucide="inbox" style="width: 24px; height: 24px; color: #60a5fa;"></i>
                 </div>
-                <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-color); position: relative;">
-                  <input type="text" id="admin-rider-chat-search" oninput="filterAdminRiderChatChannels()" placeholder="Buscar motoboy..." style="width: 100%; padding: 8px 12px 8px 32px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.82rem; outline: none;" autocomplete="off">
-                  <i data-lucide="search" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                <div class="card" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #f59e0b;">
+                  <div>
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Em Atendimento</span>
+                    <h3 id="admin-support-count-progress" style="font-size: 1.5rem; font-weight: 900; margin: 4px 0 0 0; color: #fbbf24;">0</h3>
+                  </div>
+                  <i data-lucide="clock" style="width: 24px; height: 24px; color: #fbbf24;"></i>
                 </div>
-                <div id="admin-rider-chat-channels-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding: 8px 0;">
-                  <!-- Dynamic channel list -->
+                <div class="card" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #a855f7;">
+                  <div>
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Aguard. Suporte</span>
+                    <h3 id="admin-support-count-waiting-admin" style="font-size: 1.5rem; font-weight: 900; margin: 4px 0 0 0; color: #c084fc;">0</h3>
+                  </div>
+                  <i data-lucide="message-square" style="width: 24px; height: 24px; color: #c084fc;"></i>
+                </div>
+                <div class="card" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #ef4444;">
+                  <div>
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Aguard. Motoboy</span>
+                    <h3 id="admin-support-count-waiting-rider" style="font-size: 1.5rem; font-weight: 900; margin: 4px 0 0 0; color: #f87171;">0</h3>
+                  </div>
+                  <i data-lucide="user-check" style="width: 24px; height: 24px; color: #f87171;"></i>
+                </div>
+                <div class="card" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid #22c55e;">
+                  <div>
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Resolvidos</span>
+                    <h3 id="admin-support-count-resolved" style="font-size: 1.5rem; font-weight: 900; margin: 4px 0 0 0; color: #4ade80;">0</h3>
+                  </div>
+                  <i data-lucide="check-circle-2" style="width: 24px; height: 24px; color: #4ade80;"></i>
                 </div>
               </div>
-              
-              <!-- Active Conversation Pane (Right) -->
-              <div id="admin-rider-active-chat-container" style="flex: 1; display: flex; flex-direction: column; background: rgba(0,0,0,0.15); height: 100%; position: relative;">
-                <!-- No Selection state -->
-                <div id="admin-rider-chat-no-selection" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px; text-align: center; color: var(--color-text-muted); height: 100%;">
-                  <i data-lucide="message-square" style="width: 48px; height: 48px; stroke-width: 1.5; color: var(--color-text-muted);"></i>
-                  <div>
-                    <h4 style="font-size: 1.1rem; font-weight: 600; color: var(--color-text); margin: 0;">Nenhuma Conversa Selecionada</h4>
-                    <p style="font-size: 0.85rem; margin: 6px 0 0 0;">Selecione um motoboy ao lado para ver o histórico e responder.</p>
-                  </div>
-                </div>
-                
-                <!-- Chat Window (Selected State) -->
-                <div id="admin-rider-chat-window-pane" class="hidden" style="flex: 1; display: flex; flex-direction: column; height: 100%;">
-                  <!-- Header -->
-                  <div class="chat-header-pane" style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--secondary);">
-                    <div>
-                      <h3 id="admin-rider-chat-client-title" style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0;">Motoboy</h3>
-                      <p id="admin-rider-chat-client-subtitle" style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0; margin-top: 2px;">#MB-0000</p>
+
+              <!-- Main Split Layout -->
+              <div class="owner-chat-wrapper" style="display: flex; height: calc(100vh - 270px); min-height: 520px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+                <!-- Tickets Sidebar (Left) -->
+                <div class="chat-sidebar-pane" style="width: 340px; flex-shrink: 0; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; background: var(--secondary); height: 100%;">
+                  <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                    <h3 style="font-family: var(--font-display); font-size: 0.9rem; font-weight: 800; color: var(--color-text); margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Suporte dos Motoboys</h3>
+                    
+                    <div style="position: relative;">
+                      <input type="text" id="admin-rider-ticket-search" oninput="debounceAdminSupportSearch()" placeholder="Buscar assunto, motoboy..." style="width: 100%; padding: 8px 12px 8px 32px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--color-text); font-size: 0.82rem; outline: none;">
+                      <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--color-text-muted);"></i>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                      <select id="admin-rider-ticket-filter-status" onchange="loadAdminSupportTickets()" style="padding: 6px 8px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--color-text); font-size: 0.75rem;">
+                        <option value="">Todos Status</option>
+                        <option value="open">Novos</option>
+                        <option value="in_progress">Em Atendimento</option>
+                        <option value="waiting_admin">Aguardando Suporte</option>
+                        <option value="waiting_rider">Aguardando Motoboy</option>
+                        <option value="resolved">Resolvidos</option>
+                        <option value="closed">Encerrados</option>
+                      </select>
+                      <select id="admin-rider-ticket-filter-priority" onchange="loadAdminSupportTickets()" style="padding: 6px 8px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--color-text); font-size: 0.75rem;">
+                        <option value="">Todas Prioridades</option>
+                        <option value="urgent">Urgentes</option>
+                        <option value="high">Altas</option>
+                        <option value="normal">Normais</option>
+                        <option value="low">Baixas</option>
+                      </select>
                     </div>
                   </div>
-                  <!-- Message list container -->
-                  <div id="admin-rider-chat-messages" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
-                    <!-- Message bubbles injected here -->
+
+                  <div id="admin-rider-support-tickets-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding: 8px;">
+                    <!-- Dynamic ticket list -->
                   </div>
-                  <!-- Message Input -->
-                  <form id="admin-rider-chat-form" onsubmit="sendAdminRiderChatMessage(event)" style="padding: 16px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; background: var(--secondary);">
-                    <input type="text" id="admin-rider-chat-input" placeholder="Digite uma resposta..." required style="flex: 1; padding: 12px 16px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.9rem; outline: none;" autocomplete="off">
-                    <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px; justify-content: center; min-width: 100px;">
-                      <span>Enviar</span> <i data-lucide="send" style="width: 16px; height: 16px;"></i>
-                    </button>
-                  </form>
+                </div>
+
+                <!-- Active Ticket Conversation Pane (Right) -->
+                <div id="admin-rider-active-chat-container" style="flex: 1; display: flex; flex-direction: column; background: rgba(0,0,0,0.15); height: 100%; position: relative;">
+                  <!-- No Selection state -->
+                  <div id="admin-rider-chat-no-selection" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px; text-align: center; color: var(--color-text-muted); height: 100%;">
+                    <i data-lucide="message-square" style="width: 48px; height: 48px; stroke-width: 1.5; color: var(--color-text-muted);"></i>
+                    <div>
+                      <h4 style="font-size: 1.1rem; font-weight: 600; color: var(--color-text); margin: 0;">Nenhum Chamado Selecionado</h4>
+                      <p style="font-size: 0.85rem; margin: 6px 0 0 0;">Selecione um chamado na lista à esquerda para visualizar o histórico e responder.</p>
+                    </div>
+                  </div>
+
+                  <!-- Chat Window Pane (Selected State) -->
+                  <div id="admin-rider-chat-window-pane" class="hidden" style="flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+                    <!-- Ticket Header Bar -->
+                    <div style="padding: 14px 20px; border-bottom: 1px solid var(--border-color); background: var(--secondary); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;">
+                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                        <div>
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <h3 id="admin-ticket-detail-subject" style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 800; color: var(--color-text); margin: 0;">--</h3>
+                            <span id="admin-ticket-detail-priority-badge" style="padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">--</span>
+                          </div>
+                          <p id="admin-ticket-detail-rider-info" style="font-size: 0.8rem; color: var(--color-text-muted); margin: 3px 0 0 0;">--</p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                          <div id="admin-ticket-detail-status-badge">--</div>
+                        </div>
+                      </div>
+
+                      <!-- Control Actions Row (Status Change & Admin Assignment) -->
+                      <div style="display: flex; align-items: center; gap: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <span style="color: var(--color-text-muted); font-weight: 600;">Status:</span>
+                          <select id="admin-ticket-status-select" style="padding: 4px 8px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--color-text); font-size: 0.78rem;">
+                            <option value="in_progress">Em Atendimento</option>
+                            <option value="waiting_rider">Aguardando Motoboy</option>
+                            <option value="waiting_admin">Aguardando Suporte</option>
+                            <option value="resolved">Resolvido</option>
+                            <option value="closed">Encerrado</option>
+                          </select>
+                          <button onclick="updateAdminTicketStatusClick()" class="btn btn-sm" style="padding: 4px 10px; font-size: 0.75rem; background: var(--primary); color: #000; font-weight: 700; border: none; border-radius: 6px; cursor: pointer;">Alterar Status</button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
+                          <span style="color: var(--color-text-muted); font-weight: 600;">Operador:</span>
+                          <select id="admin-ticket-assignee-select" onchange="assignAdminTicketClick()" style="padding: 4px 8px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--color-text); font-size: 0.78rem;">
+                            <option value="">Não Atribuído</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Messages History Container -->
+                    <div id="admin-rider-chat-messages" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; background: rgba(0,0,0,0.2);">
+                      <!-- Messages injected here -->
+                    </div>
+
+                    <!-- Closed Ticket Warning Banner -->
+                    <div id="admin-ticket-closed-warning" class="hidden" style="padding: 10px; background: rgba(239, 68, 68, 0.15); border-top: 1px solid rgba(239, 68, 68, 0.3); text-align: center; color: #f87171; font-size: 0.8rem; font-weight: 700;">
+                      Este chamado está ENCERRADO. Para enviar mensagens, altere o status para "Em Atendimento".
+                    </div>
+
+                    <!-- Reply Form with Public Reply vs Internal Note Selector -->
+                    <form id="admin-rider-chat-form" onsubmit="submitAdminSupportReply(event)" style="padding: 14px 20px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px; background: var(--secondary); flex-shrink: 0;">
+                      <div style="display: flex; align-items: center; gap: 16px; font-size: 0.78rem;">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--color-text); font-weight: 600;">
+                          <input type="radio" name="admin_msg_type" value="public" checked onchange="toggleAdminMsgTypeUI('public')">
+                          <span>Resposta Pública (Visível para o Motoboy)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #fbbf24; font-weight: 600;">
+                          <input type="radio" name="admin_msg_type" value="internal" onchange="toggleAdminMsgTypeUI('internal')">
+                          <span>🔒 Nota Interna (Privada - Apenas Administradores)</span>
+                        </label>
+                      </div>
+
+                      <div style="display: flex; gap: 10px;">
+                        <input type="text" id="admin-rider-chat-input" placeholder="Digite uma resposta ao motoboy..." required maxlength="4000" style="flex: 1; padding: 10px 14px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.88rem; outline: none;" autocomplete="off">
+                        <button type="submit" id="admin-support-submit-btn" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; justify-content: center; min-width: 110px;">
+                          <span>Enviar</span> <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2373,9 +2570,14 @@
             <span class="cred-label">Nome</span>
             <strong id="rider-action-name" class="cred-value">—</strong>
           </div>
-          <div class="cred-row">
-            <span class="cred-label">ID</span>
-            <strong id="rider-action-id" class="cred-value text-yellow">—</strong>
+          <div class="cred-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div>
+              <span class="cred-label">Código de Acesso</span>
+              <strong id="rider-action-code" class="cred-value text-yellow" style="font-size: 1.1rem; margin-left: 8px;">—</strong>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyRiderAccessCode()" title="Copiar código de acesso" style="padding: 4px 8px; font-size: 0.75rem;">
+              <i data-lucide="copy" class="inline-icon"></i> Copiar Código
+            </button>
           </div>
           <div class="cred-row">
             <span class="cred-label">Status</span>
@@ -2432,12 +2634,9 @@
                 <option value="Em Descanso">Em Descanso</option>
               </select>
             </div>
-            <div class="form-group flex-1">
-              <label for="edit-rider-battery">Combustível / Bateria</label>
-              <input type="text" id="edit-rider-battery" placeholder="100%">
-            </div>
           </div>
         </div>
+
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="closeEditRider()">Cancelar</button>
           <button type="submit" class="btn btn-primary"><i data-lucide="save"></i> Salvar</button>
@@ -2559,10 +2758,10 @@
 
   <!-- Modal: Cadastrar Motoboy -->
   <div id="modal-register-motoboy" class="modal-overlay hidden" onclick="closeRegisterMotoboy(event)">
-    <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-card" style="max-width: 520px; width: calc(100% - 32px); margin: auto;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <h3><i data-lucide="bike" class="inline-icon text-yellow"></i> Cadastrar Novo Entregador</h3>
-        <button class="modal-close-btn" onclick="closeRegisterMotoboy()"><i data-lucide="x"></i></button>
+        <button type="button" class="modal-close-btn" onclick="closeRegisterMotoboy()"><i data-lucide="x"></i></button>
       </div>
       <form id="register-motoboy-form" onsubmit="submitRegisterMotoboy(event)">
         <div class="modal-body">
@@ -2596,15 +2795,9 @@
               <label for="mb-phone">Telefone / WhatsApp</label>
               <div class="input-wrapper">
                 <i data-lucide="phone" class="input-icon"></i>
-                <input type="tel" id="mb-phone" required placeholder="Ex: (11) 99999-9999">
+                <input type="tel" id="mb-phone" required placeholder="Ex: (51) 99999-9999" inputmode="numeric" autocomplete="tel" maxlength="15">
               </div>
-            </div>
-            <div class="form-group flex-1">
-              <label for="mb-battery">Combustível / Bateria (%)</label>
-              <div class="input-wrapper">
-                <i data-lucide="zap" class="input-icon"></i>
-                <input type="number" id="mb-battery" min="0" max="100" value="100" required>
-              </div>
+              <p id="mb-phone-error" class="field-error-msg hidden" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px;">Informe um telefone válido com DDD.</p>
             </div>
           </div>
           <div class="form-row mt-3">
@@ -2614,10 +2807,11 @@
                 <i data-lucide="key-round" class="input-icon"></i>
                 <input type="password" id="mb-pin" required placeholder="••••" maxlength="4" pattern="[0-9]{4}" inputmode="numeric">
               </div>
+              <p id="mb-pin-error" class="field-error-msg hidden" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px;">Informe um PIN de acesso com exatamente 4 números.</p>
               <p class="text-muted text-xs mt-1" style="margin-top: 6px;">O motoboy usará este PIN para acessar o app.</p>
             </div>
           </div>
-          <div id="register-motoboy-error" class="form-error-msg hidden">
+          <div id="register-motoboy-error" class="form-error-msg hidden" style="margin-top: 12px;">
             <i data-lucide="alert-circle" class="inline-icon"></i> <span id="register-motoboy-error-text"></span>
           </div>
         </div>
@@ -2691,18 +2885,71 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="manual-delivery-dest-name" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Destinatário *</label>
-            <input type="text" id="manual-delivery-dest-name" required placeholder="Nome de quem receberá a entrega" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label for="manual-delivery-dest-name" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Destinatário *</label>
+              <input type="text" id="manual-delivery-dest-name" required placeholder="Nome de quem receberá a entrega" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label for="manual-delivery-dest-phone" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Telefone do Destinatário *</label>
+              <input type="tel" id="manual-delivery-dest-phone" required placeholder="(51) 99999-9999" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
           </div>
 
+          <!-- Endereço de Entrega (Google Places Autocomplete) -->
           <div class="form-group" style="position: relative;">
-            <label for="manual-delivery-address" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Endereço de Entrega</label>
-            <input type="text" id="manual-delivery-address" required placeholder="Digite a rua, número e cidade..." oninput="calculateEstimate('manual')" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;" autocomplete="off">
-            <div id="manual-address-suggestions" class="autocomplete-dropdown hidden"></div>
+            <label for="manual-delivery-address" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Endereço de Entrega *</label>
+            <input type="text" id="manual-delivery-address" required placeholder="Digite a rua e o número (ex: Rua Portão, 271)" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;" autocomplete="off">
+            <div id="manual-address-suggestions" class="autocomplete-dropdown hidden" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: #1e293b; border: 1px solid var(--border-color); border-radius: 6px; z-index: 1100; box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 0.82rem;"></div>
           </div>
 
-          <!-- Map Preview for precise pin placement -->
+          <!-- Resumo Compacto do Endereço (Somente Leitura) -->
+          <div id="manual-address-summary-box" class="hidden" style="padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); font-size: 0.82rem; margin-top: -6px;">
+            <div style="font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.9rem;">📍</span>
+              <span id="manual-address-summary-title"></span>
+            </div>
+            <div id="manual-address-summary-subtitle" style="color: var(--color-text-muted); font-size: 0.76rem; margin-top: 2px; padding-left: 20px;"></div>
+          </div>
+
+          <!-- Área Dinâmica de Confirmação de Número (Caso o Google não retorne street_number) -->
+          <div id="manual-number-confirm-area" class="hidden" style="display: flex; flex-direction: column; gap: 8px;">
+            <div id="manual-geocoding-warning" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; padding: 10px 12px; border-radius: 6px; font-size: 0.8rem; display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="alert-triangle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+              <span>O Google não confirmou o número deste endereço. Informe o número ou marque S/N e confira o marcador.</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center;">
+              <div>
+                <label for="manual-delivery-number-input" style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.82rem;">Número *</label>
+                <input type="text" id="manual-delivery-number-input" placeholder="Ex: 271" oninput="syncManualDeliveryNumberInput(this.value)" style="padding: 8px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+              </div>
+              <div style="padding-top: 20px;">
+                <label style="font-size: 0.8rem; color: var(--color-text); cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="manual-delivery-sn-cb" onchange="toggleManualDeliverySN()"> Sem número (S/N)
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Complemento (Único campo visível abaixo do endereço) -->
+          <div class="form-group">
+            <label for="manual-delivery-complement" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Complemento — opcional</label>
+            <input type="text" id="manual-delivery-complement" placeholder="Apartamento, bloco, casa dos fundos, referência..." style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          </div>
+
+          <!-- Campos Estruturados Mantidos Internamente para Envio à RPC -->
+          <input type="hidden" id="manual-delivery-number" value="">
+          <input type="hidden" id="manual-delivery-neighborhood" value="">
+          <input type="hidden" id="manual-delivery-city" value="Sapucaia do Sul">
+          <input type="hidden" id="manual-delivery-state" value="RS">
+          <input type="hidden" id="manual-delivery-postal-code" value="">
+          <input type="hidden" id="manual-delivery-place-id" value="">
+          <input type="hidden" id="manual-delivery-lat" value="">
+          <input type="hidden" id="manual-delivery-lng" value="">
+          <input type="hidden" id="manual-geocoding-precision" value="unconfirmed">
+          <input type="hidden" id="manual-location-adjusted-manually" value="false">
+
+          <!-- Preview do Mapa para ajuste preciso do pino -->
           <div class="form-group">
             <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
               <i data-lucide="map" style="width: 14px; height: 14px; color: var(--primary);"></i>
@@ -2710,6 +2957,8 @@
             </label>
             <div id="manual-request-delivery-map" style="height: 180px; width: 100%; border-radius: var(--border-radius-sm); border: 1px solid var(--border-color); z-index: 1;"></div>
           </div>
+
+
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
@@ -3091,7 +3340,229 @@
     </div>
   </div>
 
+  <!-- Reversal Modal (Estorno Financeiro Seguro) -->
+  <div id="financial-reversal-modal" class="modal hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div class="modal-card" style="background: #181820; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); max-width: 480px; width: 90%; padding: 24px; color: #f3f4f6; box-shadow: 0 12px 32px rgba(0,0,0,0.6);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; font-size: 1.1rem; color: #fff; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="rotate-ccw" style="color: var(--warning, #eab308);"></i> Estornar Movimentação Financeira
+        </h3>
+        <button type="button" onclick="closeFinancialReversalModal()" style="background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 1.2rem;">&times;</button>
+      </div>
+      <p style="font-size: 0.88rem; color: #9ca3af; margin-bottom: 16px; line-height: 1.4;">
+        Esta movimentação será estornada. O registro original permanecerá no histórico de auditoria para integridade contábil.
+      </p>
+      <form id="financial-reversal-form" onsubmit="handleExecuteFinancialReversal(event)">
+        <input type="hidden" id="reversal-item-id">
+        <input type="hidden" id="reversal-item-type">
+        
+        <div style="margin-bottom: 16px;">
+          <label for="reversal-reason-input" style="display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600;">Motivo do Estorno *</label>
+          <textarea id="reversal-reason-input" required rows="3" placeholder="Ex: Lançamento duplicado, valor digitado incorretamente..." style="width: 100%; padding: 10px 12px; background: #121218; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: #f3f4f6; font-size: 0.85rem; outline: none; resize: vertical;"></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeFinancialReversalModal()" style="padding: 10px 16px; background: #272732; color: #f3f4f6; border: none; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button type="submit" id="reversal-submit-btn" class="btn btn-danger" style="padding: 10px 16px; background: #ef4444; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Confirmar Estorno</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    select, option, optgroup {
+      background-color: #181820 !important;
+      color: #f3f4f6 !important;
+      border-color: var(--border-color, #272732) !important;
+      color-scheme: dark !important;
+    }
+    option, optgroup {
+      background-color: #181820 !important;
+      color: #f3f4f6 !important;
+      opacity: 1 !important;
+      -webkit-text-fill-color: #f3f4f6 !important;
+    }
+    select:disabled {
+      opacity: 0.6;
+    }
+  </style>
+
+  <!-- Quick Action Drawer Container (Fase 2) -->
+  <div id="drawer-overlay" class="drawer-overlay hidden" onclick="closeTeleQuickActionDrawer()"></div>
+  
+  <aside id="quick-action-drawer" class="quick-action-drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawer-tele-code" tabindex="-1">
+    <div class="drawer-header">
+      <div class="drawer-title-group">
+        <span class="badge badge-soft" id="drawer-tele-status">Status</span>
+        <h2 id="drawer-tele-code" class="drawer-tele-code">TEL-000000</h2>
+        <span id="drawer-client-name" class="drawer-client-name">Cliente</span>
+      </div>
+      <button type="button" class="drawer-close-btn" onclick="closeTeleQuickActionDrawer()" aria-label="Fechar Gaveta">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <!-- Drawer Navigation Tabs -->
+    <div class="drawer-tabs">
+      <button type="button" class="drawer-tab-btn active" data-drawer-tab="details" onclick="switchDrawerTab('details')">
+        <i data-lucide="info"></i> Detalhes & Ações
+      </button>
+      <button type="button" class="drawer-tab-btn" data-drawer-tab="timeline" onclick="switchDrawerTab('timeline')">
+        <i data-lucide="history"></i> Timeline
+      </button>
+      <button type="button" class="drawer-tab-btn" data-drawer-tab="riders" onclick="switchDrawerTab('riders')">
+        <i data-lucide="bike"></i> Frota Elegível
+      </button>
+    </div>
+
+    <!-- Drawer Body -->
+    <div class="drawer-body">
+      <!-- Loading State -->
+      <div id="drawer-loading" class="drawer-loading hidden">
+        <div class="spinner"></div>
+        <span>Carregando dados autoritativos...</span>
+      </div>
+
+      <!-- Tab 1: Details -->
+      <div id="drawer-tab-details" class="drawer-tab-content active">
+        <div class="drawer-section">
+          <h3>Informações Básicas</h3>
+          <div class="drawer-grid">
+            <div class="drawer-cell">
+              <span class="label">ID da Tele (UUID)</span>
+              <span id="drawer-val-uuid" class="value text-mono">—</span>
+            </div>
+            <div class="drawer-cell">
+              <span class="label">Versão no Banco</span>
+              <span id="drawer-val-version" class="value badge badge-version">—</span>
+            </div>
+            <div class="drawer-cell">
+              <span class="label">Data de Criação</span>
+              <span id="drawer-val-created" class="value">—</span>
+            </div>
+            <div class="drawer-cell">
+              <span class="label">Tempo Decorrido / SLA</span>
+              <span id="drawer-val-sla" class="value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h3>Endereços e Entrega</h3>
+          <div class="drawer-card">
+            <div class="drawer-address-row">
+              <i data-lucide="map-pin" class="icon-pickup"></i>
+              <div>
+                <strong>Ponto de Coleta:</strong>
+                <p id="drawer-val-pickup">—</p>
+              </div>
+            </div>
+            <div class="drawer-address-row">
+              <i data-lucide="navigation" class="icon-delivery"></i>
+              <div>
+                <strong>Ponto de Entrega:</strong>
+                <p id="drawer-val-delivery">—</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h3>Destinatário & Carga</h3>
+          <div class="drawer-grid">
+            <div class="drawer-cell">
+              <span class="label">Destinatário</span>
+              <span id="drawer-val-recipient" class="value">—</span>
+            </div>
+            <div class="drawer-cell">
+              <span class="label">Telefone</span>
+              <span id="drawer-val-phone" class="value">—</span>
+            </div>
+            <div class="drawer-cell">
+              <span class="label">Valor da Entrega</span>
+              <span id="drawer-val-price" class="value text-highlight">—</span>
+            </div>
+            <div class="drawer-cell">
+              <span class="label">Entregador Designado</span>
+              <span id="drawer-val-rider" class="value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matriz de Ações Dinâmicas por Status -->
+        <div class="drawer-section">
+          <h3>Ações Rápidas</h3>
+          <div id="drawer-action-notice" class="drawer-notice hidden"></div>
+          <div id="drawer-actions-container" class="drawer-actions-stack">
+            <!-- Botões injetados dinamicamente conforme status canônico -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Timeline -->
+      <div id="drawer-tab-timeline" class="drawer-tab-content">
+        <div class="drawer-section">
+          <h3>Linha do Tempo Sanitizada (Postgres)</h3>
+          <div id="drawer-timeline-list" class="timeline-container">
+            <!-- Eventos renderizados em ordem cronológica de cima para baixo -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Eligible Riders -->
+      <div id="drawer-tab-riders" class="drawer-tab-content">
+        <div class="drawer-section">
+          <h3>Seleção de Entregador Elegível</h3>
+          <p class="drawer-section-hint">Validação final executada autoritativamente pela RPC no Postgres.</p>
+          <div id="drawer-riders-list" class="riders-selection-list">
+            <!-- Cards de motoboys elegíveis -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Modal Interno: Motivo de Cancelamento -->
+  <div id="drawer-modal-cancel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cancel-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-cancel-title">Motivo do Cancelamento</h3>
+        <button type="button" class="modal-close-btn" onclick="closeDrawerCancelModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Informe o motivo justificado do cancelamento administrativo. A ação será gravada na auditoria com seu usuário.</p>
+        <div id="modal-cancel-warning" class="modal-notice warning hidden"></div>
+        <textarea id="drawer-cancel-reason-input" rows="3" class="form-textarea" placeholder="Digite o motivo do cancelamento..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDrawerCancelModal()">Voltar</button>
+        <button type="button" id="drawer-cancel-confirm-btn" class="btn btn-danger" onclick="submitDrawerCancellation()">Confirmar Cancelamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Interno: Motivo de Reatribuição -->
+  <div id="drawer-modal-reassign" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-reassign-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-reassign-title">Justificativa de Reatribuição</h3>
+        <button type="button" class="modal-close-btn" onclick="closeDrawerReassignModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">A Tele já possui um entregador vinculado. Informe o motivo de reatribuição para registrar na auditoria.</p>
+        <div id="modal-reassign-warning" class="modal-notice warning hidden"></div>
+        <textarea id="drawer-reassign-reason-input" rows="3" class="form-textarea" placeholder="Motivo da troca de entregador..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDrawerReassignModal()">Voltar</button>
+        <button type="button" id="drawer-reassign-confirm-btn" class="btn btn-primary" onclick="submitDrawerReassignment()">Confirmar Troca</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.local.js"></script>
   <script src="config.js"></script>
   <script src="app.js?v=20260709_v3"></script>
+
 </body>
 </html>

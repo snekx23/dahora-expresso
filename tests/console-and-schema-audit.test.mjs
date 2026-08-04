@@ -95,12 +95,13 @@ test('9. Aplicação utiliza exclusivamente public.teles e public.commercial_cli
   assert.match(appJs, /\.from\('commercial_clients'\)/);
 });
 
-test('10. Service Worker atualiza a versão do cache para v3 e inclui motoboy assets', async () => {
+test('10. Service Worker atualiza a versão do cache para v3+ e inclui motoboy assets', async () => {
   const swJs = await readFile(swJsPath, 'utf8');
-  assert.match(swJs, /dahora-expresso-cache-v3/);
+  assert.match(swJs, /dahora-expresso-cache-v[3-9]/);
   assert.match(swJs, /motoboy\.html/);
   assert.match(swJs, /motoboy\.js/);
 });
+
 
 test('11. Baseline Migration 1 cria user_profiles com user_id UUID REFERENCES auth.users(id)', async () => {
   const sql0001 = await readFile(migration0001Path, 'utf8');
