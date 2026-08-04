@@ -33,6 +33,14 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      // Purga explícita de arquivos de configuração dinâmicos do cache atual
+      return caches.open(CACHE_NAME).then((cache) => {
+        return Promise.all([
+          cache.delete('/runtime-config.js'),
+          cache.delete('/config.local.js')
+        ]);
+      });
     })
   );
   self.clients.claim();
@@ -49,8 +57,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-Only para endpoints da API e configurações locais estáticas dinâmicas
-  if (url.pathname.startsWith('/api/') || url.pathname.includes('config.local.js')) {
+  // Network-Only para endpoints da API e configurações estáticas injetadas/locais
+  if (url.pathname.startsWith('/api/') || url.pathname.includes('config.local.js') || url.pathname.includes('runtime-config.js')) {
     event.respondWith(fetch(event.request));
     return;
   }

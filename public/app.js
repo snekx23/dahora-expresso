@@ -4,21 +4,40 @@
 
 
 // Supabase Configuration
-const supabaseUrl = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.url : 'http://127.0.0.1:54321';
-const supabaseKey = window.SUPABASE_CONFIG ? window.SUPABASE_CONFIG.key : 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
 let supabaseClient = null;
 let maxSimultaneousDeliveries = 1;
-if (window.supabase) {
-  supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  });
-} else {
-  console.error("Supabase SDK not loaded!");
-}
+
+(function initSupabaseAppClient() {
+  if (typeof window === 'undefined') return;
+
+  if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.key) {
+    console.error("[SUPABASE INIT] Configuração do ambiente não disponível.");
+    document.addEventListener('DOMContentLoaded', () => {
+      const errInfo = window.__CONFIGURATION_ERROR || { message: 'Ambiente não configurado. Verifique as configurações do sistema.' };
+      const banner = document.createElement('div');
+      banner.className = 'config-error-banner';
+      banner.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:#0f172a; color:#f87171; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999; padding:24px; text-align:center; font-family:sans-serif;';
+      banner.innerHTML = `<h2 style="font-size:1.5rem; margin-bottom:12px;">⚠️ Sistema Indisponível</h2><p style="font-size:1rem; max-width:480px; color:#94a3b8;">${errInfo.message}</p>`;
+      document.body.appendChild(banner);
+    });
+    return;
+  }
+
+  const supabaseUrl = window.SUPABASE_CONFIG.url;
+  const supabaseKey = window.SUPABASE_CONFIG.key;
+
+  if (window.supabase) {
+    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+  } else {
+    console.error("Supabase SDK not loaded!");
+  }
+})();
 
 
 // Mock Database States (updated dynamically from Supabase)

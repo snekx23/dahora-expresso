@@ -21,6 +21,7 @@ setup-supabase.ps1
 supabase/.temp/
 .worktrees/
 public/config.local.js
+public/runtime-config.js
 
 # Dependencies
 node_modules/

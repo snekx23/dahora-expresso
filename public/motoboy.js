@@ -1,18 +1,36 @@
 // Dahora Expresso — Motoboy PWA Logic
-const SUPABASE_URL = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.url : 'https://fajkqyapnycnnumpdwrr.supabase.co';
-const SUPABASE_KEY = (typeof window !== 'undefined' && window.SUPABASE_CONFIG) ? window.SUPABASE_CONFIG.key : 'sb_publishable_zkb7DUOrpx9fiF6Af0cH8A_V8LrSb1a';
-
-// Instância Única do Supabase Client
 let db = null;
-if (typeof window !== 'undefined' && window.supabase && !db) {
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  });
-}
+
+(function initSupabaseMotoboyClient() {
+  if (typeof window === 'undefined') return;
+
+  if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.key) {
+    console.error("[SUPABASE INIT MOTOBOY] Configuração do ambiente não disponível.");
+    document.addEventListener('DOMContentLoaded', () => {
+      const errInfo = window.__CONFIGURATION_ERROR || { message: 'Ambiente não configurado. Verifique as configurações do sistema.' };
+      const banner = document.createElement('div');
+      banner.className = 'config-error-banner';
+      banner.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:#0f172a; color:#f87171; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999; padding:24px; text-align:center; font-family:sans-serif;';
+      banner.innerHTML = `<h2 style="font-size:1.5rem; margin-bottom:12px;">⚠️ Sistema Indisponível</h2><p style="font-size:1rem; max-width:480px; color:#94a3b8;">${errInfo.message}</p>`;
+      document.body.appendChild(banner);
+    });
+    return;
+  }
+
+  const SUPABASE_URL = window.SUPABASE_CONFIG.url;
+  const SUPABASE_KEY = window.SUPABASE_CONFIG.key;
+
+  if (window.supabase && !db) {
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+  }
+})();
+
 const supabaseClient = db;
 if (typeof window !== 'undefined') window.supabaseClient = db;
 
