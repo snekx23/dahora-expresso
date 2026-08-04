@@ -642,7 +642,7 @@
                     <tbody id="owner-fleet-table-body">
                       <!-- Rendered by JS -->
                     </tbody>
-                <!-- 4. Owner Rider Weekly Payments (Fase 3B.2A) -->
+                <!-- 4. Owner Rider Weekly Payments (Fase 3B.2A.1) -->
           <div id="tab-owner-rider-payments" class="dashboard-tab-content">
             <!-- Period & Rider Filter Card -->
             <div class="card" style="margin-bottom: 20px; overflow: visible;">
@@ -654,22 +654,22 @@
                   <select id="rider-payment-period-shortcut" onchange="handleRiderPaymentPeriodShortcutChange(this.value)" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 170px;">
                     <option value="current_week">Semana Atual</option>
                     <option value="previous_week">Semana Anterior</option>
-                    <option value="custom_week">Selecionar por Calendário</option>
+                    <option value="custom_week">Semana de Referência</option>
                   </select>
                 </div>
 
                 <div id="rider-payment-custom-date-container" style="display: none; gap: 12px; align-items: flex-end;">
                   <div style="display: flex; flex-direction: column; gap: 6px;">
-                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Data da Semana</label>
-                    <input type="date" id="rider-payment-start-date" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 160px;">
+                    <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Semana de Referência</label>
+                    <input type="date" id="rider-payment-start-date" onchange="handleRiderPaymentStartDateChange(this.value)" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 160px;">
                   </div>
                 </div>
                 
-                <!-- Custom Rider Search Select Dropdown -->
+                <!-- Custom Rider Search Select Dropdown via public.fleet.id -->
                 <div class="rider-search-wrapper" style="position: relative; display: flex; flex-direction: column; gap: 6px; z-index: 50;">
                   <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Entregador</label>
                   <div style="position: relative; min-width: 220px;">
-                    <input type="text" id="rider-search-input" placeholder="Todos os entregadores" onfocus="toggleRiderSearchDropdown(true)" oninput="filterRiderSearch()" style="padding: 10px 12px; padding-right: 32px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%; cursor: pointer;" autocomplete="off">
+                    <input type="text" id="rider-search-input" placeholder="Todos os entregadores" onfocus="toggleRiderSearchDropdown(true)" oninput="filterRiderSearchAutocomplete()" style="padding: 10px 12px; padding-right: 32px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%; cursor: pointer;" autocomplete="off">
                     <input type="hidden" id="rider-search-id" value="">
                     <i data-lucide="chevron-down" style="position: absolute; right: 10px; top: 12px; width: 16px; height: 16px; color: var(--color-text-muted); pointer-events: none; transition: transform 0.2s;"></i>
                   </div>
@@ -696,84 +696,79 @@
                 </div>
 
                 <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-primary" onclick="fetchAdminRiderWeeklySettlements()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
+                  <button class="btn btn-primary" onclick="fetchAdminRiderWeeklySettlements(true)" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
                     <i data-lucide="filter" style="width: 16px; height: 16px;"></i> <span>Filtrar</span>
                   </button>
                   <button class="btn btn-secondary" onclick="clearRiderPaymentFilters()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text);">
                     <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> <span>Limpar</span>
                   </button>
-                  <button class="btn btn-secondary" onclick="fetchAdminRiderWeeklySettlements(true)" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text);">
+                  <button class="btn btn-secondary" onclick="fetchAdminRiderWeeklySettlements()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text);">
                     <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> <span>Atualizar</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- Banner de Pagamento Incompleto em Andamento (Recuperável via sessionStorage) -->
-            <div id="rider-payment-recovery-banner" class="hidden" style="margin-bottom: 20px; background: rgba(245, 158, 11, 0.12); border: 1px solid #f59e0b; border-radius: var(--border-radius-md); padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <i data-lucide="alert-triangle" style="width: 24px; height: 24px; color: #f59e0b; flex-shrink: 0;"></i>
-                <div>
-                  <strong style="color: #f59e0b; font-size: 0.95rem; display: block;">Pagamento em andamento detectado</strong>
-                  <span id="rider-payment-recovery-text" style="font-size: 0.85rem; color: var(--color-text-muted);">Existe uma tentativa de pagamento não finalizada para este entregador.</span>
-                </div>
-              </div>
-              <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                <button class="btn btn-primary btn-sm" onclick="resumePendingPaymentAttempt()" style="font-weight: 600;">Continuar Pagamento</button>
-                <button class="btn btn-secondary btn-sm" onclick="cancelPendingPaymentAttempt()" style="border: 1px solid var(--border-color);">Descartar Tentativa</button>
-              </div>
-            </div>
-
-            <!-- Metrics Grid (Rótulo explícito "Nesta página") -->
-            <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            <!-- Indicadores Operacionais Resumidos (Sem Agregação Financeira) -->
+            <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Fechamentos Exibidos</span>
-                  <i data-lucide="users" class="text-blue"></i>
+                  <span>Total de Registros</span>
+                  <i data-lucide="database" class="text-blue"></i>
                 </div>
                 <div class="metric-card-body">
                   <h3 id="rider-week-count-total">0</h3>
-                  <p class="text-muted" id="rider-week-range">Nesta página</p>
+                  <p class="text-muted">No período retornado</p>
                 </div>
               </div>
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Líquido Total (Nesta página)</span>
-                  <i data-lucide="wallet" class="text-yellow"></i>
+                  <span>Exibidos na Página</span>
+                  <i data-lucide="users" class="text-purple"></i>
                 </div>
                 <div class="metric-card-body">
-                  <h3 id="rider-week-net-total">R$ 0,00</h3>
-                  <p class="text-muted">Total líquido calculado</p>
+                  <h3 id="rider-week-page-count">0</h3>
+                  <p class="text-muted">Nesta página</p>
                 </div>
               </div>
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Elegível Não Pago (Nesta página)</span>
-                  <i data-lucide="badge-dollar-sign" class="text-green"></i>
+                  <span>Não Calculados</span>
+                  <i data-lucide="help-circle" class="text-yellow"></i>
                 </div>
                 <div class="metric-card-body">
-                  <h3 id="rider-week-unpaid-eligible-total" style="color: #10b981;">R$ 0,00</h3>
-                  <p class="text-muted">Liberado para repasse</p>
+                  <h3 id="rider-week-not-calculated-kpi">—</h3>
+                  <p class="text-muted" style="font-size: 0.72rem;">Disponível no módulo de Resumo Financeiro</p>
                 </div>
               </div>
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Bloqueado por Clientes (Nesta página)</span>
+                  <span>Pendentes</span>
+                  <i data-lucide="clock" style="color: #f59e0b;"></i>
+                </div>
+                <div class="metric-card-body">
+                  <h3 id="rider-week-pending-kpi">—</h3>
+                  <p class="text-muted" style="font-size: 0.72rem;">Disponível no módulo de Resumo Financeiro</p>
+                </div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span>Parcialmente Bloqueados</span>
                   <i data-lucide="lock" style="color: #ef4444;"></i>
                 </div>
                 <div class="metric-card-body">
-                  <h3 id="rider-week-blocked-total" style="color: #ef4444;">R$ 0,00</h3>
-                  <p class="text-muted">Aguardando clientes</p>
+                  <h3 id="rider-week-blocked-kpi">—</h3>
+                  <p class="text-muted" style="font-size: 0.72rem;">Disponível no módulo de Resumo Financeiro</p>
                 </div>
               </div>
               <div class="metric-card">
                 <div class="metric-card-header">
-                  <span>Total Já Pago (Nesta página)</span>
-                  <i data-lucide="check-circle-2" style="color: #3b82f6;"></i>
+                  <span>Pagos</span>
+                  <i data-lucide="check-circle-2" style="color: #10b981;"></i>
                 </div>
                 <div class="metric-card-body">
-                  <h3 id="rider-week-paid-total" style="color: #3b82f6;">R$ 0,00</h3>
-                  <p class="text-muted">Repassado em lotes</p>
+                  <h3 id="rider-week-paid-kpi">—</h3>
+                  <p class="text-muted" style="font-size: 0.72rem;">Disponível no módulo de Resumo Financeiro</p>
                 </div>
               </div>
             </div>
@@ -783,7 +778,7 @@
               <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                   <h3>Repasses Semanais dos Entregadores</h3>
-                  <p class="text-muted">Fechamentos calculados pelo banco de dados em janela semanal (Segunda a Domingo).</p>
+                  <p class="text-muted">Fechamentos autoritativos calculados pelo banco de dados em janela semanal.</p>
                 </div>
                 <span id="rider-settlement-pagination-info" style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 500;">Exibindo 0 registros</span>
               </div>
@@ -793,12 +788,12 @@
                     <thead>
                       <tr>
                         <th>Motoboy</th>
+                        <th>Código</th>
                         <th>Período</th>
                         <th>Status</th>
                         <th>Base Motoboy</th>
                         <th>Consumíveis</th>
                         <th>Créditos</th>
-                        <th>Ajustes</th>
                         <th>Líquido</th>
                         <th>Elegível</th>
                         <th>Bloqueado</th>
@@ -806,7 +801,7 @@
                         <th>Elegível Não Pago</th>
                         <th>Teles</th>
                         <th>Clientes Bloq.</th>
-                        <th style="text-align: right;">Ações</th>
+                        <th style="text-align: right;">Ação</th>
                       </tr>
                     </thead>
                     <tbody id="rider-payments-table-body"></tbody>
@@ -822,11 +817,6 @@
                   <button id="rider-settlement-next-page" class="btn btn-secondary btn-sm" onclick="changeRiderSettlementPage(1)" disabled style="border: 1px solid var(--border-color);">
                     Próxima <i data-lucide="chevron-right"></i>
                   </button>
-                </div>
-              </div>
-            </div>
-          </div>ody>
-                  </table>
                 </div>
               </div>
             </div>
@@ -3518,6 +3508,25 @@
             <!-- Cards de motoboys elegíveis -->
           </div>
         </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Drawer Somente Leitura: Detalhamento do Fechamento Semanal (Fase 3B.2A.1) -->
+  <div id="rider-settlement-drawer-backdrop" class="drawer-backdrop hidden" onclick="closeRiderSettlementDrawer()"></div>
+  <aside id="rider-settlement-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="rider-settlement-drawer-title">
+    <div class="rider-drawer-header">
+      <div class="rider-drawer-title-area">
+        <h3 id="rider-settlement-drawer-title">Detalhamento do Fechamento Semanal</h3>
+        <p id="rider-drawer-subtitle" class="rider-drawer-subtitle">Carregando dados autoritativos...</p>
+      </div>
+      <button type="button" class="rider-drawer-close-btn" onclick="closeRiderSettlementDrawer()" aria-label="Fechar">&times;</button>
+    </div>
+    <div id="rider-drawer-body" class="rider-drawer-body">
+      <!-- Dynamic Content Rendered via JS -->
+      <div style="padding: 40px; text-align: center; color: var(--color-text-muted);">
+        <i data-lucide="loader-2" class="spin" style="width: 32px; height: 32px; margin-bottom: 12px;"></i>
+        <p>Buscando detalhes do fechamento no banco de dados...</p>
       </div>
     </div>
   </aside>

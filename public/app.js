@@ -12293,14 +12293,7 @@ function renderQuickActionDrawerContent(tele) {
   const deliveryEl = document.getElementById('drawer-val-delivery');
   const recipientEl = document.getElementById('drawer-val-recipient');
   const phoneEl = document.getElementById('drawer-val-phone');
-  const priceEl = document.getElementById('drawer-val-price');
-  const riderEl = document.getElementById('drawer-val-rider');
-
-  if (codeEl) codeEl.textContent = teleCode;
-  if (statusEl) {
-    statusEl.textContent = normStatus.toUpperCase().replace(/_/g, ' ');
-    statusEl.className = `badge badge-${normStatus === 'concluida' ? 'success' : (normStatus === 'cancelada' ? 'danger' : 'warning')}`;
-  }
+if (codeEl) codeEl.textContent = teleCode;
   if (clientEl) clientEl.textContent = tele.client || resolveClientDisplayName(tele);
   if (uuidEl) uuidEl.textContent = rawUuid;
   if (versionEl) versionEl.textContent = `v${tele.version ?? 1}`;
@@ -12334,12 +12327,580 @@ function renderQuickActionDrawerContent(tele) {
 
   if (!canonicalStatuses.includes(normStatus)) {
     console.warn(`[INTEGRIDADE DRAWER] Status desconhecido/legado detectado: "${tele.status}". Entrando em modo Somente Leitura.`);
-    if (noticeContainer) {
-      noticeContainer.textContent = 'Status não reconhecido — abra na Gestão de Teles para intervenção operacional.';
-      noticeContainer.classList.remove('hidden');
-    }
     if (actionsContainer) {
       actionsContainer.innerHTML = `
         <button type="button" class="btn btn-secondary" onclick="navigateToTeleInManagement('${rawUuid}')">
           <i data-lucide="external-link"></i> Abrir na Gestão de Teles
         </button>
+      `;
+    }
+  }
+}
+
+// =====================================================================
+// Dahora Expresso — Fase 3B.2A.1: Repasse Semanal & Leitura Autoritativa
+// =====================================================================
+
+let riderSettlementState = {
+  page: 1,
+  limit: 50,
+  periodShortcut: 'current_week',
+  startDate: null,
+  selectedRiderId: null,
+  statusFilter: '',
+  isLoading: false,
+  settlements: [],
+  totalCount: 0
+};
+
+let activeElementBeforeDrawer = null;
+let drawerListenersAttached = false;
+let riderAutocompleteCache = [];
+
+function formatRiderSettlementCurrency(val) {
+  const num = Number(val) || 0;
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+}
+
+function handleRiderPaymentPeriodShortcutChange(shortcut) {
+  riderSettlementState.periodShortcut = shortcut;
+  const customContainer = document.getElementById('rider-payment-custom-date-container');
+
+  if (shortcut === 'custom_week') {
+    if (customContainer) customContainer.style.display = 'flex';
+    const dateInput = document.getElementById('rider-payment-start-date');
+    if (dateInput && dateInput.value) {
+      riderSettlementState.startDate = dateInput.value;
+    }
+  } else {
+    if (customContainer) customContainer.style.display = 'none';
+    const now = new Date();
+    if (shortcut === 'previous_week') {
+      now.setDate(now.getDate() - 7);
+    }
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    riderSettlementState.startDate = `${year}-${month}-${day}`;
+  }
+
+  fetchAdminRiderWeeklySettlements(true);
+}
+
+function handleRiderPaymentStartDateChange(dateValue) {
+  if (dateValue) {
+    riderSettlementState.startDate = dateValue;
+    fetchAdminRiderWeeklySettlements(true);
+  }
+}
+
+async function loadRiderAutocompleteStore() {
+  if (!supabaseClient || !currentActiveSession) return;
+  try {
+    const { data, error } = await supabaseClient
+      .from('fleet')
+      .select('id, name, motoboy_code, phone')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error("[AUTOPLETE FLEET] Erro ao carregar fleet autoritativo:", error.message);
+      const dropdown = document.getElementById('rider-search-dropdown');
+      if (dropdown) {
+        dropdown.innerHTML = `<div style="padding: 10px; color: #ef4444; font-size: 0.8rem; text-align: center;">
+          Erro ao carregar entregadores. <button class="btn btn-sm btn-secondary" onclick="loadRiderAutocompleteStore()">Tentar Novamente</button>
+        </div>`;
+      }
+      return;
+    }
+
+    riderAutocompleteCache = data || [];
+    renderRiderSearchDropdown(riderAutocompleteCache);
+  } catch (err) {
+    console.error("[AUTOPLETE FLEET] Exceção:", err);
+  }
+}
+
+function renderRiderSearchDropdown(list) {
+  const dropdown = document.getElementById('rider-search-dropdown');
+  if (!dropdown) return;
+
+  if (!list || list.length === 0) {
+    dropdown.innerHTML = `<div style="padding: 8px 12px; font-size: 0.8rem; color: var(--color-text-muted);">Nenhum entregador encontrado.</div>`;
+    return;
+  }
+
+  let html = `<div style="padding: 6px 12px; font-size: 0.8rem; color: var(--color-text); cursor: pointer; border-bottom: 1px solid var(--border-color);" onclick="selectRiderFilter('', 'Todos os entregadores')">
+    <strong>Todos os entregadores</strong>
+  </div>`;
+
+  list.forEach(r => {
+    html += `<div style="padding: 8px 12px; font-size: 0.82rem; color: var(--color-text); cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="selectRiderFilter('${r.id}', '${(r.name || '').replace(/'/g, "\\'")}')">
+      <span>${r.name || 'Entregador sem nome'}</span>
+      <span style="font-size: 0.72rem; color: var(--color-text-muted);">${r.motoboy_code || ''}</span>
+    </div>`;
+  });
+
+  dropdown.innerHTML = html;
+}
+
+function toggleRiderSearchDropdown(show) {
+  const dropdown = document.getElementById('rider-search-dropdown');
+  if (!dropdown) return;
+  if (show) {
+    if (riderAutocompleteCache.length === 0) {
+      loadRiderAutocompleteStore();
+    } else {
+      renderRiderSearchDropdown(riderAutocompleteCache);
+    }
+    dropdown.classList.remove('hidden');
+  } else {
+    setTimeout(() => dropdown.classList.add('hidden'), 200);
+  }
+}
+
+function filterRiderSearchAutocomplete() {
+  const input = document.getElementById('rider-search-input');
+  if (!input) return;
+  const term = input.value.toLowerCase().trim();
+
+  if (!term) {
+    renderRiderSearchDropdown(riderAutocompleteCache);
+    return;
+  }
+
+  const filtered = riderAutocompleteCache.filter(r => 
+    (r.name && r.name.toLowerCase().includes(term)) ||
+    (r.motoboy_code && String(r.motoboy_code).toLowerCase().includes(term))
+  );
+
+  renderRiderSearchDropdown(filtered);
+}
+
+function selectRiderFilter(riderId, riderName) {
+  const input = document.getElementById('rider-search-input');
+  const hiddenId = document.getElementById('rider-search-id');
+  const dropdown = document.getElementById('rider-search-dropdown');
+
+  if (input) input.value = riderName;
+  if (hiddenId) hiddenId.value = riderId;
+  if (dropdown) dropdown.classList.add('hidden');
+
+  riderSettlementState.selectedRiderId = riderId || null;
+  fetchAdminRiderWeeklySettlements(true);
+}
+
+function clearRiderPaymentFilters() {
+  riderSettlementState.page = 1;
+  riderSettlementState.periodShortcut = 'current_week';
+  riderSettlementState.selectedRiderId = null;
+  riderSettlementState.statusFilter = '';
+
+  const shortcutSelect = document.getElementById('rider-payment-period-shortcut');
+  const customContainer = document.getElementById('rider-payment-custom-date-container');
+  const dateInput = document.getElementById('rider-payment-start-date');
+  const searchInput = document.getElementById('rider-search-input');
+  const hiddenId = document.getElementById('rider-search-id');
+  const statusSelect = document.getElementById('rider-settlement-status-filter');
+
+  if (shortcutSelect) shortcutSelect.value = 'current_week';
+  if (customContainer) customContainer.style.display = 'none';
+  if (dateInput) dateInput.value = '';
+  if (searchInput) searchInput.value = '';
+  if (hiddenId) hiddenId.value = '';
+  if (statusSelect) statusSelect.value = '';
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  riderSettlementState.startDate = `${year}-${month}-${day}`;
+
+  fetchAdminRiderWeeklySettlements(true);
+}
+
+function changeRiderSettlementPage(delta) {
+  const newPage = riderSettlementState.page + delta;
+  if (newPage < 1) return;
+
+  const maxPages = Math.ceil(riderSettlementState.totalCount / riderSettlementState.limit) || 1;
+  if (newPage > maxPages) return;
+
+  riderSettlementState.page = newPage;
+  fetchAdminRiderWeeklySettlements(false);
+}
+
+async function fetchAdminRiderWeeklySettlements(resetPage = false) {
+  if (!supabaseClient || !currentActiveSession) return;
+
+  if (resetPage) {
+    riderSettlementState.page = 1;
+  }
+
+  if (!riderSettlementState.startDate) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    riderSettlementState.startDate = `${year}-${month}-${day}`;
+  }
+
+  const statusFilterEl = document.getElementById('rider-settlement-status-filter');
+  if (statusFilterEl) {
+    riderSettlementState.statusFilter = statusFilterEl.value || null;
+  }
+
+  const offset = (riderSettlementState.page - 1) * riderSettlementState.limit;
+  riderSettlementState.isLoading = true;
+
+  const tbody = document.getElementById('rider-payments-table-body');
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 24px; color: var(--color-text-muted);">
+      <i data-lucide="loader-2" class="spin" style="width: 24px; height: 24px; margin-bottom: 8px;"></i>
+      <div>Carregando repasses semanais do banco de dados...</div>
+    </td></tr>`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('list_admin_rider_weekly_settlements', {
+      p_period_start: riderSettlementState.startDate,
+      p_workspace_id: null,
+      p_status: riderSettlementState.statusFilter,
+      p_rider_id: riderSettlementState.selectedRiderId,
+      p_limit: riderSettlementState.limit,
+      p_offset: offset
+    });
+
+    riderSettlementState.isLoading = false;
+
+    if (error || !data || data.success === false) {
+      const errMsg = error?.message || data?.message || 'Erro ao consultar repasses semanais.';
+      console.error("[RPC list_admin_rider_weekly_settlements] Erro:", errMsg);
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 24px; color: #ef4444;">
+          <i data-lucide="alert-triangle" style="width: 24px; height: 24px; margin-bottom: 8px;"></i>
+          <div>${errMsg}</div>
+          <button class="btn btn-sm btn-secondary" onclick="fetchAdminRiderWeeklySettlements()" style="margin-top: 12px;">Tentar Novamente</button>
+        </td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
+      }
+      return;
+    }
+
+    riderSettlementState.totalCount = data.total_count || 0;
+    riderSettlementState.settlements = data.settlements || [];
+
+    // Atualizar KPI Cards sem NENHUMA agregação financeira no frontend
+    const countTotalEl = document.getElementById('rider-week-count-total');
+    const pageCountEl = document.getElementById('rider-week-page-count');
+    const pagInfoEl = document.getElementById('rider-settlement-pagination-info');
+
+    if (countTotalEl) countTotalEl.textContent = String(riderSettlementState.totalCount);
+    if (pageCountEl) pageCountEl.textContent = String(riderSettlementState.settlements.length);
+    if (pagInfoEl) pagInfoEl.textContent = `Exibindo ${riderSettlementState.settlements.length} de ${riderSettlementState.totalCount} registros`;
+
+    // Renderizar Tabela
+    renderAdminRiderWeeklySettlements(riderSettlementState.settlements);
+
+    // Atualizar botões de paginação
+    const prevBtn = document.getElementById('rider-settlement-prev-page');
+    const nextBtn = document.getElementById('rider-settlement-next-page');
+    const pageText = document.getElementById('rider-settlement-page-text');
+
+    const maxPages = Math.ceil(riderSettlementState.totalCount / riderSettlementState.limit) || 1;
+    if (prevBtn) prevBtn.disabled = riderSettlementState.page <= 1;
+    if (nextBtn) nextBtn.disabled = riderSettlementState.page >= maxPages;
+    if (pageText) pageText.textContent = `Página ${riderSettlementState.page} de ${maxPages}`;
+
+  } catch (err) {
+    riderSettlementState.isLoading = false;
+    console.error("[RPC list_admin_rider_weekly_settlements] Exceção:", err);
+  }
+}
+
+function renderAdminRiderWeeklySettlements(settlements) {
+  const tbody = document.getElementById('rider-payments-table-body');
+  if (!tbody) return;
+
+  if (!settlements || settlements.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 32px; color: var(--color-text-muted);">
+      Nenhum fechamento semanal encontrado para os filtros selecionados.
+    </td></tr>`;
+    return;
+  }
+
+  let html = '';
+  settlements.forEach(s => {
+    const isNotCalculated = !s.settlement_id || s.status === 'not_calculated';
+    const statusLabel = s.status_label || (isNotCalculated ? 'Não calculado' : s.status);
+    const badgeClass = isNotCalculated ? 'badge-not-calculated' : `badge-${s.status || 'open'}`;
+
+    const periodStr = (s.period_start && s.period_end) ? 
+      `${new Date(s.period_start).toLocaleDateString('pt-BR')} a ${new Date(s.period_end).toLocaleDateString('pt-BR')}` : '—';
+
+    let actionBtn = '';
+    if (isNotCalculated) {
+      actionBtn = `<button type="button" class="btn btn-secondary btn-sm" disabled title="Disponível no próximo bloco" style="opacity: 0.65; cursor: not-allowed; display: inline-flex; align-items: center; gap: 4px;">
+        <i data-lucide="calculator" style="width: 14px; height: 14px;"></i> Calcular fechamento
+      </button>`;
+    } else {
+      actionBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="openRiderSettlementDrawer('${s.settlement_id}')" style="display: inline-flex; align-items: center; gap: 4px;">
+        <i data-lucide="eye" style="width: 14px; height: 14px;"></i> Ver detalhes
+      </button>`;
+    }
+
+    html += `<tr>
+      <td><strong>${s.rider_name || 'Motoboy'}</strong></td>
+      <td><code>${s.rider_code || '—'}</code></td>
+      <td style="font-size: 0.8rem;">${periodStr}</td>
+      <td><span class="badge ${badgeClass}">${statusLabel}</span></td>
+      <td>${formatRiderSettlementCurrency(s.base_rider_amount)}</td>
+      <td>${formatRiderSettlementCurrency(s.consumables_amount)}</td>
+      <td>${formatRiderSettlementCurrency(s.credits_amount)}</td>
+      <td><strong>${formatRiderSettlementCurrency(s.net_amount)}</strong></td>
+      <td>${formatRiderSettlementCurrency(s.eligible_amount)}</td>
+      <td style="color: ${Number(s.blocked_amount) > 0 ? '#ef4444' : 'inherit'};">${formatRiderSettlementCurrency(s.blocked_amount)}</td>
+      <td>${formatRiderSettlementCurrency(s.paid_amount)}</td>
+      <td style="color: ${Number(s.unpaid_eligible_amount) > 0 ? '#10b981' : 'inherit'}; font-weight: 600;">${formatRiderSettlementCurrency(s.unpaid_eligible_amount)}</td>
+      <td>${s.teles_count ?? 0}</td>
+      <td>${s.blocked_clients_count ?? 0}</td>
+      <td style="text-align: right;">${actionBtn}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function openRiderSettlementDrawer(settlementId) {
+  if (!settlementId) return;
+
+  activeElementBeforeDrawer = document.activeElement;
+
+  const backdrop = document.getElementById('rider-settlement-drawer-backdrop');
+  const drawer = document.getElementById('rider-settlement-drawer');
+  const drawerBody = document.getElementById('rider-drawer-body');
+  const subtitleEl = document.getElementById('rider-drawer-subtitle');
+
+  if (backdrop) backdrop.classList.remove('hidden');
+  if (drawer) drawer.classList.remove('hidden');
+  document.body.classList.add('drawer-open');
+
+  if (!drawerListenersAttached) {
+    document.addEventListener('keydown', handleRiderDrawerKeyDown);
+    drawerListenersAttached = true;
+  }
+
+  if (drawerBody) {
+    drawerBody.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--color-text-muted);">
+      <i data-lucide="loader-2" class="spin" style="width: 32px; height: 32px; margin-bottom: 12px;"></i>
+      <p>Buscando detalhes autoritativos do fechamento...</p>
+    </div>`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('get_admin_rider_weekly_settlement_detail', {
+      p_settlement_id: settlementId
+    });
+
+    if (error || !data || data.success === false) {
+      const errMsg = error?.message || data?.message || 'Erro ao carregar detalhes do fechamento.';
+      alert(errMsg);
+      closeRiderSettlementDrawer();
+      return;
+    }
+
+    renderRiderSettlementDetail(data);
+
+  } catch (err) {
+    console.error("[RPC get_admin_rider_weekly_settlement_detail] Exceção:", err);
+    closeRiderSettlementDrawer();
+  }
+}
+
+function handleRiderDrawerKeyDown(e) {
+  if (e.key === 'Escape') {
+    closeRiderSettlementDrawer();
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    const drawer = document.getElementById('rider-settlement-drawer');
+    if (!drawer || drawer.classList.contains('hidden')) return;
+
+    const focusables = drawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusables.length === 0) return;
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        last.focus();
+        e.preventDefault();
+      }
+    } else {
+      if (document.activeElement === last) {
+        first.focus();
+        e.preventDefault();
+      }
+    }
+  }
+}
+
+function renderRiderSettlementDetail(detailData) {
+  const { settlement, summary, items, batches, latest_payment } = detailData;
+  const drawerBody = document.getElementById('rider-drawer-body');
+  const subtitleEl = document.getElementById('rider-drawer-subtitle');
+
+  if (!drawerBody || !settlement) return;
+
+  const periodStr = `${new Date(settlement.period_start).toLocaleDateString('pt-BR')} a ${new Date(settlement.period_end).toLocaleDateString('pt-BR')}`;
+  if (subtitleEl) {
+    subtitleEl.textContent = `${settlement.rider_name} (${settlement.rider_code}) • Período: ${periodStr} • Versão v${settlement.version}`;
+  }
+
+  const hasUnexplainedDiff = (items || []).some(i => Number(i.unexplained_difference) > 0);
+
+  let html = '';
+
+  if (hasUnexplainedDiff) {
+    html += `<div class="integrity-alert-banner">
+      <i data-lucide="alert-triangle" style="width: 18px; height: 18px;"></i>
+      <span>Aviso de Integridade: Um ou mais itens possuem diferença não explicada registrada no banco de dados.</span>
+    </div>`;
+  }
+
+  // 1. Resumo Contábil
+  if (summary) {
+    html += `<div class="rider-drawer-section">
+      <h4 class="rider-drawer-section-title"><i data-lucide="calculator" style="width: 16px; height: 16px;"></i> Resumo Contábil do Fechamento</h4>
+      <div class="summary-grid-2col">
+        <div class="summary-item-box"><span class="summary-item-label">Faturamento Bruto</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.gross_delivery_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Base do Motoboy</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.base_rider_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Receita da Plataforma</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.platform_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Consumíveis</span><span class="summary-item-value" style="color: #ef4444;">${formatRiderSettlementCurrency(summary.consumables_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Créditos</span><span class="summary-item-value" style="color: #10b981;">${formatRiderSettlementCurrency(summary.credits_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Ajustes (+ / -)</span><span class="summary-item-value">${formatRiderSettlementCurrency(Number(summary.positive_adjustments_amount) - Number(summary.negative_adjustments_amount))}</span></div>
+        <div class="summary-item-box" style="background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);"><span class="summary-item-label" style="color: #3b82f6;">Valor Líquido</span><span class="summary-item-value" style="color: #3b82f6;">${formatRiderSettlementCurrency(summary.net_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Liberado Elegível</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.eligible_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Bloqueado Clientes</span><span class="summary-item-value" style="color: #ef4444;">${formatRiderSettlementCurrency(summary.blocked_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Pago em Lotes</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.paid_amount)}</span></div>
+        <div class="summary-item-box" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3);"><span class="summary-item-label" style="color: #10b981;">Elegível Não Pago</span><span class="summary-item-value" style="color: #10b981;">${formatRiderSettlementCurrency(summary.unpaid_eligible_amount)}</span></div>
+      </div>
+    </div>`;
+  }
+
+  // 2. Itens do Fechamento
+  html += `<div class="rider-drawer-section">
+    <h4 class="rider-drawer-section-title"><i data-lucide="list-ordered" style="width: 16px; height: 16px;"></i> Itens e Lançamentos (${items ? items.length : 0})</h4>
+    <div class="table-responsive">
+      <table class="table" style="font-size: 0.78rem;">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Descrição</th>
+            <th>Tele</th>
+            <th>Cliente</th>
+            <th>Data</th>
+            <th>Valor Orig.</th>
+            <th>Elegível</th>
+            <th>Bloqueado</th>
+            <th>Pago</th>
+            <th>Restante</th>
+            <th>Status Funding</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  if (!items || items.length === 0) {
+    html += `<tr><td colspan="11" style="text-align: center; color: var(--color-text-muted);">Nenhum item registrado.</td></tr>`;
+  } else {
+    items.forEach(it => {
+      html += `<tr>
+        <td><code>${it.source_type}</code></td>
+        <td>${it.description || '—'}</td>
+        <td>${it.tele_code || '—'}</td>
+        <td>${it.client_name || '—'}</td>
+        <td>${it.occurred_at ? new Date(it.occurred_at).toLocaleDateString('pt-BR') : '—'}</td>
+        <td>${formatRiderSettlementCurrency(it.original_amount)}</td>
+        <td>${formatRiderSettlementCurrency(it.eligible_amount)}</td>
+        <td style="color: ${Number(it.blocked_amount) > 0 ? '#ef4444' : 'inherit'};">${formatRiderSettlementCurrency(it.blocked_amount)}</td>
+        <td>${formatRiderSettlementCurrency(it.paid_amount)}</td>
+        <td>${formatRiderSettlementCurrency(it.remaining_amount)}</td>
+        <td><span class="badge badge-secondary">${it.funding_status_label || it.funding_status}</span></td>
+      </tr>`;
+    });
+  }
+
+  html += `</tbody></table></div></div>`;
+
+  // 3. Lotes de Pagamento
+  html += `<div class="rider-drawer-section">
+    <h4 class="rider-drawer-section-title"><i data-lucide="layers" style="width: 16px; height: 16px;"></i> Lotes de Pagamento Associados (${batches ? batches.length : 0})</h4>
+    <div class="table-responsive">
+      <table class="table" style="font-size: 0.78rem;">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Status</th>
+            <th>Valor</th>
+            <th>Método</th>
+            <th>Referência</th>
+            <th>Observações</th>
+            <th>Responsável</th>
+            <th>Pagamento</th>
+            <th>Estorno</th>
+            <th>Integridade</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  if (!batches || batches.length === 0) {
+    html += `<tr><td colspan="10" style="text-align: center; color: var(--color-text-muted);">Nenhum lote registrado.</td></tr>`;
+  } else {
+    batches.forEach(b => {
+      const integrityBadge = b.integrity_status === 'valid' ? 
+        `<span class="badge badge-success">Válido</span>` : 
+        `<span class="badge badge-danger">${b.integrity_status}</span>`;
+
+      html += `<tr>
+        <td>${b.batch_type_label || b.batch_type}</td>
+        <td><span class="badge badge-secondary">${b.status_label || b.status}</span></td>
+        <td><strong>${formatRiderSettlementCurrency(b.total_paid_amount)}</strong></td>
+        <td>${b.payment_method || '—'}</td>
+        <td><code>${b.payment_reference || '—'}</code></td>
+        <td>${b.notes || '—'}</td>
+        <td>${b.paid_by_name || '—'}</td>
+        <td>${b.paid_at ? new Date(b.paid_at).toLocaleString('pt-BR') : '—'}</td>
+        <td>${b.reversed_at ? new Date(b.reversed_at).toLocaleString('pt-BR') : '—'}</td>
+        <td>${integrityBadge}</td>
+      </tr>`;
+    });
+  }
+
+  html += `</tbody></table></div></div>`;
+
+  drawerBody.innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeRiderSettlementDrawer() {
+  const backdrop = document.getElementById('rider-settlement-drawer-backdrop');
+  const drawer = document.getElementById('rider-settlement-drawer');
+
+  if (backdrop) backdrop.classList.add('hidden');
+  if (drawer) drawer.classList.add('hidden');
+  document.body.classList.remove('drawer-open');
+
+  if (drawerListenersAttached) {
+    document.removeEventListener('keydown', handleRiderDrawerKeyDown);
+    drawerListenersAttached = false;
+  }
+
+  if (activeElementBeforeDrawer && typeof activeElementBeforeDrawer.focus === 'function' && document.body.contains(activeElementBeforeDrawer)) {
+    try { activeElementBeforeDrawer.focus(); } catch (e) {}
+  }
+  activeElementBeforeDrawer = null;
+}

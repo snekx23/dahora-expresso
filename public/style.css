@@ -4186,6 +4186,202 @@ gmp-place-autocomplete::part(input):focus {
   gap: 12px;
 }
 
+/* =====================================================================
+   Fase 3B.2A.1 — Weekly Settlement Admin Drawer & Responsive Styles
+   ===================================================================== */
+body.drawer-open {
+  overflow: hidden !important;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(3px);
+  z-index: 999;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.drawer-backdrop.hidden {
+  display: none !important;
+}
+
+#rider-settlement-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 720px;
+  max-width: 95vw;
+  height: 100vh;
+  background-color: var(--bg-card, #13131a);
+  border-left: 1px solid var(--border-color, #272732);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#rider-settlement-drawer.hidden {
+  transform: translateX(100%);
+  pointer-events: none;
+  display: none !important;
+}
+
+.rider-drawer-header {
+  padding: 20px 24px;
+  background-color: var(--bg-topbar, #0d0d11);
+  border-bottom: 1px solid var(--border-color, #272732);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.rider-drawer-title-area h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text, #f4f4f5);
+}
+
+.rider-drawer-subtitle {
+  font-size: 0.82rem;
+  color: var(--color-text-muted, #94a3b8);
+  margin-top: 4px;
+}
+
+.rider-drawer-close-btn {
+  background: transparent;
+  border: 1px solid var(--border-color, #272732);
+  border-radius: var(--border-radius-sm, 6px);
+  color: var(--color-text-muted, #94a3b8);
+  font-size: 1.4rem;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.rider-drawer-close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--color-text, #f4f4f5);
+}
+
+.rider-drawer-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.rider-drawer-section {
+  background: var(--bg-input, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-color, #272732);
+  border-radius: var(--border-radius-md, 8px);
+  padding: 18px;
+}
+
+.rider-drawer-section-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--color-text, #f4f4f5);
+  margin: 0 0 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px dashed var(--border-color, #272732);
+  padding-bottom: 8px;
+}
+
+.integrity-alert-banner {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #f59e0b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.summary-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.summary-item-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.summary-item-label {
+  font-size: 0.76rem;
+  color: var(--color-text-muted, #94a3b8);
+  font-weight: 500;
+}
+
+.summary-item-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text, #f4f4f5);
+}
+
+.badge-not-calculated {
+  background-color: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.badge-open {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-calculated {
+  background-color: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-pending {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-partially-blocked {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-paid {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+
 
 
 
