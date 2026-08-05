@@ -36,7 +36,7 @@ async function seedLocalUsers() {
       email: 'contato@mercadocentral.local',
       address: 'Rua São João, 125',
       document: '11.222.333/0001-44',
-      rider_percentage: 80.00
+      rider_percentage: 85.00
     })
   });
 
