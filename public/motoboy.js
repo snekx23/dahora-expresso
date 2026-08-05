@@ -501,8 +501,15 @@ async function handleMotoLogout() {
   }
   localStorage.removeItem('speedMotoSession');
   localStorage.removeItem('activePWATab');
-  if (realtimeChannel) db.removeChannel(realtimeChannel);
+  if (realtimeChannel && db) db.removeChannel(realtimeChannel);
+  if (realtimeFinancialSubscription && supabaseClient) {
+    try { supabaseClient.removeChannel(realtimeFinancialSubscription); } catch (e) {}
+    realtimeFinancialSubscription = null;
+  }
   if (watchId) navigator.geolocation.clearWatch(watchId);
+  reportsFetchToken++;
+  if (pwaStatementCachedItems) pwaStatementCachedItems.clear();
+  reportsStatementOffset = 0;
   currentRider = null;
   knownActiveTeleIds = null;
   hasCenteredOnce = false;
@@ -3467,8 +3474,11 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
     labelText = 'Semana Operacional';
   }
 
-  const labelEl = document.getElementById('pwa-statement-period-label');
-  if (labelEl) labelEl.textContent = labelText;
+async function loadPWAFinancialReports(isManualRefresh = false) {
+  if (!supabaseClient) return;
+
+  const currentToken = ++reportsFetchToken;
+  reportsStatementOffset = 0;
 
   const listContainer = document.getElementById('pwa-reports-list-container');
   if (listContainer) {
@@ -3481,67 +3491,66 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
   }
 
   try {
-    const { data: heroData, error: heroErr } = await supabaseClient.rpc('get_my_rider_financial_summary', {
-      p_start_date: null,
-      p_end_date: null
+    // Fonte Única e Autoritativa Sanitizada: public.get_my_rider_financial_statement_v2
+    const { data: res, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement_v2', {
+      p_period_start: null,
+      p_history_limit: 12
     });
 
     if (currentToken !== reportsFetchToken) return;
 
-    if (heroErr) throw heroErr;
-    if (heroData && heroData.success) {
+    if (stmtErr) throw stmtErr;
+
+    if (res && res.success) {
       const heroNetEl = document.getElementById('pwa-hero-net-balance');
-      const heroResetEl = document.getElementById('pwa-hero-reset-info');
-      if (heroNetEl) heroNetEl.textContent = formatMoneyBR(heroData.net_total);
-      if (heroResetEl && heroData.next_reset_at) {
-        const resetDate = new Date(heroData.next_reset_at);
-        const resetFmt = resetDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
-        heroResetEl.textContent = `Ciclo encerra em ${resetFmt} (Repasse quinta-feira)`;
-      }
-    }
-
-    const { data: summaryData, error: summaryErr } = await supabaseClient.rpc('get_my_rider_financial_summary', {
-      p_start_date: startDate,
-      p_end_date: endDate
-    });
-
-    if (currentToken !== reportsFetchToken) return;
-
-    if (summaryErr) throw summaryErr;
-    if (summaryData && summaryData.success) {
+      const settlementBadgeEl = document.getElementById('pwa-settlement-status-badge');
+      
       const countEl = document.getElementById('reports-deliveries-count');
       const earnEl = document.getElementById('reports-deliveries-earnings');
       const credEl = document.getElementById('reports-credits-total');
       const dedEl = document.getElementById('reports-deductions-total');
       const netEl = document.getElementById('reports-period-net-total');
 
-      if (countEl) countEl.textContent = summaryData.completed_deliveries_count || 0;
-      if (earnEl) earnEl.textContent = formatMoneyBR(summaryData.delivery_earnings || 0);
-      if (credEl) credEl.textContent = formatMoneyBR(summaryData.credits_total || 0);
-      if (dedEl) dedEl.textContent = `- ${formatMoneyBR(summaryData.deductions_total || 0)}`;
-      if (netEl) netEl.textContent = formatMoneyBR(summaryData.net_total || 0);
-    }
+      if (res.has_settlement && res.settlement) {
+        const s = res.settlement;
+        
+        if (heroNetEl) heroNetEl.textContent = formatMoneyBR(s.net_amount);
 
-    const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement', {
-      p_start_date: startDate,
-      p_end_date: endDate,
-      p_limit: REPORTS_STATEMENT_LIMIT,
-      p_offset: 0
-    });
-
-    if (currentToken !== reportsFetchToken) return;
-
-    if (stmtErr) throw stmtErr;
-    if (stmtData && stmtData.success) {
-      renderPWAFinancialStatementItems(stmtData.items || [], false);
-
-      const loadMoreBtn = document.getElementById('pwa-reports-load-more-btn');
-      if (loadMoreBtn) {
-        if (stmtData.has_more) {
-          loadMoreBtn.classList.remove('hidden');
-        } else {
-          loadMoreBtn.classList.add('hidden');
+        if (settlementBadgeEl) {
+          const st = s.status;
+          const statusMap = {
+            'open': { text: s.status_label || 'Ciclo em Andamento', bg: 'rgba(156,163,175,0.15)', color: '#9ca3af', border: 'rgba(156,163,175,0.3)' },
+            'calculated': { text: s.status_label || 'Apurado', bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' },
+            'pending': { text: s.status_label || 'Pendente de Pagamento', bg: 'rgba(234,179,8,0.15)', color: '#eab308', border: 'rgba(234,179,8,0.3)' },
+            'partially_blocked': { text: s.status_label || 'Parcialmente Bloqueado', bg: 'rgba(249,115,22,0.15)', color: '#f97316', border: 'rgba(249,115,22,0.3)' },
+            'paid': { text: s.status_label || 'Pago (Concluído)', bg: 'rgba(16,185,129,0.15)', color: '#10b981', border: 'rgba(16,185,129,0.3)' },
+            'reopened': { text: s.status_label || 'Reaberto para Revisão', bg: 'rgba(168,85,247,0.15)', color: '#a855f7', border: 'rgba(168,85,247,0.3)' },
+            'reversed': { text: s.status_label || 'Estornado', bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
+            'cancelled': { text: s.status_label || 'Cancelado', bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' }
+          };
+          const info = statusMap[st] || { text: 'Status Indisponível', bg: 'rgba(255,255,255,0.1)', color: 'var(--text)', border: 'var(--border)' };
+          settlementBadgeEl.innerHTML = `<span style="background: ${info.bg}; color: ${info.color}; border: 1px solid ${info.border}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block;">${info.text}</span>`;
         }
+
+        if (countEl) countEl.textContent = (res.items || []).filter(i => i.source_type === 'rider_earning' || i.source_type === 'tele').length;
+        if (earnEl) earnEl.textContent = formatMoneyBR(s.base_rider_amount);
+        if (credEl) credEl.textContent = formatMoneyBR(s.credits_amount);
+        if (dedEl) dedEl.textContent = `- ${formatMoneyBR(s.consumables_amount)}`;
+        if (netEl) netEl.textContent = formatMoneyBR(s.net_amount);
+
+        renderPWAFinancialStatementItems(res.items || [], false);
+      } else {
+        if (heroNetEl) heroNetEl.textContent = 'R$ 0,00';
+        if (settlementBadgeEl) {
+          settlementBadgeEl.innerHTML = `<span style="background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block;">Ciclo em Andamento</span>`;
+        }
+        if (countEl) countEl.textContent = '0';
+        if (earnEl) earnEl.textContent = 'R$ 0,00';
+        if (credEl) credEl.textContent = 'R$ 0,00';
+        if (dedEl) dedEl.textContent = '- R$ 0,00';
+        if (netEl) netEl.textContent = 'R$ 0,00';
+
+        renderPWAFinancialStatementItems([], false);
       }
     }
 
@@ -3549,7 +3558,7 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
       showPWAToast('Dados financeiros atualizados.');
     }
   } catch (err) {
-    console.error('Erro ao carregar relatórios financeiros:', err);
+    console.error('Erro ao carregar extrato sanitizado:', err);
     if (currentToken === reportsFetchToken && listContainer) {
       listContainer.innerHTML = `
         <div style="text-align: center; padding: 20px; color: #ef4444; font-size: 0.82rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px;">
@@ -3562,54 +3571,7 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
 }
 
 async function loadMorePWAFinancialStatement() {
-  if (!supabaseClient) return;
-
-  const loadMoreBtn = document.getElementById('pwa-reports-load-more-btn');
-  if (loadMoreBtn) loadMoreBtn.disabled = true;
-
-  reportsStatementOffset += REPORTS_STATEMENT_LIMIT;
-
-  let startDate = null;
-  let endDate = null;
-  if (currentReportsFilterPeriod === 'today') {
-    const todayStr = formatISOShortDate(new Date());
-    startDate = todayStr;
-    endDate = todayStr;
-  } else if (currentReportsFilterPeriod === 'month') {
-    const now = new Date();
-    startDate = formatISOShortDate(new Date(now.getFullYear(), now.getMonth(), 1));
-    endDate = formatISOShortDate(now);
-  } else if (currentReportsFilterPeriod === 'custom' && customReportsStartDate && customReportsEndDate) {
-    startDate = customReportsStartDate;
-    endDate = customReportsEndDate;
-  }
-
-  try {
-    const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement', {
-      p_start_date: startDate,
-      p_end_date: endDate,
-      p_limit: REPORTS_STATEMENT_LIMIT,
-      p_offset: reportsStatementOffset
-    });
-
-    if (stmtErr) throw stmtErr;
-
-    if (stmtData && stmtData.success) {
-      renderPWAFinancialStatementItems(stmtData.items || [], true);
-      if (loadMoreBtn) {
-        if (stmtData.has_more) {
-          loadMoreBtn.classList.remove('hidden');
-        } else {
-          loadMoreBtn.classList.add('hidden');
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Erro ao carregar mais lançamentos:', err);
-    showPWAToast('Não foi possível carregar mais lançamentos.');
-  } finally {
-    if (loadMoreBtn) loadMoreBtn.disabled = false;
-  }
+  // Paginação simplificada e autoritativa
 }
 
 function renderPWAFinancialStatementItems(items, isAppend) {
@@ -3633,24 +3595,22 @@ function renderPWAFinancialStatementItems(items, isAppend) {
   }
 
   items.forEach(item => {
-    pwaStatementCachedItems.set(item.transaction_id, item);
+    const id = item.id || item.transaction_id;
+    pwaStatementCachedItems.set(id, item);
 
     const isCredit = item.direction === 'credit';
     const amountSign = isCredit ? '+' : '-';
     const amountColor = isCredit ? '#10b981' : '#ef4444';
     const iconBg = isCredit ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
-    const iconSymbol = item.transaction_category === 'delivery_earning' ? '🛵' : (isCredit ? '💵' : '🎒');
+    const iconSymbol = (item.source_type === 'rider_earning' || item.source_type === 'tele') ? '🛵' : (isCredit ? '💵' : '🎒');
 
     let titleText = item.description || 'Lançamento Financeiro';
-    if (item.transaction_category === 'delivery_earning' && item.tele_code) {
-      titleText = `Entrega ${item.tele_code}`;
-    }
 
-    const txDate = new Date(item.transaction_at || item.created_at);
+    const txDate = new Date(item.occurred_at || item.transaction_at || item.created_at);
     const dateFmt = txDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
     const cardHtml = `
-      <div class="pwa-statement-card" onclick="openPWATransactionDetailModal('${item.transaction_id}')" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; transition: background 0.15s ease;">
+      <div class="pwa-statement-card" onclick="openPWATransactionDetailModal('${id}')" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; transition: background 0.15s ease;">
         <div style="display: flex; align-items: center; gap: 12px;">
           <div style="width: 38px; height: 38px; border-radius: 10px; background: ${iconBg}; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">
             ${iconSymbol}
@@ -3684,44 +3644,28 @@ function openPWATransactionDetailModal(transactionId) {
   const teleRow = document.getElementById('pwa-tx-detail-tele-row');
   const teleCodeEl = document.getElementById('pwa-tx-detail-tele-code');
   const addrRow = document.getElementById('pwa-tx-detail-address-row');
-  const addrEl = document.getElementById('pwa-tx-detail-address');
   const descEl = document.getElementById('pwa-tx-detail-description');
 
   const isCredit = item.direction === 'credit';
-  const categoryLabels = {
-    'delivery_earning': 'Crédito de Entrega Concluída',
-    'credit': 'Crédito Administrativo / Bônus',
-    'consumable': 'Compra / Retirada de Consumível',
-    'negative_adjustment': 'Ajuste Financeiro Negativo',
-    'positive_adjustment': 'Ajuste Financeiro Positivo',
-    'refund': 'Estorno de Lançamento',
-    'other_discount': 'Desconto Diversos'
-  };
 
-  if (categoryEl) categoryEl.textContent = categoryLabels[item.transaction_category] || 'Detalhes do Lançamento';
+  if (categoryEl) categoryEl.textContent = item.description || 'Lançamento Financeiro';
   if (amountEl) {
     amountEl.textContent = `${isCredit ? '+' : '-'} ${formatMoneyBR(item.amount)}`;
     amountEl.style.color = isCredit ? '#10b981' : '#ef4444';
   }
 
-  const txDate = new Date(item.transaction_at || item.created_at);
+  const txDate = new Date(item.occurred_at || item.created_at);
   if (dateEl) dateEl.textContent = txDate.toLocaleString('pt-BR');
   if (typeEl) typeEl.textContent = isCredit ? 'Crédito (Entrada)' : 'Débito (Saída / Desconto)';
 
-  if (item.tele_id && item.tele_code) {
+  if (item.tele_id) {
     if (teleRow) teleRow.classList.remove('hidden');
-    if (teleCodeEl) teleCodeEl.textContent = item.tele_code;
+    if (teleCodeEl) teleCodeEl.textContent = item.tele_id.slice(0, 8);
   } else {
     if (teleRow) teleRow.classList.add('hidden');
   }
 
-  if (item.delivery_address_summary) {
-    if (addrRow) addrRow.classList.remove('hidden');
-    if (addrEl) addrEl.textContent = item.delivery_address_summary;
-  } else {
-    if (addrRow) addrRow.classList.add('hidden');
-  }
-
+  if (addrRow) addrRow.classList.add('hidden');
   if (descEl) descEl.textContent = item.description || 'Nenhuma observação registrada.';
 
   modal.classList.remove('hidden');
@@ -3738,6 +3682,14 @@ function initPWAFinancialRealtime() {
   const fleetId = currentRiderData?.id;
   if (!fleetId) return;
 
+  let debounceTimer = null;
+  const debouncedFetch = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      loadPWAFinancialReports(false);
+    }, 300);
+  };
+
   try {
     realtimeFinancialSubscription = supabaseClient
       .channel(`rider-financial-${fleetId}`)
@@ -3746,13 +3698,20 @@ function initPWAFinancialRealtime() {
         {
           event: '*',
           schema: 'public',
+          table: 'rider_weekly_settlements',
+          filter: `rider_id=eq.${fleetId}`
+        },
+        debouncedFetch
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'rider_financial_transactions',
           filter: `rider_id=eq.${fleetId}`
         },
-        (payload) => {
-          console.log('[Realtime Financial Update Payload]:', payload);
-          loadPWAFinancialReports(false);
-        }
+        debouncedFetch
       )
       .subscribe((status) => {
         console.log('[Realtime Financial Channel Status]:', status);
@@ -3761,4 +3720,17 @@ function initPWAFinancialRealtime() {
     console.warn('Erro ao inicializar subscrição realtime financeira:', err);
   }
 }
+
+// Handlers de visibilidade e conexão para re-fetch autoritativo
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentPWATab === 'reports') {
+    loadPWAFinancialReports(false);
+  }
+});
+
+window.addEventListener('online', () => {
+  if (currentPWATab === 'reports') {
+    loadPWAFinancialReports(false);
+  }
+});
 
