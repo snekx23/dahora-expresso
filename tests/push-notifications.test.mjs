@@ -33,7 +33,6 @@ async function runPushHardeningTestSuite() {
 
   // 1. Testes Estritamente Estruturais de Validação de Chave VAPID P-256
   console.log('1. Testando Validação Estrutural VAPID (A, B, C, D)...');
-  
   // A. VAPID válida
   const validKey = 'BEo-ivrbMWP4mK2syicv0ic_Wr2arC2LZBmtbtn2zHPzTbykpyJ22ETL2DX9t6bHFL5CGkMnTtAaq-2bcQ_sxYw';
   const arrValid = urlBase64ToUint8Array(validKey);
