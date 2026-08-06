@@ -12,7 +12,7 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
   try {
@@ -20,14 +20,17 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Configuração de ambiente inválida no Edge Function.');
+      return new Response(JSON.stringify({ error: 'Configuração de ambiente inválida no Edge Function.' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // 1. Validar autorização da requisição (somente Admin)
+    // 1. Validar autorização da requisição (somente Admin ou Owner)
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
@@ -40,20 +43,30 @@ serve(async (req) => {
     }
 
     const { data: perfil } = await supabaseAdmin
-      .from('perfis')
-      .select('papel')
-      .eq('id', user.id)
-      .single();
+      .from('user_profiles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-    if (!perfil || perfil.papel !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Acesso restrito a administradores.' }), {
+    const allowedRoles = ['admin', 'owner'];
+    if (!perfil || !allowedRoles.includes(perfil.role)) {
+      return new Response(JSON.stringify({ error: 'Acesso restrito a administradores ou proprietários.' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // 2. Parsear body da requisição
-    const payload = await req.json();
+    // 2. Parsear e validar body da requisição
+    let payload: any = {};
+    try {
+      payload = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: 'Corpo da requisição inválido (JSON malformado).' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     const {
       establishment_name,
       responsible_name,
@@ -70,17 +83,17 @@ serve(async (req) => {
     } = payload;
 
     if (!establishment_name || !responsible_name || !phone || !email || !password || !address) {
-      return new Response(JSON.stringify({ error: 'Campos obrigatórios ausentes.' }), {
+      return new Response(JSON.stringify({ error: 'Campos obrigatórios ausentes (nome do estabelecimento, responsável, telefone, e-mail, senha, endereço).' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const emailNorm = email.trim().toLowerCase();
-    const phoneNorm = phone.replace(/\D/g, '');
-    const docNorm = document ? document.replace(/\D/g, '') : null;
+    const emailNorm = String(email).trim().toLowerCase();
+    const phoneNorm = String(phone).replace(/\D/g, '');
+    const docNorm = document ? String(document).replace(/\D/g, '') : null;
 
-    // 3. Verificar duplicidades no banco relacional
+    // 3. Pre-check de duplicidades no banco relacional
     const { data: existingClient } = await supabaseAdmin
       .from('commercial_clients')
       .select('id')
@@ -88,7 +101,7 @@ serve(async (req) => {
       .limit(1);
 
     if (existingClient && existingClient.length > 0) {
-      return new Response(JSON.stringify({ error: 'Email ou Documento (CPF/CNPJ) já cadastrado.' }), {
+      return new Response(JSON.stringify({ error: 'E-mail ou Documento (CPF/CNPJ) já cadastrado para outro cliente.' }), {
         status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -99,11 +112,11 @@ serve(async (req) => {
       email: emailNorm,
       password: password,
       email_confirm: true,
-      user_metadata: { establishment_name, responsible_name, role: 'client_admin' }
+      user_metadata: { establishment_name, responsible_name, role: 'client_user' }
     });
 
     if (createAuthError || !authUserData.user) {
-      return new Response(JSON.stringify({ error: `Erro ao criar conta de acesso: ${createAuthError?.message}` }), {
+      return new Response(JSON.stringify({ error: `Erro ao criar conta de acesso Auth: ${createAuthError?.message}` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -111,8 +124,21 @@ serve(async (req) => {
 
     const newAuthUserId = authUserData.user.id;
 
-    // 5. Inserir registros relacionais com bloco de compensação
+    // 5. Inserir registros relacionais (user_profiles, commercial_clients, client_users) com compensação validada
     try {
+      // 5a. Inserir user_profiles
+      const { error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert([{
+          user_id: newAuthUserId,
+          name: responsible_name,
+          role: 'client_user',
+          is_active: true
+        }]);
+
+      if (profileError) throw profileError;
+
+      // 5b. Inserir commercial_clients
       const { data: clientObj, error: clientError } = await supabaseAdmin
         .from('commercial_clients')
         .insert([{
@@ -133,8 +159,9 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (clientError || !clientObj) throw clientError || new Error('Falha ao inserir cliente.');
+      if (clientError || !clientObj) throw clientError || new Error('Falha ao inserir cliente comercial.');
 
+      // 5c. Inserir client_users
       const { error: clientUserError } = await supabaseAdmin
         .from('client_users')
         .insert([{
@@ -146,7 +173,7 @@ serve(async (req) => {
 
       if (clientUserError) throw clientUserError;
 
-      // Registrar auditoria (SEM guardar senhas!)
+      // 5d. Registrar log de auditoria
       await supabaseAdmin.from('system_audit_logs').insert([{
         actor_type: 'admin',
         actor_id: user.id,
@@ -168,12 +195,23 @@ serve(async (req) => {
       });
 
     } catch (dbErr: any) {
-      // Compensação: Rollback do Auth User se a gravação no banco falhar
-      console.error('Erro relacional. Executando rollback do usuário Auth:', dbErr);
-      await supabaseAdmin.auth.admin.deleteUser(newAuthUserId);
+      // 6. Fluxo de Compensação: Excluir Auth User recém-criado em caso de falha relacional
+      console.error('Falha relacional. Executando rollback compensatório do usuário Auth:', dbErr);
+      const { error: rollbackError } = await supabaseAdmin.auth.admin.deleteUser(newAuthUserId);
+
+      if (rollbackError) {
+        console.error('CRITICAL: Erro de reconciliação durante o rollback compensatório:', rollbackError);
+        return new Response(JSON.stringify({
+          error: `Erro ao criar cadastro relacional (${dbErr.message || dbErr}) e falha ao reconciliar conta Auth (${rollbackError.message}).`,
+          reconciliation_failed: true
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
 
       return new Response(JSON.stringify({
-        error: `Erro ao criar cadastro relacional: ${dbErr.message || dbErr}. Rollback executado.`
+        error: `Erro ao criar cadastro relacional: ${dbErr.message || dbErr}. Rollback efetuado com sucesso.`
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -181,7 +219,7 @@ serve(async (req) => {
     }
 
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: err.message || 'Erro interno no servidor.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

@@ -3474,12 +3474,6 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
     labelText = 'Semana Operacional';
   }
 
-async function loadPWAFinancialReports(isManualRefresh = false) {
-  if (!supabaseClient) return;
-
-  const currentToken = ++reportsFetchToken;
-  reportsStatementOffset = 0;
-
   const listContainer = document.getElementById('pwa-reports-list-container');
   if (listContainer) {
     listContainer.innerHTML = `

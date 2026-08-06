@@ -1367,12 +1367,16 @@ function renderRiderPayments() {
   const tbody = document.getElementById('rider-payments-table-body');
   if (!tbody) return;
 
-  const startDateVal = document.getElementById('rider-payment-start-date').value;
-  const endDateVal = document.getElementById('rider-payment-end-date').value;
-  const searchVal = document.getElementById('rider-search-input').value.trim().toLowerCase();
+  const startDateEl = document.getElementById('rider-payment-start-date');
+  const endDateEl = document.getElementById('rider-payment-end-date');
+  const searchEl = document.getElementById('rider-search-input');
+
+  const startDateVal = startDateEl ? startDateEl.value : '';
+  const endDateVal = endDateEl ? endDateEl.value : '';
+  const searchVal = searchEl ? searchEl.value.trim().toLowerCase() : '';
 
   let start = startDateVal ? parseLocalDate(startDateVal) : null;
-  let end = endDateVal ? parseLocalDate(endDateVal) : null;
+  let end = endDateVal ? parseLocalDate(endDateVal) : (start ? new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000) : null);
 
   if (start) start.setHours(0, 0, 0, 0);
   if (end) end.setHours(23, 59, 59, 999);
@@ -1390,7 +1394,7 @@ function renderRiderPayments() {
 
   // Initialize map of rider totals
   const totals = new Map();
-  mockData.fleet.forEach(rider => {
+  (mockData.fleet || []).forEach(rider => {
     if (searchVal && !rider.name.toLowerCase().includes(searchVal)) {
       return;
     }
@@ -1398,7 +1402,7 @@ function renderRiderPayments() {
   });
 
   // Filter and group clientHistory orders in the range
-  mockData.clientHistory
+  (mockData.clientHistory || [])
     .filter(order => {
       const isCompleted = order.status === 'Entregue' || order.status === 'Concluído';
       if (!isCompleted) return false;
@@ -1459,7 +1463,7 @@ function renderRiderPayments() {
   });
 
   filteredCredits.forEach(c => {
-    const rider = mockData.fleet.find(r => r.id === c.rider_id);
+    const rider = (mockData.fleet || []).find(r => r.id === c.rider_id);
     const riderName = rider ? rider.name : 'Motoboy Removido';
     let item = totals.get(riderName);
     if (!item) {
@@ -1478,6 +1482,19 @@ function renderRiderPayments() {
   
   const totalEl = document.getElementById('rider-week-total');
   if (totalEl) totalEl.innerText = formatMoneyBR(grandTotalNet);
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="15" style="text-align: center; padding: 40px 16px; color: var(--color-text-muted);">
+          <div style="font-size: 1.8rem; margin-bottom: 8px;">📊</div>
+          <strong style="font-size: 0.95rem; color: var(--color-text);">Nenhum repasse semanal encontrado.</strong><br>
+          <span style="font-size: 0.82rem; margin-top: 4px; display: inline-block;">Cadastre um motoboy e conclua entregas para gerar o primeiro fechamento.</span>
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
   tbody.innerHTML = rows.map(row => {
     const gross = row.total;
@@ -9161,8 +9178,14 @@ function closeAddCommercialClientModal(event) {
   if (modal) modal.classList.add('hidden');
 }
 
+let isSubmittingCommercialClient = false;
+
 async function submitAddCommercialClient(event) {
   if (event) event.preventDefault();
+
+  if (isSubmittingCommercialClient) return;
+
+  const submitBtn = document.querySelector('#modal-add-commercial-client form button[type="submit"]');
 
   const establishment_name = document.getElementById('comm-establishment-name')?.value.trim();
   const responsible_name = document.getElementById('comm-responsible-name')?.value.trim();
@@ -9179,8 +9202,15 @@ async function submitAddCommercialClient(event) {
   const notes = document.getElementById('comm-notes')?.value.trim() || '';
 
   if (!establishment_name || !responsible_name || !phone || !email || !password || !address) {
-    alert('Preencha todos os campos obrigatórios.');
+    alert('Preencha todos os campos obrigatórios (estabelecimento, responsável, telefone, e-mail, senha e endereço).');
     return;
+  }
+
+  isSubmittingCommercialClient = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.dataset.origText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span>Cadastrando...</span>';
   }
 
   showToastNotification('Criando cliente comercial e configurando acesso seguro...');
@@ -9202,25 +9232,57 @@ async function submitAddCommercialClient(event) {
       notes
     };
 
-    const response = await fetch('/api/admin/create-client', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    let data = null;
+    let invokeError = null;
 
-    const json = await response.json();
-
-    if (!response.ok) {
-      throw new Error(json.error || 'Erro ao cadastrar cliente.');
+    if (supabaseClient) {
+      const res = await supabaseClient.functions.invoke('create-client-user', {
+        body: payload
+      });
+      data = res.data;
+      invokeError = res.error;
+    } else {
+      throw new Error('Conexão Supabase não inicializada no navegador.');
     }
 
-    showToastNotification(`Cliente "${establishment_name}" (${json.client?.public_code || 'CLI'}) cadastrado com sucesso!`);
+    let errMsg = null;
+    if (invokeError) {
+      if (typeof invokeError === 'object' && invokeError.context) {
+        try {
+          const bodyJson = await invokeError.context.json();
+          if (bodyJson && bodyJson.error) errMsg = bodyJson.error;
+        } catch (_) {}
+      }
+      if (!errMsg) errMsg = invokeError.message || 'Falha na invocação da função remota.';
+    }
+
+    if (!errMsg && data && data.error) {
+      errMsg = data.error;
+    }
+
+    if (errMsg) {
+      throw new Error(errMsg);
+    }
+
+    const createdClient = data?.client;
+    showToastNotification(`Cliente "${establishment_name}" (${createdClient?.public_code || 'CLI'}) cadastrado com sucesso!`);
+
+    // Reset form
+    const form = document.querySelector('#modal-add-commercial-client form');
+    if (form) form.reset();
+
     closeAddCommercialClientModal();
     await fetchCommercialClients();
 
   } catch (err) {
     console.error("Erro ao cadastrar cliente:", err);
     alert(`Falha no cadastro: ${err.message}`);
+  } finally {
+    isSubmittingCommercialClient = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      if (submitBtn.dataset.origText) submitBtn.innerHTML = submitBtn.dataset.origText;
+    }
   }
 }
 
