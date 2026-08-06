@@ -681,14 +681,56 @@ function showApp() {
 }
 
 
+function updateRiderUIStatus(rawStatus) {
+  const status = rawStatus || (currentRider ? currentRider.status : 'Indisponível');
+  const isConnected = (status === 'Disponível' || status === 'Ativo' || status === 'Em Rota');
+
+  // 1. Cabeçalho / Badge
+  const badgeEl = document.getElementById('pwa-rider-status');
+  if (badgeEl) {
+    badgeEl.innerText = isConnected ? 'Disponível' : (status === 'Em Descanso' ? 'Em Descanso' : 'Indisponível');
+    badgeEl.className = 'pwa-status-badge';
+    if (isConnected) {
+      badgeEl.classList.add('badge-available');
+    } else if (status === 'Em Descanso') {
+      badgeEl.classList.add('badge-rest');
+    } else {
+      badgeEl.classList.add('badge-busy');
+    }
+  }
+
+  // 2. Indicador no Mapa (ONLINE / OFFLINE)
+  const mapStatusVal = document.getElementById('map-status-val');
+  if (mapStatusVal) {
+    mapStatusVal.innerText = isConnected ? 'ONLINE' : 'OFFLINE';
+    mapStatusVal.className = isConnected ? 'status-val online' : 'status-val offline';
+  }
+
+  // 3. Botão Principal no Mapa (pwa-map-connect-btn)
+  const mapBtn = document.getElementById('pwa-map-connect-btn');
+  const mapTextEl = document.getElementById('pwa-map-connect-btn-text');
+  const mapIconEl = document.getElementById('pwa-map-connect-btn-icon');
+
+  if (mapBtn) {
+    mapBtn.className = isConnected ? 'pwa-map-connect-btn main-connect-btn online' : 'pwa-map-connect-btn main-connect-btn offline';
+  }
+  if (mapTextEl) {
+    mapTextEl.innerText = isConnected ? 'Desconectar' : 'Conectar';
+  }
+  if (mapIconEl) {
+    mapIconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
+  }
+
+  // 4. Botão no Drawer (pwa-connect-btn)
+  const drawerBtn = document.getElementById('pwa-connect-btn');
+  const drawerTextEl = document.getElementById('pwa-connect-btn-text') || drawerBtn;
+  if (drawerTextEl) {
+    drawerTextEl.innerText = isConnected ? 'Desconectar' : 'Conectar';
+  }
+}
+
 function setRiderStatusBadge(status) {
-  const el = document.getElementById('pwa-rider-status');
-  if (!el) return;
-  el.innerText = status;
-  el.className = 'pwa-status-badge';
-  if (status === 'Disponível') el.classList.add('badge-available');
-  else if (status.includes('Descanso')) el.classList.add('badge-rest');
-  else el.classList.add('badge-busy');
+  updateRiderUIStatus(status);
 }
 
 // ─── CONNECTION / STATUS TOGGLING (DATABASE AS SINGLE SOURCE OF TRUTH) ────────
@@ -713,8 +755,7 @@ async function fetchAndUpdateRiderStatusFromDB() {
     if (data) {
       currentRider = { ...currentRider, ...data };
       safeSetStorage('speedMotoSession', JSON.stringify(currentRider));
-      setRiderStatusBadge(data.status || 'Disponível');
-      updateConnectionButtonState(data.status || 'Disponível');
+      updateRiderUIStatus(data.status);
     }
   } catch (e) {
     logSafeError('fetchAndUpdateRiderStatusFromDBException', e);
@@ -722,37 +763,7 @@ async function fetchAndUpdateRiderStatusFromDB() {
 }
 
 function updateConnectionButtonState(status) {
-  const mapBtn = document.getElementById('pwa-map-connect-btn');
-  const mapTextEl = document.getElementById('pwa-map-connect-btn-text');
-  const mapIconEl = document.getElementById('pwa-map-connect-btn-icon');
-
-  const drawerBtn = document.getElementById('pwa-connect-btn');
-  const drawerTextEl = document.getElementById('pwa-connect-btn-text') || drawerBtn;
-  const statusVal = document.getElementById('map-status-val');
-
-  if (status === 'Em Descanso') {
-    if (mapBtn) {
-      mapBtn.className = 'pwa-map-connect-btn main-connect-btn offline';
-      if (mapTextEl) mapTextEl.innerText = 'Conectar';
-      if (mapIconEl) mapIconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
-    }
-    if (drawerTextEl) drawerTextEl.innerText = 'Conectar';
-    if (statusVal) {
-      statusVal.innerText = 'OFFLINE';
-      statusVal.className = 'status-val offline';
-    }
-  } else {
-    if (mapBtn) {
-      mapBtn.className = 'pwa-map-connect-btn main-connect-btn online';
-      if (mapTextEl) mapTextEl.innerText = 'Desconectar';
-      if (mapIconEl) mapIconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`;
-    }
-    if (drawerTextEl) drawerTextEl.innerText = 'Desconectar';
-    if (statusVal) {
-      statusVal.innerText = 'ONLINE';
-      statusVal.className = 'status-val online';
-    }
-  }
+  updateRiderUIStatus(status);
 }
 
 // ─── MODAL ACESSÍVEL DE ALERTA DE TELES ATIVAS (PARTE 3) ─────────────────────
@@ -838,7 +849,9 @@ async function toggleConnectionState() {
   if (mapBtn) mapBtn.disabled = true;
   if (drawerBtn) drawerBtn.disabled = true;
 
-  if (currentStatus === 'Em Descanso') {
+  const isCurrentlyConnected = (currentStatus === 'Disponível' || currentStatus === 'Ativo' || currentStatus === 'Em Rota');
+
+  if (!isCurrentlyConnected) {
     // CONECTAR: Altera status no Postgres para 'Disponível' restrito a user_id = auth.uid()
     if (mapTextEl) mapTextEl.innerText = 'Conectando...';
     if (drawerTextEl) drawerTextEl.innerText = 'Conectando...';
@@ -895,7 +908,7 @@ async function toggleConnectionState() {
     // Tentar desconectar no Postgres
     const { error: updateError } = await db
       .from('fleet')
-      .update({ status: 'Em Descanso' })
+      .update({ status: 'Indisponível' })
       .eq('user_id', session.user.id);
 
     if (updateError) {
@@ -1836,13 +1849,6 @@ function applyMapThemeUI(theme) {
     styles: cleanOperationalStyles
   });
 
-  // Permanent Collection Central Marker
-  new window.google.maps.Marker({
-    position: { lat: -29.842173, lng: -51.126764 },
-    map: riderMap,
-    title: 'Central de Coleta - Rua Ana Rosa 221'
-  });
-
   if (lastPosition) {
     placeRiderMarker(lastPosition.lat, lastPosition.lng);
   }
@@ -1851,17 +1857,30 @@ function applyMapThemeUI(theme) {
 let riderMarker = null;
 
 function placeRiderMarker(lat, lng) {
-  if (!riderMap || typeof window.google === 'undefined') return;
+  if (!riderMap || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') return;
 
   const pos = { lat, lng };
 
+  // Ícone de bolinha verde moderna (18px) com borda branca e sombra discreta
+  const riderIcon = {
+    path: window.google.maps.SymbolPath.CIRCLE,
+    fillColor: '#22c55e',
+    fillOpacity: 1.0,
+    scale: 9, // Diâmetro de 18px
+    strokeColor: '#ffffff',
+    strokeWeight: 3
+  };
+
   if (riderMarker) {
     riderMarker.setPosition(pos);
+    riderMarker.setIcon(riderIcon);
   } else {
     riderMarker = new window.google.maps.Marker({
       position: pos,
       map: riderMap,
-      title: currentRider ? currentRider.name : 'Sua Localização'
+      icon: riderIcon,
+      title: 'Você está aqui',
+      zIndex: 9999
     });
   }
 
