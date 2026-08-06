@@ -10917,23 +10917,46 @@ function renderSummaryAlertsList(alerts = []) {
 }
 
 // 13. Execução Transacional de Despacho (API local / RPC contract)
-async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '') {
+async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '', reassignmentReason = '') {
   const payload = {
     tele_id: String(teleId),
-    rider_id: String(riderId),
-    expected_version: expectedVersion,
-    reason: reason ? reason.trim() : null
+    motoboy_id: String(riderId),
+    expected_version: parseInt(expectedVersion, 10),
+    reason: reason ? reason.trim() : null,
+    reassignment_reason: reassignmentReason ? reassignmentReason.trim() : null
   };
 
   let data = null;
   let success = false;
 
-  if (typeof db !== 'undefined' && db && typeof db.rpc === 'function') {
+  // Invocar Edge Function autoritativa server-side (assign-rider-with-push) se Supabase Client estiver ativo
+  if (typeof db !== 'undefined' && db && typeof db.functions?.invoke === 'function') {
+    try {
+      const { data: edgeRes, error: edgeErr } = await db.functions.invoke('assign-rider-with-push', {
+        body: payload
+      });
+
+      if (!edgeErr && edgeRes && edgeRes.success) {
+        data = edgeRes;
+        success = true;
+      } else if (edgeErr || (edgeRes && !edgeRes.success)) {
+        const errCode = edgeRes?.error || edgeErr?.message || 'ERROR';
+        const errMsg = edgeRes?.message || 'Falha no despacho autoritativo.';
+        return { success: false, errorCode: errCode, message: errMsg };
+      }
+    } catch (e) {
+      console.warn('Fallback para RPC direta de atribuição:', e.message);
+    }
+  }
+
+  // Fallback para RPC autoritativa assign_rider_to_tele
+  if (!success && typeof db !== 'undefined' && db && typeof db.rpc === 'function') {
     const { data: rpcRes, error: rpcErr } = await db.rpc('assign_rider_to_tele', {
       p_tele_id: String(teleId),
       p_motoboy_id: String(riderId),
       p_expected_version: parseInt(expectedVersion, 10),
-      p_reason: reason ? reason.trim() : null
+      p_reason: reason ? reason.trim() : null,
+      p_reassignment_reason: reassignmentReason ? reassignmentReason.trim() : null
     });
 
     if (!rpcErr && rpcRes && rpcRes.success) {
@@ -10979,30 +11002,6 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '') 
     if (typeof renderOperationsDashboard === 'function') renderOperationsDashboard();
     if (typeof openTeleOpDrawer === 'function' && document.getElementById('drawer-tele-op-details')?.classList.contains('active')) {
       openTeleOpDrawer(teleId);
-    }
-
-    // Disparar Web Push Server-Side via Edge Function send-rider-push
-    try {
-      if (typeof db !== 'undefined' && db && typeof db.functions?.invoke === 'function') {
-        db.functions.invoke('send-rider-push', {
-          body: { tele_id: String(teleId) }
-        }).catch(e => console.warn('Aviso ao invocar send-rider-push:', e.message));
-      } else {
-        const supabaseUrl = window.SUPABASE_CONFIG?.url || window.__ENV_SUPABASE_URL;
-        const supabaseKey = window.SUPABASE_CONFIG?.key || window.__ENV_SUPABASE_KEY;
-        if (supabaseUrl && supabaseKey) {
-          fetch(`${supabaseUrl}/functions/v1/send-rider-push`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseKey}`
-            },
-            body: JSON.stringify({ tele_id: String(teleId) })
-          }).catch(e => console.warn('Aviso ao invocar send-rider-push:', e.message));
-        }
-      }
-    } catch (pushErr) {
-      console.warn('Erro ao disparar notificação Push:', pushErr);
     }
 
     return { success: true, data };

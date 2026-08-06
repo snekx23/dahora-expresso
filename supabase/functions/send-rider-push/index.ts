@@ -3,7 +3,7 @@ import webpush from "npm:web-push@3.6.7";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-service-key',
 };
 
 Deno.serve(async (req) => {
@@ -17,6 +17,38 @@ Deno.serve(async (req) => {
     const vapidPublicKey = (Deno.env.get('VAPID_PUBLIC_KEY') || Deno.env.get('PUSH_VAPID_PUBLIC_KEY') || '').trim();
     const vapidPrivateKey = (Deno.env.get('VAPID_PRIVATE_KEY') || Deno.env.get('PUSH_VAPID_PRIVATE_KEY') || '').trim();
     const vapidSubject = (Deno.env.get('VAPID_SUBJECT') || 'mailto:suporte@dahoraexpresso.com.br').trim();
+
+    const authHeader = req.headers.get('Authorization') || '';
+    const internalKeyHeader = req.headers.get('x-internal-service-key') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    const adminDb = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 1. Segurança Estrita: Requer chave service_role ou JWT autenticado de Owner/Admin/Gerente/Operador
+    let isAuthorized = false;
+    if (token === supabaseServiceKey || internalKeyHeader === supabaseServiceKey) {
+      isAuthorized = true;
+    } else if (token) {
+      const { data: userData, error: userErr } = await adminDb.auth.getUser(token);
+      if (!userErr && userData && userData.user) {
+        const { data: profile } = await adminDb
+          .from('user_profiles')
+          .select('role, is_active')
+          .eq('user_id', userData.user.id)
+          .maybeSingle();
+
+        if (profile && profile.is_active !== false && ['owner', 'admin', 'gerente', 'operador'].includes(profile.role)) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'UNAUTHORIZED', message: 'Acesso negado à função de envio de notificações.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!vapidPublicKey || !vapidPrivateKey) {
       return new Response(
@@ -40,8 +72,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const adminDb = createClient(supabaseUrl, supabaseServiceKey);
 
     // Consulta autoritativa da Tele no banco de dados
     const { data: tele, error: teleErr } = await adminDb
