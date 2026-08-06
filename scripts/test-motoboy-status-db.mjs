@@ -1,7 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.bootstrap.remote' });
 
-const url = 'http://127.0.0.1:54321';
-const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const url = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
+const key = process.env.SUPABASE_ANON_KEY;
+
+if (!key) {
+  throw new Error('SUPABASE_ANON_KEY é obrigatória.');
+}
+
 const client = createClient(url, key);
 
 async function run() {

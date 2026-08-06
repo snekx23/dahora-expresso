@@ -54,6 +54,8 @@ const publicEnv = {
   "window.__ENV_GOOGLE_MAPS_MAP_ID": (process.env.GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID').trim(),
   "window.__ENV_VAPID_PUBLIC_KEY": (process.env.VAPID_PUBLIC_KEY || '').trim(),
   "window.__ENV_NAME": (process.env.APP_ENV || 'staging').trim(),
+  "window.__ENV_ENVIRONMENT_KIND": (process.env.ENVIRONMENT_KIND || 'production').trim(),
+  "window.__ENV_DEMO_RESET_ENABLED": (process.env.DEMO_RESET_ENABLED || 'false').trim(),
   "window.__ENV_COMMIT_SHA": (process.env.CF_PAGES_COMMIT_SHA || '').trim(),
   "window.__ENV_DEPLOY_URL": (process.env.CF_PAGES_URL || '').trim()
 };

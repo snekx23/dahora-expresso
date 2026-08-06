@@ -1,6 +1,10 @@
 {
   "scripts": {
-    "build:pages": "node scripts/generate-runtime-config.mjs"
+    "build:pages": "node scripts/generate-runtime-config.mjs",
+    "bootstrap:remote:dry-run": "node scripts/bootstrap-remote-environment.mjs --dry-run",
+    "bootstrap:remote": "node scripts/bootstrap-remote-environment.mjs",
+    "bootstrap:demo:dry-run": "node scripts/bootstrap-demo-environment.mjs --dry-run",
+    "bootstrap:demo": "node scripts/bootstrap-demo-environment.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

@@ -12,25 +12,36 @@
     googleMapsApiKey: '',
     googleMapsMapId: 'DEMO_MAP_ID',
     vapidPublicKey: '',
-    env: 'local'
+    env: 'local',
+    environmentKind: 'production',
+    demoResetEnabled: false
   };
 
   if (isLocal) {
-    const defaultLocalUrl = 'http://127.0.0.1:54321';
-    const defaultLocalKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
-
-    if (window.LOCAL_SUPABASE_CONFIG) {
-      config.url = window.LOCAL_SUPABASE_CONFIG.url || defaultLocalUrl;
-      config.key = window.LOCAL_SUPABASE_CONFIG.key || defaultLocalKey;
+    if (window.LOCAL_SUPABASE_CONFIG && window.LOCAL_SUPABASE_CONFIG.url && window.LOCAL_SUPABASE_CONFIG.key) {
+      config.url = window.LOCAL_SUPABASE_CONFIG.url;
+      config.key = window.LOCAL_SUPABASE_CONFIG.key;
       config.googleMapsApiKey = window.LOCAL_SUPABASE_CONFIG.googleMapsApiKey || '';
       config.googleMapsMapId = window.LOCAL_SUPABASE_CONFIG.googleMapsMapId || 'DEMO_MAP_ID';
       config.vapidPublicKey = window.LOCAL_SUPABASE_CONFIG.vapidPublicKey || window.__ENV_VAPID_PUBLIC_KEY || '';
-    } else {
-      config.url = defaultLocalUrl;
-      config.key = defaultLocalKey;
+      config.environmentKind = window.LOCAL_SUPABASE_CONFIG.environmentKind || window.__ENV_ENVIRONMENT_KIND || 'local';
+      config.demoResetEnabled = window.LOCAL_SUPABASE_CONFIG.demoResetEnabled ?? (window.__ENV_DEMO_RESET_ENABLED === 'true');
+    } else if (window.__ENV_SUPABASE_URL && window.__ENV_SUPABASE_KEY) {
+      config.url = window.__ENV_SUPABASE_URL;
+      config.key = window.__ENV_SUPABASE_KEY;
       config.googleMapsApiKey = window.__ENV_GOOGLE_MAPS_API_KEY || '';
       config.googleMapsMapId = window.__ENV_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
       config.vapidPublicKey = window.__ENV_VAPID_PUBLIC_KEY || '';
+      config.environmentKind = window.__ENV_ENVIRONMENT_KIND || 'local';
+      config.demoResetEnabled = window.__ENV_DEMO_RESET_ENABLED === 'true';
+    } else {
+      window.SUPABASE_CONFIG = null;
+      window.__CONFIGURATION_ERROR = {
+        code: 'LOCAL_CONFIGURATION_MISSING',
+        message: 'Configuração local ausente. Forneça config.local.js ou variáveis de ambiente.'
+      };
+      console.error('[CONFIG ERROR] LOCAL_CONFIGURATION_MISSING: Forneça config.local.js no ambiente local.');
+      return;
     }
   } else {
     // Domínio remoto (Staging / Production / Pages)
@@ -52,10 +63,11 @@
     config.googleMapsApiKey = window.__ENV_GOOGLE_MAPS_API_KEY || '';
     config.googleMapsMapId = window.__ENV_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
     config.vapidPublicKey = window.__ENV_VAPID_PUBLIC_KEY || '';
-    config.env = window.__ENV_NAME || 'staging';
-    config.commitSha = window.__ENV_COMMIT_SHA || '';
-    config.deployUrl = window.__ENV_DEPLOY_URL || '';
+    config.env = window.__ENV_APP_ENV || 'production';
+    config.environmentKind = window.__ENV_ENVIRONMENT_KIND || 'production';
+    config.demoResetEnabled = window.__ENV_DEMO_RESET_ENABLED === 'true';
   }
 
   window.SUPABASE_CONFIG = config;
+  window.__CONFIGURATION_ERROR = null;
 })();

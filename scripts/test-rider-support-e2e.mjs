@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.bootstrap.remote' });
 
-const SUPABASE_URL = 'http://127.0.0.1:54321';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE1NzE4OTI0MDAsImV4cCI6MTg4NzQ2ODQwMH0.P8BbdN4E-b21_04p992i-k5b804-k25638-k25638';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_ANON_KEY) {
+  throw new Error('SUPABASE_ANON_KEY é obrigatória.');
+}
 
 console.log("🚀 Iniciando Teste de Validação E2E REST/RPC: Módulo de Suporte dos Motoboys...");
 

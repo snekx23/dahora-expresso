@@ -13510,3 +13510,116 @@ async function resumePendingRiderPayment() {
   }
 }
 
+// =====================================================================
+// Interface Autoritativa de Reset do Ambiente DEMO (Restrito ao Ambiente DEMO)
+// =====================================================================
+function initDemoResetUI() {
+  /* Esta verificação controla apenas a interface. A autorização real ocorre na Edge Function e na RPC PostgreSQL. */
+  const envKind = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.environmentKind) || window.__ENV_ENVIRONMENT_KIND;
+  const isResetEnabled = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.demoResetEnabled) || (window.__ENV_DEMO_RESET_ENABLED === 'true');
+
+  if (envKind !== 'demo' || !isResetEnabled) {
+    const existingSection = document.getElementById('demo-environment-reset-section');
+    if (existingSection) existingSection.remove();
+    return;
+  }
+
+  if (!document.getElementById('demo-reset-modal')) {
+    const modalDiv = document.createElement('div');
+    modalDiv.id = 'demo-reset-modal';
+    modalDiv.className = 'modal-backdrop hidden';
+    modalDiv.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:999999; padding:20px;';
+    modalDiv.innerHTML = `
+      <div class="modal-content" style="background:#1e293b; border:1px solid #ef4444; border-radius:12px; max-width:480px; width:100%; padding:24px; color:#f8fafc; font-family:sans-serif;">
+        <h3 style="color:#ef4444; margin-top:0; font-size:1.25rem; display:flex; align-items:center; gap:8px;">
+          <span>⚠️ Restaurar Demonstração</span>
+        </h3>
+        <p style="font-size:0.9rem; color:#cbd5e1; line-height:1.5;">
+          Esta ação apagará <strong>TODOS</strong> os dados operacionais criados na demonstração (Teles, transações, motoboys e clientes adicionais). As contas base de demonstração serão restauradas com saldos zerados.
+        </p>
+        <p style="font-size:0.85rem; color:#f87171; font-weight:bold; margin-top:12px;">
+          Para confirmar, digite <code>RESTAURAR DEMO</code> abaixo:
+        </p>
+        <input type="text" id="input-confirm-demo-reset" placeholder="RESTAURAR DEMO" style="width:100%; padding:10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#fff; font-size:0.95rem; margin-bottom:16px;" oninput="validateDemoResetInput(this.value)">
+        <div style="display:flex; justify-content:flex-end; gap:12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeDemoResetModal()" style="padding:10px 16px; border-radius:6px; background:#475569; color:#fff; border:none; cursor:pointer;">Cancelar</button>
+          <button type="button" id="btn-submit-demo-reset" disabled onclick="submitDemoReset()" style="padding:10px 16px; border-radius:6px; background:#ef4444; color:#fff; border:none; cursor:not-allowed; font-weight:bold;">Restaurar Demonstração</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modalDiv);
+  }
+}
+
+window.validateDemoResetInput = function(val) {
+  const btn = document.getElementById('btn-submit-demo-reset');
+  if (btn) {
+    const isValid = val.trim() === 'RESTAURAR DEMO';
+    btn.disabled = !isValid;
+    btn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+    btn.style.opacity = isValid ? '1' : '0.5';
+  }
+};
+
+window.closeDemoResetModal = function() {
+  const modal = document.getElementById('demo-reset-modal');
+  if (modal) modal.classList.add('hidden');
+};
+
+window.openDemoResetModal = function() {
+  const modal = document.getElementById('demo-reset-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const input = document.getElementById('input-confirm-demo-reset');
+    if (input) { input.value = ''; validateDemoResetInput(''); }
+  }
+};
+
+window.submitDemoReset = async function() {
+  const btn = document.getElementById('btn-submit-demo-reset');
+  if (btn) { btn.disabled = true; btn.innerText = 'Restaurando...'; }
+
+  try {
+    let result = null;
+
+    if (supabaseClient && supabaseClient.functions) {
+      const { data, error } = await supabaseClient.functions.invoke('reset-demo-environment', {
+        body: { confirmation: 'RESTAURAR DEMO' }
+      });
+      if (error) {
+        throw new Error(error.message || 'Falha ao invocar Edge Function de reset');
+      }
+      result = data;
+    } else if (supabaseClient) {
+      // Fallback para RPC direta se Edge Function não estiver publicada no ambiente local
+      const { data, error } = await supabaseClient.rpc('reset_demo_environment', {
+        p_confirmation: 'RESTAURAR DEMO'
+      });
+      if (error) throw error;
+      result = data;
+    }
+
+    if (result && result.success) {
+      sessionStorage.clear();
+      alert(`Demonstração restaurada com sucesso em ${result.duration_ms}ms!\nID de Execução: ${result.execution_id}`);
+      window.location.reload();
+    } else {
+      const msg = result ? (result.message || 'Erro não especificado') : 'Resposta nula';
+      if (msg.includes('RESET_ALREADY_RUNNING')) {
+        alert('Uma operação de reset já está em andamento. Aguarde alguns segundos.');
+      } else if (msg.includes('RESET_NOT_ALLOWED')) {
+        alert('Esta operação só é permitida em ambiente de demonstração.');
+      } else {
+        alert(`Falha ao restaurar demonstração: ${msg}`);
+      }
+    }
+  } catch (err) {
+    console.error("[DEMO RESET EXCEPTION]", err);
+    alert(`Erro ao comunicar com o servidor de reset: ${err.message || err}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = 'Restaurar Demonstração'; }
+    window.closeDemoResetModal();
+  }
+};
+
+document.addEventListener('DOMContentLoaded', initDemoResetUI);

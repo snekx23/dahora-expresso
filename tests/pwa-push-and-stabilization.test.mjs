@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, access } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import dotenv from 'dotenv';
 
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_secret_N4wW8xZ1pLk9vQ2mR7jT5sU3yA6bC8dE';
+dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+
+const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 test('1. requestNotificationPermission não possui referência órfã e alias global foi configurado', async () => {
   const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');

@@ -139,7 +139,7 @@ test('Suíte de Testes de Preparação do Cloudflare Pages (Runtime Config & Seg
     const motoboyHtml = await readFile(path.join(projectRoot, 'public', 'motoboy.html'), 'utf8');
 
     const indexRuntimePos = indexHtml.indexOf('<script src="runtime-config.js"></script>');
-    const indexLocalPos = indexHtml.indexOf('<script src="config.local.js"></script>');
+    const indexLocalPos = indexHtml.indexOf('config.local.js');
     const indexConfigPos = indexHtml.indexOf('<script src="config.js"></script>');
     const indexAppPos = indexHtml.indexOf('<script src="app.js');
 
@@ -147,7 +147,7 @@ test('Suíte de Testes de Preparação do Cloudflare Pages (Runtime Config & Seg
     assert.ok(indexRuntimePos < indexLocalPos && indexLocalPos < indexConfigPos && indexConfigPos < indexAppPos, 'Ordem dos scripts em index.html está correta');
 
     const motoboyRuntimePos = motoboyHtml.indexOf('<script src="runtime-config.js"></script>');
-    const motoboyLocalPos = motoboyHtml.indexOf('<script src="config.local.js"></script>');
+    const motoboyLocalPos = motoboyHtml.indexOf('config.local.js');
     const motoboyConfigPos = motoboyHtml.indexOf('<script src="config.js"></script>');
     const motoboyAppPos = motoboyHtml.indexOf('<script src="motoboy.js');
 

@@ -27,3 +27,15 @@ public/runtime-config.js
 node_modules/
 
 scratch/
+
+# Bootstrap credentials and environment files
+.env.bootstrap.production
+.env.bootstrap.demo
+.env.bootstrap.remote
+.env.bootstrap.*
+!.env.bootstrap.production.example
+!.env.bootstrap.demo.example
+!.env.bootstrap.remote.example
+.env.seed.*
+!.env.seed.local.example
+bootstrap-credentials.local.txt
