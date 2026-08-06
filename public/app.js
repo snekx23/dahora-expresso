@@ -1365,176 +1365,9 @@ function isOrderInCurrentWeek(order) {
 }
 
 function renderRiderPayments() {
-  const tbody = document.getElementById('rider-payments-table-body');
-  if (!tbody) return;
-
-  const startDateEl = document.getElementById('rider-payment-start-date');
-  const endDateEl = document.getElementById('rider-payment-end-date');
-  const searchEl = document.getElementById('rider-search-input');
-
-  const startDateVal = startDateEl ? startDateEl.value : '';
-  const endDateVal = endDateEl ? endDateEl.value : '';
-  const searchVal = searchEl ? searchEl.value.trim().toLowerCase() : '';
-
-  let start = startDateVal ? parseLocalDate(startDateVal) : null;
-  let end = endDateVal ? parseLocalDate(endDateVal) : (start ? new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000) : null);
-
-  if (start) start.setHours(0, 0, 0, 0);
-  if (end) end.setHours(23, 59, 59, 999);
-
-  // Set the range label dynamically
-  const rangeEl = document.getElementById('rider-week-range');
-  if (rangeEl) {
-    if (start && end) {
-      const fmt = { day: '2-digit', month: '2-digit' };
-      rangeEl.innerText = `${start.toLocaleDateString('pt-BR', fmt)} a ${end.toLocaleDateString('pt-BR', fmt)}`;
-    } else {
-      rangeEl.innerText = 'Todo o Período';
-    }
+  if (typeof fetchAdminRiderWeeklySettlements === 'function') {
+    fetchAdminRiderWeeklySettlements(true);
   }
-
-  // Initialize map of rider totals
-  const totals = new Map();
-  (mockData.fleet || []).forEach(rider => {
-    if (searchVal && !rider.name.toLowerCase().includes(searchVal)) {
-      return;
-    }
-    totals.set(rider.name, { rider, count: 0, total: 0, payments: [], consumablesTotal: 0, creditsTotal: 0 });
-  });
-
-  // Filter and group clientHistory orders in the range
-  (mockData.clientHistory || [])
-    .filter(order => {
-      const isCompleted = order.status === 'Entregue' || order.status === 'Concluído';
-      if (!isCompleted) return false;
-
-      // Filter by date
-      if (start || end) {
-        const orderDate = parseOrderDate(order.date, order.created_at);
-        if (start && orderDate < start) return false;
-        if (end && orderDate > end) return false;
-      }
-
-      // Filter by rider search name
-      if (searchVal && !order.rider.toLowerCase().includes(searchVal)) {
-        return false;
-      }
-
-      return true;
-    })
-    .forEach(order => {
-      if (!totals.has(order.rider)) {
-        if (searchVal && !order.rider.toLowerCase().includes(searchVal)) return;
-        totals.set(order.rider, { rider: { name: order.rider, id: '—' }, count: 0, total: 0, payments: [], consumablesTotal: 0, creditsTotal: 0 });
-      }
-      const item = totals.get(order.rider);
-      item.count += 1;
-      item.total += parseMoneyBR(order.price);
-      item.payments.push(order);
-    });
-
-  // Sum consumables in the selected range for each rider
-  const filteredConsumables = (mockData.riderConsumables || []).filter(item => {
-    if (start || end) {
-      const itemDate = new Date(item.created_at);
-      if (start && itemDate < start) return false;
-      if (end && itemDate > end) return false;
-    }
-    return true;
-  });
-
-  filteredConsumables.forEach(c => {
-    let item = totals.get(c.rider_name);
-    if (!item) {
-      if (searchVal && !c.rider_name.toLowerCase().includes(searchVal)) return;
-      totals.set(c.rider_name, { rider: { name: c.rider_name, id: c.rider_id }, count: 0, total: 0, payments: [], consumablesTotal: 0, creditsTotal: 0 });
-      item = totals.get(c.rider_name);
-    }
-    item.consumablesTotal += c.amount;
-  });
-
-  // Sum credits in the selected range for each rider
-  const filteredCredits = (mockData.riderCredits || []).filter(item => {
-    if (start || end) {
-      const itemDate = parseLocalDate(item.target_date);
-      if (start && itemDate < start) return false;
-      if (end && itemDate > end) return false;
-    }
-    return true;
-  });
-
-  filteredCredits.forEach(c => {
-    const rider = (mockData.fleet || []).find(r => r.id === c.rider_id);
-    const riderName = rider ? rider.name : 'Motoboy Removido';
-    let item = totals.get(riderName);
-    if (!item) {
-      if (searchVal && !riderName.toLowerCase().includes(searchVal)) return;
-      totals.set(riderName, { rider: { name: riderName, id: c.rider_id }, count: 0, total: 0, payments: [], consumablesTotal: 0, creditsTotal: 0 });
-      item = totals.get(riderName);
-    }
-    item.creditsTotal += c.amount;
-  });
-
-  const rows = Array.from(totals.values()).sort((a, b) => b.total - a.total);
-  const grandTotalGross = rows.reduce((sum, row) => sum + row.total, 0);
-  const grandTotalConsumables = rows.reduce((sum, row) => sum + (row.consumablesTotal || 0), 0);
-  const grandTotalCredits = rows.reduce((sum, row) => sum + (row.creditsTotal || 0), 0);
-  const grandTotalNet = grandTotalGross * 0.90 - grandTotalConsumables + grandTotalCredits; // Apply 10% discount, subtract consumables and add credits
-  
-  const totalEl = document.getElementById('rider-week-total');
-  if (totalEl) totalEl.innerText = formatMoneyBR(grandTotalNet);
-
-  if (rows.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="15" style="text-align: center; padding: 40px 16px; color: var(--color-text-muted);">
-          <div style="font-size: 1.8rem; margin-bottom: 8px;">📊</div>
-          <strong style="font-size: 0.95rem; color: var(--color-text);">Nenhum repasse semanal encontrado.</strong><br>
-          <span style="font-size: 0.82rem; margin-top: 4px; display: inline-block;">Cadastre um motoboy e conclua entregas para gerar o primeiro fechamento.</span>
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  tbody.innerHTML = rows.map(row => {
-    const gross = row.total;
-    const discount = gross * 0.10;
-    const consumables = row.consumablesTotal || 0;
-    const credits = row.creditsTotal || 0;
-    const net = gross * 0.90 - consumables + credits;
-    const avg = row.count ? gross / row.count : 0;
-
-    // A rider is considered Paid in this period if they have orders and all of them are marked 'Pago'
-    let isPaid = false;
-    if (row.payments.length > 0) {
-      isPaid = row.payments.every(order => order.payment_status === 'Pago');
-    }
-
-    const selectHtml = `
-      <select onchange="updateRiderPaymentStatus('${escapeHtml(row.rider.name)}', this.value)" style="padding: 6px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: ${isPaid ? '#10b981' : '#f59e0b'}; font-weight: 600; outline: none; cursor: pointer; font-size: 0.85rem;">
-        <option value="Pendente" ${!isPaid ? 'selected' : ''} style="color: #f59e0b; background: var(--card-bg); font-weight: 600;">Pendente</option>
-        <option value="Pago" ${isPaid ? 'selected' : ''} style="color: #10b981; background: var(--card-bg); font-weight: 600;">Pago</option>
-      </select>
-    `;
-
-    return `
-      <tr>
-        <td>
-          <strong>${escapeHtml(row.rider.name)}</strong>
-          <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.78rem;">${escapeHtml(row.rider.id) || '—'}</p>
-        </td>
-        <td>${row.count}</td>
-        <td>${formatMoneyBR(gross)}</td>
-        <td class="text-danger">- ${formatMoneyBR(discount)}</td>
-        <td class="text-danger">- ${formatMoneyBR(consumables)}</td>
-        <td style="color: #10b981;">+ ${formatMoneyBR(credits)}</td>
-        <td><strong class="text-yellow">${formatMoneyBR(net)}</strong></td>
-        <td>${formatMoneyBR(avg)}</td>
-        <td>${selectHtml}</td>
-      </tr>
-    `;
-  }).join('');
 }
 
 // Render the rider configurations list in the settings tab
@@ -12714,10 +12547,11 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
       const errMsg = error?.message || data?.message || 'Erro ao consultar repasses semanais.';
       console.error("[RPC list_admin_rider_weekly_settlements] Erro:", errMsg);
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 24px; color: #ef4444;">
-          <i data-lucide="alert-triangle" style="width: 24px; height: 24px; margin-bottom: 8px;"></i>
-          <div>${errMsg}</div>
-          <button class="btn btn-sm btn-secondary" onclick="fetchAdminRiderWeeklySettlements()" style="margin-top: 12px;">Tentar Novamente</button>
+        tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 40px 24px; color: #ef4444;">
+          <i data-lucide="alert-triangle" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
+          <div style="font-size: 1rem; font-weight: 600; margin-bottom: 6px;">Não foi possível carregar os repasses semanais.</div>
+          <div style="font-size: 0.82rem; opacity: 0.8; margin-bottom: 12px;">${escapeHtml(String(errMsg))}</div>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="fetchAdminRiderWeeklySettlements(true)" style="border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text); font-weight: 600; padding: 8px 16px; cursor: pointer;">Tentar Novamente</button>
         </td></tr>`;
         if (window.lucide) window.lucide.createIcons();
       }
@@ -12752,6 +12586,15 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
   } catch (err) {
     riderSettlementState.isLoading = false;
     console.error("[RPC list_admin_rider_weekly_settlements] Exceção:", err);
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 40px 24px; color: #ef4444;">
+        <i data-lucide="alert-triangle" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
+        <div style="font-size: 1rem; font-weight: 600; margin-bottom: 6px;">Não foi possível carregar os repasses semanais.</div>
+        <div style="font-size: 0.82rem; opacity: 0.8; margin-bottom: 12px;">${escapeHtml(err.message || 'Falha na conexão com o servidor.')}</div>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="fetchAdminRiderWeeklySettlements(true)" style="border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text); font-weight: 600; padding: 8px 16px; cursor: pointer;">Tentar Novamente</button>
+      </td></tr>`;
+      if (window.lucide) window.lucide.createIcons();
+    }
   }
 }
 
@@ -12760,8 +12603,9 @@ function renderAdminRiderWeeklySettlements(settlements) {
   if (!tbody) return;
 
   if (!settlements || settlements.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 32px; color: var(--color-text-muted);">
-      Nenhum fechamento semanal encontrado para os filtros selecionados.
+    tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 48px 24px; color: var(--color-text-muted);">
+      <div style="font-size: 1.05rem; font-weight: 600; color: var(--color-text); margin-bottom: 6px;">Nenhum repasse semanal encontrado.</div>
+      <div style="font-size: 0.85rem; color: var(--color-text-muted);">Cadastre um motoboy e conclua entregas para gerar o primeiro fechamento.</div>
     </td></tr>`;
     return;
   }
