@@ -1,5 +1,5 @@
 // Dahora Expresso - Service Worker Otimizado com Suporte a Web Push
-const CACHE_NAME = 'dahora-expresso-cache-v5';
+const CACHE_NAME = 'dahora-expresso-cache-v6';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -14,7 +14,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 [Service Worker] Fazendo cache dos arquivos estáticos v5');
+      console.log('📦 [Service Worker] Fazendo cache dos arquivos estáticos v6');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );

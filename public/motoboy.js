@@ -48,6 +48,43 @@ let activeRiderDeliveryMarkers = {};
 let activeDeliveriesList = [];
 let lastActiveTeleId = null;
 
+// ─── SAFARI PRIVATE BROWSING SAFE STORAGE HELPER ─────────────────────────────
+const memoryStorageMap = new Map();
+
+function safeSetStorage(key, value) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value);
+    }
+  } catch (e) {
+    console.warn(`[SafeStorage] Could not write '${key}' to localStorage:`, e);
+  }
+  memoryStorageMap.set(key, value);
+}
+
+function safeGetStorage(key) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(key);
+      if (val !== null) return val;
+    }
+  } catch (e) {
+    console.warn(`[SafeStorage] Could not read '${key}' from localStorage:`, e);
+  }
+  return memoryStorageMap.get(key) || null;
+}
+
+function safeRemoveStorage(key) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(key);
+    }
+  } catch (e) {
+    console.warn(`[SafeStorage] Could not remove '${key}' from localStorage:`, e);
+  }
+  memoryStorageMap.delete(key);
+}
+
 // ─── CONTROLADOR DE ÁUDIO ───────────────────────────────────────────────────
 const AudioController = {
   unlocked: false,
@@ -127,7 +164,7 @@ async function resolveCurrentRider() {
       if (fleetRow) {
         currentRider = fleetRow;
         currentRiderId = fleetRow.id;
-        localStorage.setItem('speedMotoSession', JSON.stringify(fleetRow));
+        safeSetStorage('speedMotoSession', JSON.stringify(fleetRow));
         return fleetRow;
       } else {
         showLoginError("Seu usuário não está vinculado a um motoboy ativo.");
@@ -138,14 +175,14 @@ async function resolveCurrentRider() {
     logSafeError('resolveCurrentRiderException', e);
   }
 
-  const saved = localStorage.getItem('speedMotoSession');
+  const saved = safeGetStorage('speedMotoSession');
   if (saved) {
     try {
       currentRider = JSON.parse(saved);
       currentRiderId = currentRider ? currentRider.id : null;
       return currentRider;
     } catch {
-      localStorage.removeItem('speedMotoSession');
+      safeRemoveStorage('speedMotoSession');
     }
   }
   return null;
@@ -154,7 +191,7 @@ async function resolveCurrentRider() {
 // ─── INIT ────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
   registerSW();
 
   await resolveCurrentRider();
@@ -418,30 +455,45 @@ function sendWebNotification(title, body) {
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
 
 async function handleMotoLogin(e) {
-  e.preventDefault();
+  if (e) e.preventDefault();
 
-  const rawId  = document.getElementById('moto-id').value.trim();
-  const pin    = document.getElementById('moto-pin').value.trim();
-  const btn    = document.getElementById('login-btn');
-  const errEl  = document.getElementById('login-error');
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  const rawIdEl = document.getElementById('moto-id');
+  const pinEl = document.getElementById('moto-pin');
 
-  errEl.classList.add('hidden');
-  btn.disabled = true;
-  btn.innerText = 'Verificando...';
+  if (errEl) errEl.classList.add('hidden');
 
+  // ETAPA 1: LEITURA E VALIDAÇÃO DOS INPUTS
+  const rawId = rawIdEl ? rawIdEl.value.trim() : '';
+  const pin = pinEl ? pinEl.value.trim() : '';
+
+  if (!rawId || !pin) {
+    showLoginError('Informe o Código de Acesso e o PIN para entrar.');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Verificando...';
+  }
+
+  // ETAPA 2: VERIFICAÇÃO DO CLIENTE SUPABASE DB
   if (!db) {
-    showLoginError('Serviço indisponível. Tente novamente.');
-    btn.disabled = false;
-    btn.innerText = 'Entrar';
+    console.error("[LOGIN FAIL STEP 2] Supabase client 'db' is null or uninitialized.");
+    showLoginError('Serviço de banco de dados indisponível. Recarregue a página.');
+    if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
     return;
   }
 
   const digits = rawId.replace(/\D/g, '');
   const inputCode = rawId.replace('#', '').trim();
 
+  // ETAPA 3: CONSULTA À TABELA FLEET COM TIMEOUT E SEPARAÇÃO DE ERROS
   try {
+    // Timeout de 15 segundos para conexões móveis (4G/5G no Safari)
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("TIMEOUT")), 5000)
+      setTimeout(() => reject(new Error("TIMEOUT")), 15000)
     );
 
     const queryPromise = db
@@ -452,61 +504,104 @@ async function handleMotoLogin(e) {
 
     const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
 
-    btn.disabled = false;
-    btn.innerText = 'Entrar';
-
     if (error) {
-      console.error("Database query error during login:", error);
-      showLoginError('Erro de conexão ou sistema. Verifique a internet.');
+      console.error("[LOGIN DB ERROR STEP 3]", { code: error.code, message: error.message });
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        showLoginError('Sem conexão com a internet. Verifique sua rede móvel ou Wi-Fi.');
+      } else if (error.code === '42501' || error.code === 'PGRST301') {
+        showLoginError('Acesso não autorizado às informações do motoboy.');
+      } else {
+        showLoginError(`Erro ao consultar cadastro (${error.code || 'DB'}): ${error.message}`);
+      }
       return;
     }
 
+    // ETAPA 4: VERIFICAÇÃO DO MOTOBOY E COMPARAÇÃO DO PIN
     if (!data) {
+      console.warn("[LOGIN FAIL STEP 4] Código de acesso não encontrado no banco:", inputCode);
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
       showLoginError('Código de Acesso incorreto. Contate o administrador.');
       return;
     }
 
+    if (data.status === 'inativo' || data.status === 'suspenso') {
+      console.warn("[LOGIN FAIL STEP 4] Motoboy inativo/suspenso:", data.id);
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+      showLoginError('Seu cadastro de motoboy está inativo ou suspenso. Contate a administração.');
+      return;
+    }
+
+    if (data.pin && String(data.pin).trim() !== String(pin).trim()) {
+      console.warn("[LOGIN FAIL STEP 4] PIN incorreto para o motoboy:", data.id);
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+      showLoginError('PIN incorreto. Verifique seus dados e tente novamente.');
+      return;
+    }
+
+    // ETAPA 5: ARMAZENAMENTO DE SESSÃO SEGURO E CONCLUIR LOGIN PRIMEIRO
     currentRider = data;
-    localStorage.setItem('speedMotoSession', JSON.stringify(data));
+    currentRiderId = data.id;
+    safeSetStorage('speedMotoSession', JSON.stringify(data));
+
+    if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+
+    // Redirecionamento e transição de tela concluem PRIMEIRO
     showApp();
-    loadMyDeliveries();
-    startGeolocation();
+
+    // ETAPA 6: INICIALIZAÇÕES DE SEGUNDO PLANO NÃO-BLOQUEANTES
+    setTimeout(() => {
+      try { loadMyDeliveries(); } catch (err) { logSafeError('login:loadMyDeliveries', err); }
+      try { startGeolocation(); } catch (err) { logSafeError('login:startGeolocation', err); }
+      try { initPWAFinancialRealtime(); } catch (err) { logSafeError('login:realtime', err); }
+      try { enableRiderNotifications(); } catch (err) { logSafeError('login:notifications', err); }
+    }, 100);
 
   } catch (err) {
-    console.error("Unhandled login exception:", err);
-    console.error("FULL LOGIN ERROR DETAILS (exception):", err);
-    alert("Exceção de Login: " + (err.message || String(err)) + "\n" + JSON.stringify(err));
-    showLoginError('Erro na conexão ou dados inválidos. Tente novamente.');
-    btn.disabled = false;
-    btn.innerText = 'Entrar';
+    console.error("[LOGIN EXCEPTION]", err);
+    if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+
+    if (err && err.message === 'TIMEOUT') {
+      showLoginError('Tempo limite excedido ao conectar ao servidor. Tente novamente.');
+    } else {
+      showLoginError(`Exceção de login: ${err.message || String(err)}`);
+    }
   }
 }
 
 function showLoginError(msg) {
   const el = document.getElementById('login-error');
-  el.innerText = msg;
-  el.classList.remove('hidden');
+  if (el) {
+    el.innerText = msg;
+    el.classList.remove('hidden');
+  }
 }
 
 async function handleMotoLogout() {
   if (!confirm('Sair do aplicativo?')) return;
-  if ('serviceWorker' in navigator && db) {
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && db) {
     try {
       const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        await db.rpc('deactivate_my_push_subscription', { p_endpoint: sub.endpoint }).catch(() => null);
+      if (reg && reg.pushManager) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await db.rpc('deactivate_my_push_subscription', { p_endpoint: sub.endpoint }).catch(() => null);
+        }
       }
     } catch (e) {}
   }
-  localStorage.removeItem('speedMotoSession');
-  localStorage.removeItem('activePWATab');
+  safeRemoveStorage('speedMotoSession');
+  safeRemoveStorage('activePWATab');
   if (realtimeChannel && db) db.removeChannel(realtimeChannel);
   if (realtimeFinancialSubscription && supabaseClient) {
     try { supabaseClient.removeChannel(realtimeFinancialSubscription); } catch (e) {}
     realtimeFinancialSubscription = null;
   }
-  if (watchId) navigator.geolocation.clearWatch(watchId);
+  if (watchId && typeof navigator !== 'undefined' && navigator.geolocation) {
+    try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+  }
   reportsFetchToken++;
   if (pwaStatementCachedItems) pwaStatementCachedItems.clear();
   reportsStatementOffset = 0;
@@ -518,7 +613,7 @@ async function handleMotoLogout() {
   document.getElementById('moto-id').value = '';
   document.getElementById('moto-pin').value = '';
   togglePWADrawer(false);
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
 }
 
 
@@ -543,7 +638,7 @@ function showApp() {
     updateConnectionButtonState(currentRider.status || 'Disponível');
   }
 
-  const savedTab = localStorage.getItem('activePWATab');
+  const savedTab = safeGetStorage('activePWATab');
   const targetTab = savedTab ? savedTab : 'map';
   hasCenteredOnce = false;
   switchPWATab(targetTab);
@@ -560,7 +655,7 @@ function showApp() {
   try { loadWeeklyBalance(); } catch (e) {}
   try { loadConsumablesData(); } catch (e) {}
   try { checkExistingPushSubscription(); } catch (e) {}
-  try { lucide.createIcons(); } catch (e) {}
+  try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch (e) {}
 }
 
 
@@ -595,7 +690,7 @@ async function fetchAndUpdateRiderStatusFromDB() {
 
     if (data) {
       currentRider = { ...currentRider, ...data };
-      localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
+      safeSetStorage('speedMotoSession', JSON.stringify(currentRider));
       setRiderStatusBadge(data.status || 'Disponível');
       updateConnectionButtonState(data.status || 'Disponível');
     }
@@ -822,7 +917,7 @@ async function toggleConnectionState() {
 // ─── TAB NAVIGATION ──────────────────────────────────────────────────────────
 
 function switchPWATab(tab) {
-  localStorage.setItem('activePWATab', tab);
+  safeSetStorage('activePWATab', tab);
   document.querySelectorAll('.pwa-tab').forEach(t => t.classList.add('hidden'));
   document.querySelectorAll('.pwa-drawer-item').forEach(b => b.classList.remove('active'));
 
@@ -864,7 +959,7 @@ function switchPWATab(tab) {
     if (chatDot) chatDot.classList.add('hidden');
     fetchMotoChatHistory();
   }
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
 }
 
 // ─── DRAWER MENU NAVIGATION ──────────────────────────────────────────────────
@@ -1651,7 +1746,7 @@ async function initRiderMap() {
 
   const centerPos = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : { lat: -29.842173, lng: -51.126764 };
 
-let currentMapTheme = localStorage.getItem('pwaMapTheme') || 'dark';
+let currentMapTheme = safeGetStorage('pwaMapTheme') || 'dark';
 
 const darkOperationalStyles = [
   { featureType: 'all', elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
@@ -1676,7 +1771,7 @@ const lightOperationalStyles = [
 
 function setMapTheme(theme) {
   currentMapTheme = theme;
-  localStorage.setItem('pwaMapTheme', theme);
+  safeSetStorage('pwaMapTheme', theme);
   applyMapThemeUI(theme);
   if (riderMap) {
     const styles = theme === 'dark' ? darkOperationalStyles : lightOperationalStyles;
@@ -1851,9 +1946,8 @@ function refreshCurrentBatteryState() {
 }
 
 function showPrivacyConsentNotice() {
-  if (typeof localStorage === 'undefined') return;
-  if (!localStorage.getItem('privacy_consent_shown')) {
-    localStorage.setItem('privacy_consent_shown', 'true');
+  if (!safeGetStorage('privacy_consent_shown')) {
+    safeSetStorage('privacy_consent_shown', 'true');
     showPWAToast('O aplicativo utiliza localização e o nível de bateria para acompanhamento operacional.');
   }
 }
@@ -1884,6 +1978,7 @@ function startGeolocation() {
 // ─── TOAST ───────────────────────────────────────────────────────────────────
 
 function showPWAToast(msg) {
+  if (typeof document === 'undefined' || !document.body) return;
   let container = document.getElementById('pwa-toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -1900,7 +1995,7 @@ function showPWAToast(msg) {
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
+    setTimeout(() => { if (toast && typeof toast.remove === 'function') toast.remove(); }, 300);
   }, 3500);
 }
 
@@ -1983,8 +2078,8 @@ let riderHistory = [];
 
 function loadLocalProfile() {
   if (!currentRider) return;
-  const localAvatar = localStorage.getItem(`speedRiderAvatar_${currentRider.id}`);
-  const localEmail = localStorage.getItem(`speedRiderEmail_${currentRider.id}`) || 'motoboy@speedlog.com.br';
+  const localAvatar = safeGetStorage(`speedRiderAvatar_${currentRider.id}`);
+  const localEmail = safeGetStorage(`speedRiderEmail_${currentRider.id}`) || 'motoboy@speedlog.com.br';
   
   localProfileImage = localAvatar || null;
 
@@ -2103,16 +2198,16 @@ async function saveProfileChanges(event) {
   }
 
   // 2. Persist local variables (email and photo)
-  localStorage.setItem(`speedRiderEmail_${currentRider.id}`, email);
+  safeSetStorage(`speedRiderEmail_${currentRider.id}`, email);
   if (localProfileImage) {
-    localStorage.setItem(`speedRiderAvatar_${currentRider.id}`, localProfileImage);
+    safeSetStorage(`speedRiderAvatar_${currentRider.id}`, localProfileImage);
   } else {
-    localStorage.removeItem(`speedRiderAvatar_${currentRider.id}`);
+    safeRemoveStorage(`speedRiderAvatar_${currentRider.id}`);
   }
 
   // Update session
   currentRider.pin = pin;
-  localStorage.setItem('speedMotoSession', JSON.stringify(currentRider));
+  safeSetStorage('speedMotoSession', JSON.stringify(currentRider));
 
   // Reload profile indicators in UI
   loadLocalProfile();
@@ -3673,7 +3768,7 @@ function closePWATransactionDetailModal() {
 function initPWAFinancialRealtime() {
   if (!supabaseClient || realtimeFinancialSubscription) return;
 
-  const fleetId = currentRiderData?.id;
+  const fleetId = currentRider ? currentRider.id : null;
   if (!fleetId) return;
 
   let debounceTimer = null;
