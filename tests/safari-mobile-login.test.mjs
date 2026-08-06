@@ -12,7 +12,7 @@ let loginErrorText = '';
 let loginErrorHidden = true;
 
 const mockDOM = {
-  'moto-id': { value: 'MB-101' },
+  'moto-id': { value: 'MB-1234' },
   'moto-pin': { value: '1234' },
   'login-btn': { disabled: false, innerText: 'Entrar' },
   'login-error': {
@@ -34,9 +34,8 @@ const mockDOM = {
 // Mock Supabase DB
 const mockMotoboyData = {
   id: 'uuid-rider-101',
-  motoboy_code: 'MB-101',
+  motoboy_code: 'MB-1234',
   name: 'Motoboy Teste Safari',
-  pin: '1234',
   status: 'ativo'
 };
 
@@ -52,13 +51,45 @@ const mockQueryChain = {
   then: (resolve) => resolve({ data: [mockMotoboyData], error: null })
 };
 
+const mockChannel = {
+  on: () => mockChannel,
+  subscribe: () => ({})
+};
+
 const mockDbInstance = {
   from: () => mockQueryChain,
-  rpc: async () => ({ data: null, error: null }),
-  channel: () => ({
-    on: () => mockDbInstance.channel(),
-    subscribe: () => ({})
-  })
+  functions: {
+    invoke: async (fnName, options) => {
+      if (fnName === 'rider-auth') {
+        return {
+          data: { success: true, token_hash: 'mock-token-hash-safari', verification_type: 'email' },
+          error: null
+        };
+      }
+      return { data: null, error: null };
+    }
+  },
+  auth: {
+    verifyOtp: async ({ token_hash }) => {
+      if (token_hash === 'mock-token-hash-safari') {
+        return {
+          data: { session: { access_token: 'mock-at' }, user: { id: 'uuid-rider-101' } },
+          error: null
+        };
+      }
+      return { data: null, error: new Error('Invalid OTP') };
+    },
+    getUser: async () => ({
+      data: { user: { id: 'uuid-rider-101' } },
+      error: null
+    }),
+    getSession: async () => ({
+      data: { session: { user: { id: 'uuid-rider-101' } } },
+      error: null
+    }),
+    signOut: async () => ({ error: null })
+  },
+  channel: () => mockChannel
 };
 
 // Simulação estrita do Safari iOS (Private Browsing + sem Push/Notification/Permissions)
@@ -127,10 +158,9 @@ async function runSafariLoginTest() {
   assert.strictEqual(rider.id, 'uuid-rider-101', 'ID do motoboy deve corresponder ao retornado pelo banco');
   assert.strictEqual(loginErrorText, '', 'Nenhum erro visual de login deve ser exibido');
 
-  // Testar fallback de safeStorage em modo privado
+  // Confirmar que speedMotoSession informal não permanece salvo
   const savedInMemory = scope.safeGetStorage('speedMotoSession');
-  assert.ok(savedInMemory, 'Sessão deve ter sido salva no em-memory fallback');
-  assert.strictEqual(JSON.parse(savedInMemory).id, 'uuid-rider-101');
+  assert.strictEqual(savedInMemory, null, 'Chave informal speedMotoSession deve ser removida');
 
   console.log('[PASS] Login do motoboy no Safari concluído com sucesso sem travar por APIs ausentes ou storage em modo privado.');
 }

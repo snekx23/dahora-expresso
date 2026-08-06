@@ -25,7 +25,8 @@ let db = null;
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: false,
+        storageKey: 'dahora-rider-auth'
       }
     });
   }
@@ -147,10 +148,13 @@ function logSafeError(op, err) {
 
 // ─── RESOLVER MOTOBOY AUTENTICADO POR AUTH.UID() ─────────────────────────────
 async function resolveCurrentRider() {
-  if (!db) return currentRider;
+  safeRemoveStorage('speedMotoSession');
+  if (!db) return null;
   try {
     const { data: { session }, error: sessionErr } = await db.auth.getSession();
-    if (sessionErr) logSafeError('getSession', sessionErr);
+    if (sessionErr) {
+      logSafeError('getSessionIgnored', sessionErr);
+    }
 
     if (session?.user?.id) {
       const { data: fleetRow, error: fleetErr } = await db
@@ -159,32 +163,20 @@ async function resolveCurrentRider() {
         .eq('user_id', session.user.id)
         .maybeSingle();
 
-      if (fleetErr) logSafeError('resolveCurrentRiderFleetQuery', fleetErr);
-
-      if (fleetRow) {
+      if (!fleetErr && fleetRow) {
         currentRider = fleetRow;
         currentRiderId = fleetRow.id;
-        safeSetStorage('speedMotoSession', JSON.stringify(fleetRow));
         return fleetRow;
-      } else {
-        showLoginError("Seu usuário não está vinculado a um motoboy ativo.");
-        return null;
       }
+      // Se a sessão Auth não tiver vínculo em fleet, encerra a sessão inválida do PWA
+      await db.auth.signOut().catch(() => null);
     }
   } catch (e) {
     logSafeError('resolveCurrentRiderException', e);
   }
 
-  const saved = safeGetStorage('speedMotoSession');
-  if (saved) {
-    try {
-      currentRider = JSON.parse(saved);
-      currentRiderId = currentRider ? currentRider.id : null;
-      return currentRider;
-    } catch {
-      safeRemoveStorage('speedMotoSession');
-    }
-  }
+  currentRider = null;
+  currentRiderId = null;
   return null;
 }
 
@@ -487,71 +479,80 @@ async function handleMotoLogin(e) {
   }
 
   const digits = rawId.replace(/\D/g, '');
-  const inputCode = rawId.replace('#', '').trim();
+  if (digits.length < 4 || !/^\d{4}$/.test(pin)) {
+    showLoginError('Informe o Código de Acesso e o PIN de 4 números.');
+    if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+    return;
+  }
 
-  // ETAPA 3: CONSULTA À TABELA FLEET COM TIMEOUT E SEPARAÇÃO DE ERROS
+  const code4 = digits.slice(-4);
+
+  // ETAPA 3: AUTENTICAÇÃO AUTORITATIVA VIA EDGE FUNCTION RIDER-AUTH & VERIFYOTP
   try {
-    // Timeout de 15 segundos para conexões móveis (4G/5G no Safari)
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("TIMEOUT")), 15000)
     );
 
-    const queryPromise = db
+    const fnPromise = db.functions.invoke('rider-auth', {
+      body: { access_code: code4, pin: pin }
+    });
+
+    const { data: resData, error: fnErr } = await Promise.race([fnPromise, timeoutPromise]);
+
+    if (fnErr || !resData || !resData.success || !resData.token_hash) {
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+      const msg = resData?.error || fnErr?.message || 'Código ou PIN inválido, ou acesso indisponível.';
+      showLoginError(msg);
+      return;
+    }
+
+    const tokenHash = resData.token_hash;
+    if (pinEl) pinEl.value = '';
+
+    // Trocar token_hash por sessão oficial no Supabase Auth via verifyOtp
+    const { data: verifyRes, error: verifyErr } = await db.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: 'email'
+    });
+
+    if (verifyErr || !verifyRes || !verifyRes.session || !verifyRes.user) {
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+      showLoginError('Falha ao concluir a autenticação oficial. Tente novamente.');
+      return;
+    }
+
+    // Confirmar identidade oficial e vincular com public.fleet pelo user_id
+    const { data: { user }, error: userErr } = await db.auth.getUser();
+    if (userErr || !user) {
+      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
+      await db.auth.signOut().catch(() => null);
+      showLoginError('Falha ao obter dados da sessão autenticada.');
+      return;
+    }
+
+    const { data: fleetRow, error: fleetErr } = await db
       .from('fleet')
       .select('*')
-      .or(`motoboy_code.eq.${inputCode},motoboy_code.eq.MB-${digits},motoboy_code.eq.${digits}`)
-      .maybeSingle();
+      .eq('user_id', user.id)
+      .single();
 
-    const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
-
-    if (error) {
-      console.error("[LOGIN DB ERROR STEP 3]", { code: error.code, message: error.message });
+    if (fleetErr || !fleetRow) {
       if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
-
-      const msg = (error.message || '').toLowerCase();
-      if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-        showLoginError('Sem conexão com a internet. Verifique sua rede móvel ou Wi-Fi.');
-      } else if (error.code === '42501' || error.code === 'PGRST301') {
-        showLoginError('Acesso não autorizado às informações do motoboy.');
-      } else {
-        showLoginError(`Erro ao consultar cadastro (${error.code || 'DB'}): ${error.message}`);
-      }
+      await db.auth.signOut().catch(() => null);
+      showLoginError('Motoboy sem cadastro ativo ou vínculo válido.');
       return;
     }
 
-    // ETAPA 4: VERIFICAÇÃO DO MOTOBOY E COMPARAÇÃO DO PIN
-    if (!data) {
-      console.warn("[LOGIN FAIL STEP 4] Código de acesso não encontrado no banco:", inputCode);
-      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
-      showLoginError('Código de Acesso incorreto. Contate o administrador.');
-      return;
-    }
-
-    if (data.status === 'inativo' || data.status === 'suspenso') {
-      console.warn("[LOGIN FAIL STEP 4] Motoboy inativo/suspenso:", data.id);
-      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
-      showLoginError('Seu cadastro de motoboy está inativo ou suspenso. Contate a administração.');
-      return;
-    }
-
-    if (data.pin && String(data.pin).trim() !== String(pin).trim()) {
-      console.warn("[LOGIN FAIL STEP 4] PIN incorreto para o motoboy:", data.id);
-      if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
-      showLoginError('PIN incorreto. Verifique seus dados e tente novamente.');
-      return;
-    }
-
-    // ETAPA 5: ARMAZENAMENTO DE SESSÃO SEGURO E CONCLUIR LOGIN PRIMEIRO
-    currentRider = data;
-    currentRiderId = data.id;
-    safeSetStorage('speedMotoSession', JSON.stringify(data));
+    currentRider = fleetRow;
+    currentRiderId = fleetRow.id;
+    safeRemoveStorage('speedMotoSession');
 
     if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
 
-    // Redirecionamento e transição de tela concluem PRIMEIRO
+    // Renderizar aplicação PWA
     showApp();
 
-    // ETAPA 6: INICIALIZAÇÕES DE SEGUNDO PLANO NÃO-BLOQUEANTES
+    // Inicializações de segundo plano não-bloqueantes
     setTimeout(() => {
       try { loadMyDeliveries(); } catch (err) { logSafeError('login:loadMyDeliveries', err); }
       try { startGeolocation(); } catch (err) { logSafeError('login:startGeolocation', err); }
@@ -581,6 +582,9 @@ function showLoginError(msg) {
 
 async function handleMotoLogout() {
   if (!confirm('Sair do aplicativo?')) return;
+  if (db) {
+    try { await db.auth.signOut(); } catch (e) {}
+  }
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && db) {
     try {
       const reg = await navigator.serviceWorker.ready;

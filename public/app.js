@@ -31,7 +31,8 @@ let maxSimultaneousDeliveries = 1;
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        storageKey: 'dahora-owner-auth'
       }
     });
   } else {
@@ -4232,6 +4233,8 @@ function openCredentialCard(code, name, pin) {
 
 function closeCredentials(event) {
   if (event && event.target !== document.getElementById('modal-credentials')) return;
+  _currentCreds = { code: '', name: '', pin: '' };
+  _pinVisible = false;
   document.getElementById('modal-credentials').classList.add('hidden');
 }
 
@@ -4854,61 +4857,62 @@ async function submitRegisterMotoboy(event) {
   submitBtn.disabled = true;
   submitBtn.querySelector('span').innerText = 'Cadastrando...';
 
-  // ID do motoboy: últimos 4 números do telefone pessoal.
-  const newId = '#MB-' + phoneDigits.slice(-4);
-  const existingRider = mockData.fleet.find(rider => rider.id === newId);
-  if (existingRider) {
-    if (generalErrorEl) {
-      document.getElementById('register-motoboy-error-text').innerText = `Já existe motoboy registrado com o ID ${newId}. Verifique o telefone.`;
-      generalErrorEl.classList.remove('hidden');
-    }
-    submitBtn.disabled = false;
-    submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
-    return;
-  }
-
-  const dbPayload = {
-    motoboy_code: newId.replace('#', ''),
+  const payload = {
     name: name,
-    phone: phoneDigits, // salvar telefone normalizado (apenas dígitos)
+    phone: phoneDigits,
     vehicle: vehicle,
     plate: plate,
-    status: 'Disponível'
+    pin: pinRaw
   };
 
-  if (supabaseClient) {
-    const { error } = await supabaseClient
-      .from('fleet')
-      .insert([dbPayload]);
+  let registeredCode = '#MB-' + phoneDigits.slice(-4);
 
-    if (error) {
+  if (supabaseClient) {
+    const { data: resData, error: fnErr } = await supabaseClient.functions.invoke('create-rider-user', {
+      body: payload
+    });
+
+    if (fnErr || !resData || !resData.success) {
+      const errMsg = resData?.error || fnErr?.message || 'Erro ao cadastrar motoboy.';
       if (generalErrorEl) {
-        document.getElementById('register-motoboy-error-text').innerText = 'Erro ao salvar: ' + error.message;
+        const errTxtEl = document.getElementById('register-motoboy-error-text');
+        if (errTxtEl) errTxtEl.innerText = errMsg;
         generalErrorEl.classList.remove('hidden');
       }
       submitBtn.disabled = false;
       submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
       return;
     }
+
+    if (resData.motoboy_code) {
+      registeredCode = resData.motoboy_code.startsWith('#') ? resData.motoboy_code : '#' + resData.motoboy_code;
+    }
   } else {
     // Offline fallback: add to local mockData
     mockData.fleet.push({
-      id: newId,
+      id: registeredCode,
       name: name,
       phone: phoneDigits,
       vehicle: vehicle,
       plate: plate,
-      status: 'Disponível'
+      status: 'Indisponível'
     });
   }
+
+  // Reset form inputs
+  if (nameEl) nameEl.value = '';
+  if (phoneEl) phoneEl.value = '';
+  if (vehicleEl) vehicleEl.value = '';
+  if (plateEl) plateEl.value = '';
+  if (pinEl) pinEl.value = '';
 
   // Refresh fleet table
   await fetchFleet();
   renderFleetTable();
 
-  // Close registration modal and open credential card
+  // Close registration modal and open credential card with temporary memory
   document.getElementById('modal-register-motoboy').classList.add('hidden');
-  openCredentialCard(newId, name, pinRaw);
+  openCredentialCard(registeredCode, name, pinRaw);
 
   submitBtn.disabled = false;
   submitBtn.querySelector('span').innerText = 'Cadastrar Motoboy';
