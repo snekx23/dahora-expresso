@@ -493,16 +493,34 @@ async function handleMotoLogin(e) {
       setTimeout(() => reject(new Error("TIMEOUT")), 15000)
     );
 
-    const fnPromise = db.functions.invoke('rider-auth', {
+    const publicAnonKey = (typeof window !== 'undefined' && window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.key) ? window.SUPABASE_CONFIG.key : '';
+    const fnOptions = {
       body: { access_code: code4, pin: pin }
-    });
+    };
+    if (publicAnonKey) {
+      fnOptions.headers = { Authorization: `Bearer ${publicAnonKey}` };
+    }
+
+    const fnPromise = db.functions.invoke('rider-auth', fnOptions);
 
     const { data: resData, error: fnErr } = await Promise.race([fnPromise, timeoutPromise]);
 
+    let errorMsg = resData?.error;
+    if (!errorMsg && fnErr) {
+      if (fnErr.context) {
+        try {
+          const errBody = await fnErr.context.json();
+          if (errBody && errBody.error) errorMsg = errBody.error;
+        } catch (_) {}
+      }
+      if (!errorMsg && fnErr.message && fnErr.message !== 'Edge Function returned a non-2xx status code') {
+        errorMsg = fnErr.message;
+      }
+    }
+
     if (fnErr || !resData || !resData.success || !resData.token_hash) {
       if (btn) { btn.disabled = false; btn.innerText = 'Entrar'; }
-      const msg = resData?.error || fnErr?.message || 'Código ou PIN inválido, ou acesso indisponível.';
-      showLoginError(msg);
+      showLoginError(errorMsg || 'Código ou PIN inválido, ou acesso indisponível.');
       return;
     }
 

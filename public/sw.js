@@ -1,5 +1,5 @@
 // Dahora Expresso - Service Worker Otimizado com Suporte a Web Push
-const CACHE_NAME = 'dahora-expresso-cache-v7';
+const CACHE_NAME = 'dahora-expresso-cache-v8';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

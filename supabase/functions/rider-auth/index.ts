@@ -54,7 +54,7 @@ serve(async (req: Request) => {
 
     if (accessCode.length < 4 || !/^\d{4}$/.test(pin)) {
       return new Response(JSON.stringify({ success: false, error: 'Código ou PIN inválido, ou acesso indisponível.' }), {
-        status: 401,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -69,7 +69,7 @@ serve(async (req: Request) => {
 
     if (valErr || !valRes || !valRes.success || !valRes.user_id) {
       return new Response(JSON.stringify({ success: false, error: 'Código ou PIN inválido, ou acesso indisponível.' }), {
-        status: 401,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -80,7 +80,7 @@ serve(async (req: Request) => {
     const { data: authUserData, error: authUserErr } = await supabaseAdmin.auth.admin.getUserById(userId);
     if (authUserErr || !authUserData?.user?.email) {
       return new Response(JSON.stringify({ success: false, error: 'Código ou PIN inválido, ou acesso indisponível.' }), {
-        status: 401,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -95,7 +95,7 @@ serve(async (req: Request) => {
 
     if (linkErr || !linkRes || !linkRes.properties) {
       return new Response(JSON.stringify({ success: false, error: 'Código ou PIN inválido, ou acesso indisponível.' }), {
-        status: 401,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -105,7 +105,7 @@ serve(async (req: Request) => {
 
     if (!tokenHash) {
       return new Response(JSON.stringify({ success: false, error: 'Código ou PIN inválido, ou acesso indisponível.' }), {
-        status: 401,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
