@@ -1,0 +1,8 @@
+# Supabase CLI Configuration: Dahora Expresso
+project_id = "tskivauszmhhtqtegvwb"
+
+[functions.create-rider-user]
+verify_jwt = true
+
+[functions.rider-auth]
+verify_jwt = false
