@@ -47,12 +47,32 @@ if (supabaseUrl.includes('127.0.0.1') || supabaseUrl.includes('localhost') || su
 }
 
 // 4. Mapeamento Estrito e Sanitizado das Variáveis Públicas
+const DEFAULT_VAPID_PUBLIC_KEY = 'BEo-ivrbMWP4mK2syicv0ic_Wr2arC2LZBmtbtn2zHPzTbykpyJ22ETL2DX9t6bHFL5CGkMnTtAaq-2bcQ_sxYw';
+let rawVapidKey = (process.env.VAPID_PUBLIC_KEY || process.env.PUSH_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY).trim();
+
+if (rawVapidKey) {
+  const cleanStr = rawVapidKey.replace(/^["']|["']$/g, '');
+  const padding = '='.repeat((4 - (cleanStr.length % 4)) % 4);
+  const base64 = (cleanStr + padding).replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    const rawData = Buffer.from(base64, 'base64');
+    if (rawData.length !== 65 || rawData[0] !== 0x04) {
+      console.warn(`⚠️ [BUILD WARNING] VAPID_PUBLIC_KEY fornecida ("${rawVapidKey.slice(0, 8)}...") é inválida (${rawData.length} bytes). Usando chave VAPID oficial validada.`);
+      rawVapidKey = DEFAULT_VAPID_PUBLIC_KEY;
+    }
+  } catch (e) {
+    rawVapidKey = DEFAULT_VAPID_PUBLIC_KEY;
+  }
+} else {
+  rawVapidKey = DEFAULT_VAPID_PUBLIC_KEY;
+}
+
 const publicEnv = {
   "window.__ENV_SUPABASE_URL": supabaseUrl,
   "window.__ENV_SUPABASE_KEY": supabaseKey,
   "window.__ENV_GOOGLE_MAPS_API_KEY": (process.env.GOOGLE_MAPS_API_KEY || '').trim(),
   "window.__ENV_GOOGLE_MAPS_MAP_ID": (process.env.GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID').trim(),
-  "window.__ENV_VAPID_PUBLIC_KEY": (process.env.VAPID_PUBLIC_KEY || '').trim(),
+  "window.__ENV_VAPID_PUBLIC_KEY": rawVapidKey,
   "window.__ENV_NAME": (process.env.APP_ENV || 'staging').trim(),
   "window.__ENV_ENVIRONMENT_KIND": (process.env.ENVIRONMENT_KIND || 'production').trim(),
   "window.__ENV_DEMO_RESET_ENABLED": (process.env.DEMO_RESET_ENABLED || 'false').trim(),

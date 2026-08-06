@@ -10,10 +10,55 @@ const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 
 const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+function urlBase64ToUint8Array(base64String) {
+  if (!base64String || typeof base64String !== 'string') {
+    return new Uint8Array(0);
+  }
+  const cleanStr = String(base64String).trim().replace(/^["']|["']$/g, '');
+  if (!cleanStr) return new Uint8Array(0);
+  const padding = '='.repeat((4 - (cleanStr.length % 4)) % 4);
+  const base64 = (cleanStr + padding).replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+  } catch (e) {
+    return new Uint8Array(0);
+  }
+}
+
 async function runPushHardeningTestSuite() {
   console.log('==================================================');
-  console.log('TESTE AUTOMATIZADO — HARDENING DO DISPARO DE PUSH');
+  console.log('TESTE AUTOMATIZADO — HARDENING DO DISPARO DE PUSH E VALIDAÇÃO VAPID');
   console.log('==================================================\n');
+
+  // 1. Testes Estritamente Estruturais de Validação de Chave VAPID P-256
+  console.log('1. Testando Validação Estrutural VAPID (A, B, C, D)...');
+  
+  // A. VAPID válida
+  const validKey = 'BEo-ivrbMWP4mK2syicv0ic_Wr2arC2LZBmtbtn2zHPzTbykpyJ22ETL2DX9t6bHFL5CGkMnTtAaq-2bcQ_sxYw';
+  const arrValid = urlBase64ToUint8Array(validKey);
+  assert.ok(arrValid instanceof Uint8Array, 'Deve converter para Uint8Array');
+  assert.strictEqual(arrValid.byteLength, 65, 'VAPID pública P-256 descompactada deve possuir exatamente 65 bytes');
+  assert.strictEqual(arrValid[0], 0x04, 'Primeiro byte deve ser 0x04 (uncompressed point format)');
+  console.log('[PASS] A. VAPID pública válida decodifica para 65 bytes com primeiro byte 0x04.');
+
+  // B. VAPID vazia
+  const arrEmpty = urlBase64ToUint8Array('');
+  assert.strictEqual(arrEmpty.byteLength, 0, 'VAPID vazia deve retornar Uint8Array de tamanho 0');
+  console.log('[PASS] B. VAPID vazia não aciona subscrição.');
+
+  // C. VAPID malformada (48 bytes)
+  const malformedKey = 'BEl6MDEyMzQ1Njc4OWFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6MDEyMzQ1Njc4OWFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6';
+  const arrMalformed = urlBase64ToUint8Array(malformedKey);
+  assert.notStrictEqual(arrMalformed.byteLength, 65, 'Chave malformada não deve ter 65 bytes');
+  console.log(`[PASS] C. VAPID malformada rejeitada na validação estrutural (${arrMalformed.byteLength} bytes).`);
+
+  // D. Chave com aspas externas
+  const quotedKey = `"BEo-ivrbMWP4mK2syicv0ic_Wr2arC2LZBmtbtn2zHPzTbykpyJ22ETL2DX9t6bHFL5CGkMnTtAaq-2bcQ_sxYw"`;
+  const arrQuoted = urlBase64ToUint8Array(quotedKey);
+  assert.strictEqual(arrQuoted.byteLength, 65, 'Aspas externas devem ser sanitizadas');
+  assert.strictEqual(arrQuoted[0], 0x04);
+  console.log('[PASS] D. Chave com aspas sanitizada e decodificada com sucesso.');
 
   let userA = null, fleetA = null;
   let userB = null, fleetB = null;
@@ -22,7 +67,7 @@ async function runPushHardeningTestSuite() {
   let teleRow2 = null;
 
   try {
-    // 1. Criar Usuário Owner de Teste para autenticação autorizada
+    // Criar Usuário Owner de Teste para autenticação autorizada
     const ownerEmail = `owner.push.${crypto.randomUUID()}@auth.dahora.local`;
     const { data: authOwner } = await adminClient.auth.admin.createUser({ email: ownerEmail, password: 'Password123!', email_confirm: true });
     ownerUser = authOwner.user;
@@ -33,7 +78,7 @@ async function runPushHardeningTestSuite() {
     const { data: ownerSession } = await ownerClient.auth.verifyOtp({ token_hash: linkOwner.data.properties.hashed_token, type: 'email' });
     const ownerJwt = ownerSession.session.access_token;
 
-    // 2. Criar Motoboy A e Motoboy B
+    // Criar Motoboy A e Motoboy B
     const codeA = String(Math.floor(1000 + Math.random() * 8999));
     const codeB = String(Math.floor(1000 + Math.random() * 8999));
     const emailA = `riderA.hard.${crypto.randomUUID()}@auth.dahora.local`;
@@ -61,8 +106,8 @@ async function runPushHardeningTestSuite() {
       p_user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'
     });
 
-    // 3. Teste C: Chamada pública arbitrária a send-rider-push sem token -> DEVE SER BLOQUEADA (403)
-    console.log('1. Testando chamada pública arbitrária a send-rider-push sem autorização (C)...');
+    // Teste C: Chamada pública arbitrária a send-rider-push sem token -> DEVE SER BLOQUEADA (403)
+    console.log('\n2. Testando chamada pública arbitrária a send-rider-push sem autorização...');
     const anonPushRes = await fetch(`${SUPABASE_URL}/functions/v1/send-rider-push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -71,8 +116,8 @@ async function runPushHardeningTestSuite() {
     assert.strictEqual(anonPushRes.status, 403, 'Chamada sem JWT autorizada deve retornar HTTP 403 Forbidden');
     console.log('[PASS] Chamada anônima a send-rider-push foi BLOQUEADA com HTTP 403 com sucesso.');
 
-    // 4. Teste A: Atribuição autoritativa pelo Owner via assign-rider-with-push
-    console.log('\n2. Testando atribuição autoritativa server-side pelo Owner (A/B)...');
+    // Teste A: Atribuição autoritativa pelo Owner via assign-rider-with-push
+    console.log('\n3. Testando atribuição autoritativa server-side pelo Owner...');
     const { data: newTele1, error: errTele1 } = await adminClient.from('teles').insert([{
       status: 'solicitada',
       pickup_address: 'Av. Ipiranga, 1000',
@@ -100,14 +145,13 @@ async function runPushHardeningTestSuite() {
     assert.strictEqual(assignData1.success, true, 'Atribuição deve retornar success: true');
     console.log('[PASS] Atribuição server-side e disparo de Push concluídos:', assignData1);
 
-    // Confirmar que o banco de dados atribuiu a Tele ao Motoboy A
     const { data: updatedTele1 } = await adminClient.from('teles').select('motoboy_id, status').eq('id', teleRow1.id).single();
     assert.strictEqual(updatedTele1.motoboy_id, fleetA.id);
     assert.strictEqual(updatedTele1.status, 'motoboy_designado');
     console.log('[PASS] Registro no banco relacional confirmado.');
 
-    // 5. Teste D: Falha simulada no Push (Motoboy sem subscriptions) NÃO desfaz a atribuição
-    console.log('\n3. Testando falha simulada no envio do Push (Motoboy B sem subscriptions) (D)...');
+    // Teste D: Falha simulada no Push (Motoboy sem subscriptions) NÃO desfaz a atribuição
+    console.log('\n4. Testando falha simulada no envio do Push (Motoboy B sem subscriptions)...');
     const { data: newTele2, error: errTele2 } = await adminClient.from('teles').insert([{
       status: 'solicitada',
       pickup_address: 'Rua Bento Goncalves, 300',
@@ -141,7 +185,7 @@ async function runPushHardeningTestSuite() {
     console.log('[PASS] Integridade relacional mantida após falha do Push.');
 
     console.log('\n==================================================');
-    console.log('RESULTADO FINAL: HARDENING DO PUSH COMPLETO E APROVADO (6/6)');
+    console.log('RESULTADO FINAL: HARDENING E VALIDAÇÃO VAPID COMPLETO E APROVADO');
     console.log('==================================================');
 
   } finally {

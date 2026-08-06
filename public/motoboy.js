@@ -206,19 +206,16 @@ function registerSW() {
 }
 
 function urlBase64ToUint8Array(base64String) {
-  if (!base64String || typeof base64String !== 'string' || base64String.trim() === '') {
+  if (!base64String || typeof base64String !== 'string') {
     return new Uint8Array(0);
   }
-  const cleanStr = base64String.trim().replace(/^["']|["']$/g, '');
+  const cleanStr = String(base64String).trim().replace(/^["']|["']$/g, '');
+  if (!cleanStr) return new Uint8Array(0);
   const padding = '='.repeat((4 - (cleanStr.length % 4)) % 4);
-  const base64 = (cleanStr + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const base64 = (cleanStr + padding).replace(/-/g, '+').replace(/_/g, '/');
   try {
     const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
+    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
   } catch (e) {
     console.warn("⚠️ urlBase64ToUint8Array failed to decode base64 string:", e.message);
     return new Uint8Array(0);
@@ -277,6 +274,21 @@ async function enableRiderNotifications() {
       throw new Error('Servidor de notificações não configurado.');
     }
 
+    const cleanKey = String(vapidPublicKey || '').trim().replace(/^["']|["']$/g, '');
+    const applicationServerKey = urlBase64ToUint8Array(cleanKey);
+
+    if (
+      !(applicationServerKey instanceof Uint8Array) ||
+      applicationServerKey.byteLength !== 65 ||
+      applicationServerKey[0] !== 0x04
+    ) {
+      const len = applicationServerKey ? applicationServerKey.byteLength : 0;
+      const firstByte = (applicationServerKey && applicationServerKey.length > 0) ? applicationServerKey[0] : 'N/A';
+      console.warn(`VAPID public key validation failed: length=${len} firstByte=${firstByte}`);
+      updatePushAlertCardUI('Status: Chave pública de notificações inválida. Contate o administrador.', 'Tentar novamente', 'error');
+      throw new Error('Chave pública de notificações inválida. Contate o administrador.');
+    }
+
     const permission = await Notification.requestPermission();
     if (permission === 'denied') {
       updatePushAlertCardUI('Status: Notificações bloqueadas nas configurações do navegador.', 'Permissão negada no navegador', 'error');
@@ -293,7 +305,6 @@ async function enableRiderNotifications() {
     // Criar ou obter subscription
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
-      const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationServerKey
@@ -301,7 +312,7 @@ async function enableRiderNotifications() {
     }
 
     if (!subscription) {
-      updatePushAlertCardUI('Status: Não foi possível registrar este aparelho', 'Não foi possível registrar este aparelho', 'error');
+      updatePushAlertCardUI('Status: Não foi possível registrar este aparelho', 'Tentar novamente', 'error');
       throw new Error('Não foi possível criar a subscrição no navegador.');
     }
 
@@ -346,6 +357,10 @@ async function enableRiderNotifications() {
 
   } catch (err) {
     console.warn("⚠️ Erro no fluxo de notificações:", err.message);
+    const friendlyMsg = err.message.includes('inválida') || err.message.includes('não configurado')
+      ? err.message
+      : 'Não foi possível ativar as notificações.';
+    updatePushAlertCardUI(`Status: ${friendlyMsg}`, 'Tentar novamente', 'error');
     showPWAToast(err.message, 'error');
     return { success: false, error: err.message };
   }
