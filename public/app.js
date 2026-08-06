@@ -10925,26 +10925,55 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '') 
     reason: reason ? reason.trim() : null
   };
 
-  try {
-    const res = await fetch('/api/operations/assign-rider', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+  let data = null;
+  let success = false;
+
+  if (typeof db !== 'undefined' && db && typeof db.rpc === 'function') {
+    const { data: rpcRes, error: rpcErr } = await db.rpc('assign_rider_to_tele', {
+      p_tele_id: String(teleId),
+      p_motoboy_id: String(riderId),
+      p_expected_version: parseInt(expectedVersion, 10),
+      p_reason: reason ? reason.trim() : null
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      return { success: false, errorCode: data.error_code || 'ERROR', message: data.message || 'Falha no despacho.' };
+    if (!rpcErr && rpcRes && rpcRes.success) {
+      data = rpcRes;
+      success = true;
+    } else if (rpcErr || (rpcRes && !rpcRes.success)) {
+      const errCode = rpcRes?.error || rpcErr?.code || 'ERROR';
+      const errMsg = rpcRes?.message || rpcErr?.message || 'Falha no despacho.';
+      return { success: false, errorCode: errCode, message: errMsg };
     }
+  }
 
+  if (!success) {
+    try {
+      const res = await fetch('/api/operations/assign-rider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      data = await res.json();
+      if (res.ok && data.success) {
+        success = true;
+      } else {
+        return { success: false, errorCode: data?.error_code || 'ERROR', message: data?.message || 'Falha no despacho.' };
+      }
+    } catch (err) {
+      return { success: false, errorCode: 'CONNECTION_ERROR', message: 'Erro de conexão com o servidor de despacho.' };
+    }
+  }
+
+  if (success && data) {
     // Sucesso — atualizar store em memória
     const tele = opTelesStoreMap.get(String(teleId));
     if (tele) {
       tele.motoboy_id = String(riderId);
-      tele.rider = data.rider_name;
+      tele.rider = data.rider_name || tele.rider;
       tele.status = data.status || 'motoboy_designado';
-      tele.version = data.version;
-      tele.updated_at = data.updated_at;
+      tele.version = data.version || tele.version;
+      tele.updated_at = data.updated_at || new Date().toISOString();
     }
 
     if (typeof renderOperationsDashboard === 'function') renderOperationsDashboard();
@@ -10952,10 +10981,34 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '') 
       openTeleOpDrawer(teleId);
     }
 
+    // Disparar Web Push Server-Side via Edge Function send-rider-push
+    try {
+      if (typeof db !== 'undefined' && db && typeof db.functions?.invoke === 'function') {
+        db.functions.invoke('send-rider-push', {
+          body: { tele_id: String(teleId) }
+        }).catch(e => console.warn('Aviso ao invocar send-rider-push:', e.message));
+      } else {
+        const supabaseUrl = window.SUPABASE_CONFIG?.url || window.__ENV_SUPABASE_URL;
+        const supabaseKey = window.SUPABASE_CONFIG?.key || window.__ENV_SUPABASE_KEY;
+        if (supabaseUrl && supabaseKey) {
+          fetch(`${supabaseUrl}/functions/v1/send-rider-push`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseKey}`
+            },
+            body: JSON.stringify({ tele_id: String(teleId) })
+          }).catch(e => console.warn('Aviso ao invocar send-rider-push:', e.message));
+        }
+      }
+    } catch (pushErr) {
+      console.warn('Erro ao disparar notificação Push:', pushErr);
+    }
+
     return { success: true, data };
-  } catch (err) {
-    return { success: false, errorCode: 'CONNECTION_ERROR', message: 'Erro de conexão com o servidor de despacho.' };
   }
+
+  return { success: false, errorCode: 'UNKNOWN_ERROR', message: 'Falha desconhecida no despacho.' };
 }
 
 // 14. Controls para o Modal de Despacho / Reatribuição

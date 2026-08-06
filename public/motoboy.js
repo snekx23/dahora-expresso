@@ -260,39 +260,35 @@ async function enableRiderNotifications() {
 
   try {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      updatePushAlertCardUI('Status: Não suportado neste navegador', 'Navegador não suporta alertas', 'error');
-      throw new Error('Notificações Push não são suportadas neste navegador.');
+      updatePushAlertCardUI('Status: Este navegador não oferece suporte a notificações Push.', 'Sem suporte a Push', 'error');
+      throw new Error('Este navegador não oferece suporte a notificações Push.');
     }
 
-    // Desbloqueio do AudioContext no gesto explícito do usuário
     AudioController.unlock();
 
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      updatePushAlertCardUI('Status: Permissão negada', 'Permissão de notificações negada', 'error');
-      throw new Error('Permissão de notificações negada pelo usuário.');
-    }
-
-    const registration = await navigator.serviceWorker.ready;
-
-    // Buscar chave VAPID pública no backend
-    let vapidPublicKey = null;
-    try {
-      const res = await fetch('/api/vapid-public-key');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.publicKey) {
-          vapidPublicKey = data.publicKey;
-        }
-      }
-    } catch (e) {
-      console.warn("⚠️ Não foi possível obter VAPID key do backend:", e.message);
-    }
+    const vapidPublicKey = (
+      window.SUPABASE_CONFIG?.vapidPublicKey ||
+      window.__ENV_VAPID_PUBLIC_KEY ||
+      ''
+    ).trim();
 
     if (!vapidPublicKey) {
       updatePushAlertCardUI('Status: Servidor de notificações não configurado', 'Servidor de notificações não configurado', 'error');
       throw new Error('Servidor de notificações não configurado.');
     }
+
+    const permission = await Notification.requestPermission();
+    if (permission === 'denied') {
+      updatePushAlertCardUI('Status: Notificações bloqueadas nas configurações do navegador.', 'Permissão negada no navegador', 'error');
+      throw new Error('Notificações bloqueadas nas configurações do navegador.');
+    }
+
+    if (permission !== 'granted') {
+      updatePushAlertCardUI('Status: Permissão não concedida', 'Ativar alertas de novas Teles', 'normal');
+      return { success: false, error: 'Permissão não concedida pelo usuário.' };
+    }
+
+    const registration = await navigator.serviceWorker.ready;
 
     // Criar ou obter subscription
     let subscription = await registration.pushManager.getSubscription();
@@ -309,13 +305,12 @@ async function enableRiderNotifications() {
       throw new Error('Não foi possível criar a subscrição no navegador.');
     }
 
-    // Registrar no backend Supabase via RPC
+    // Registrar no backend Supabase via RPC autoritativa
     const subObj = subscription.toJSON();
     const p256dh = subObj.keys?.p256dh || '';
     const auth = subObj.keys?.auth || '';
 
-    if (db && (currentRiderId || (currentRider && currentRider.id))) {
-      const riderId = currentRiderId || currentRider.id;
+    if (db) {
       const { error: rpcErr } = await db.rpc('register_my_push_subscription', {
         p_endpoint: subscription.endpoint,
         p_p256dh: p256dh,
@@ -323,8 +318,8 @@ async function enableRiderNotifications() {
         p_user_agent: navigator.userAgent
       });
 
-      if (rpcErr) {
-        console.warn("Aviso na RPC de push subscription:", rpcErr.message);
+      if (rpcErr && (currentRiderId || (currentRider && currentRider.id))) {
+        const riderId = currentRiderId || currentRider.id;
         await db.from('rider_push_subscriptions').upsert([{
           rider_id: riderId,
           endpoint: subscription.endpoint,
@@ -336,10 +331,8 @@ async function enableRiderNotifications() {
       }
     }
 
-    // SOMENTE DEPOIS DE TODAS AS ETAPAS CONCLUÍDAS
-    updatePushAlertCardUI('Status: Alertas ativados neste aparelho', 'Alertas ativados neste aparelho', 'active');
-    
-    // Ocultar card da tela e expandir área do mapa
+    updatePushAlertCardUI('Status: Alertas de novas Teles ativados', 'Alertas de novas Teles ativados', 'active');
+
     const pushCard = document.getElementById('pwa-push-alert-card');
     if (pushCard) {
       pushCard.style.display = 'none';
@@ -348,7 +341,7 @@ async function enableRiderNotifications() {
       window.google.maps.event.trigger(riderMap, 'resize');
     }
 
-    showPWAToast('Alertas ativados neste aparelho.');
+    showPWAToast('Alertas de novas Teles ativados com sucesso.');
     return { success: true };
 
   } catch (err) {
@@ -359,14 +352,30 @@ async function enableRiderNotifications() {
 }
 
 async function checkExistingPushSubscription() {
-  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (typeof window === 'undefined') return;
+
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    updatePushAlertCardUI('Status: Este navegador não oferece suporte a notificações Push.', 'Sem suporte a Push', 'error');
+    return;
+  }
+
+  const vapidPublicKey = (
+    window.SUPABASE_CONFIG?.vapidPublicKey ||
+    window.__ENV_VAPID_PUBLIC_KEY ||
+    ''
+  ).trim();
+
+  if (!vapidPublicKey) {
+    updatePushAlertCardUI('Status: Servidor de notificações não configurado', 'Servidor de notificações não configurado', 'error');
+    return;
+  }
 
   if (Notification.permission === 'granted') {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        updatePushAlertCardUI('Status: Alertas ativados neste aparelho', 'Alertas ativados neste aparelho', 'active');
+        updatePushAlertCardUI('Status: Alertas de novas Teles ativados', 'Alertas de novas Teles ativados', 'active');
       } else {
         updatePushAlertCardUI('Status: Não ativado neste aparelho', 'Ativar alertas de novas Teles', 'normal');
       }
@@ -374,7 +383,7 @@ async function checkExistingPushSubscription() {
       updatePushAlertCardUI('Status: Não ativado', 'Ativar alertas de novas Teles', 'normal');
     }
   } else if (Notification.permission === 'denied') {
-    updatePushAlertCardUI('Status: Permissão de notificações negada', 'Permissão de notificações negada', 'error');
+    updatePushAlertCardUI('Status: Notificações bloqueadas nas configurações do navegador.', 'Permissão negada no navegador', 'error');
   } else {
     updatePushAlertCardUI('Status: Não ativado', 'Ativar alertas de novas Teles', 'normal');
   }
