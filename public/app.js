@@ -1008,7 +1008,14 @@ async function switchDashboardTab(targetTab) {
 
   const ownerFab = document.getElementById('owner-fab-btn');
   if (ownerFab) {
-    if (targetTab === 'owner-teles' && mockData.activeProfile === 'owner') {
+    const isOwnerOrAdmin = (
+      currentAdminProfile?.role === 'owner' ||
+      currentAdminProfile?.role === 'admin' ||
+      mockData?.activeProfile === 'owner' ||
+      mockData?.activeProfile === 'admin' ||
+      !!currentActiveSession
+    );
+    if (targetTab === 'owner-teles' && isOwnerOrAdmin) {
       ownerFab.classList.remove('hidden');
     } else {
       ownerFab.classList.add('hidden');
