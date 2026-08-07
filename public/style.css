@@ -3508,6 +3508,10 @@ input:checked + .slider:before {
   transition: transform 0.2s, box-shadow 0.2s !important;
 }
 
+.fab-btn-fixed.hidden {
+  display: none !important;
+}
+
 .fab-btn-fixed:hover {
   transform: scale(1.1) !important;
   box-shadow: 0 12px 36px rgba(245, 158, 11, 0.6) !important;

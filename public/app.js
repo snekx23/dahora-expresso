@@ -7835,7 +7835,10 @@ async function showRequestDeliveryModal() {
   }
 
   const modal = document.getElementById('modal-request-delivery');
-  if (modal) modal.classList.remove('hidden');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
 
   if (typeof fetchCommercialClientsForSelect === 'function') fetchCommercialClientsForSelect();
 
@@ -7852,7 +7855,11 @@ async function showRequestDeliveryModal() {
 
 function closeRequestDeliveryModal(event) {
   if (event && event.target !== event.currentTarget) return;
-  document.getElementById('modal-request-delivery').classList.add('hidden');
+  const modal = document.getElementById('modal-request-delivery');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
 
   // Full cleanup of map instance to avoid memory leak and layout conflicts
   if (requestMaps.manual.map) {
@@ -9095,7 +9102,10 @@ function updateCommercialMetrics() {
 // 4. Modal de Novo Cliente Comercial
 function openAddCommercialClientModal() {
   const modal = document.getElementById('modal-add-commercial-client');
-  if (modal) modal.classList.remove('hidden');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
 }
 window.openAddCommercialClientModal = openAddCommercialClientModal;
 
@@ -9104,7 +9114,10 @@ function closeAddCommercialClientModal(event) {
     return;
   }
   const modal = document.getElementById('modal-add-commercial-client');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
 }
 window.closeAddCommercialClientModal = closeAddCommercialClientModal;
 
