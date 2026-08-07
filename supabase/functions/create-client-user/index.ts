@@ -97,7 +97,7 @@ serve(async (req) => {
     const { data: existingClient } = await supabaseAdmin
       .from('commercial_clients')
       .select('id')
-      .or(`email_normalized.eq.${emailNorm}${docNorm ? `,document_normalized.eq.${docNorm}` : ''}`)
+      .or(`email.eq.${emailNorm}${docNorm ? `,document.eq.${docNorm}` : ''}`)
       .limit(1);
 
     if (existingClient && existingClient.length > 0) {
@@ -132,6 +132,7 @@ serve(async (req) => {
         .insert([{
           user_id: newAuthUserId,
           name: responsible_name,
+          email: emailNorm,
           role: 'client_user',
           is_active: true
         }]);
@@ -144,15 +145,12 @@ serve(async (req) => {
         .insert([{
           establishment_name,
           responsible_name,
-          phone_normalized: phoneNorm,
-          email_normalized: emailNorm,
-          document_normalized: docNorm,
+          phone: phoneNorm,
+          email: emailNorm,
+          document: docNorm || emailNorm,
           address,
-          complement,
           neighborhood,
           city,
-          map_color,
-          notes,
           lifecycle_status: 'ativo',
           financial_status: 'em_dia'
         }])
@@ -167,7 +165,7 @@ serve(async (req) => {
         .insert([{
           client_id: clientObj.id,
           user_id: newAuthUserId,
-          role: 'client_admin',
+          role: 'admin',
           status: 'ativo'
         }]);
 
