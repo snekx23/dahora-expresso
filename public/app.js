@@ -1039,6 +1039,9 @@ function updateOwnerFabVisibility(targetTab) {
     await fetchCities();
     initOwnerFleetMap();
     renderCitiesTable();
+    if (typeof initOperationsRealtimeChannel === 'function') {
+      initOperationsRealtimeChannel();
+    }
   } else if (targetTab === 'owner-teles') {
     await loadTelesManagement();
   } else if (targetTab === 'owner-fleet') {
@@ -2496,6 +2499,11 @@ function renderMapMarkers(centerCoords) {
     let markerEntry = ownerFleetMarkers[rider.name];
     if (markerEntry) {
       markerEntry.setLatLng(riderLatLng);
+      if (typeof markerEntry.setContent === 'function') {
+        markerEntry.setContent(markerHtml);
+      } else if (markerEntry.div) {
+        markerEntry.div.innerHTML = markerHtml;
+      }
     } else {
       const marker = new window.CustomHTMLMapMarker(riderLatLng, ownerFleetMap, markerHtml, () => {
         window.openRiderMapPopup(rider.id);
@@ -5893,6 +5901,10 @@ function loadGoogleMapsAPI(callback) {
         setLatLng(latlng) {
           this.latlng = latlng;
           this.draw();
+        }
+        setContent(html) {
+          this.html = html;
+          if (this.div) this.div.innerHTML = html;
         }
         getLatLng() {
           return this.latlng;
@@ -9325,6 +9337,10 @@ function ensureCustomHTMLMapMarkerClass() {
         this.latlng = latlng;
         this.draw();
       }
+      setContent(html) {
+        this.html = html;
+        if (this.div) this.div.innerHTML = html;
+      }
       getLatLng() {
         return this.latlng;
       }
@@ -11549,15 +11565,71 @@ function handleRealtimeEvent(table, eventType, record) {
 
     if (eventType === 'DELETE') {
       opRidersStoreMap.delete(riderId);
+
+      const idx = mockData.fleet.findIndex(r => String(r.id) === riderId);
+      if (idx !== -1) {
+        const deletedRider = mockData.fleet[idx];
+        const rName = deletedRider.name;
+        mockData.fleet.splice(idx, 1);
+
+        if (rName && ownerFleetMarkers[rName]) {
+          if (ownerFleetMarkers[rName].setMap) {
+            ownerFleetMarkers[rName].setMap(null);
+          }
+          delete ownerFleetMarkers[rName];
+        }
+      }
     } else {
-      opRidersStoreMap.set(riderId, {
+      const updatedRider = {
         ...(existingRider || {}),
         ...record,
         id: riderId
-      });
+      };
+      opRidersStoreMap.set(riderId, updatedRider);
+
+      const idx = mockData.fleet.findIndex(r => String(r.id) === riderId);
+      if (idx !== -1) {
+        const currentItem = mockData.fleet[idx];
+        mockData.fleet[idx] = {
+          ...currentItem,
+          ...record,
+          id: riderId,
+          lat: record.lat !== undefined ? record.lat : currentItem.lat,
+          lng: record.lng !== undefined ? record.lng : currentItem.lng,
+          status: record.status !== undefined ? record.status : currentItem.status,
+          name: record.name || currentItem.name,
+          vehicle: record.vehicle || currentItem.vehicle,
+          plate: record.plate || currentItem.plate
+        };
+      } else {
+        mockData.fleet.push({
+          id: riderId,
+          motoboy_code: record.motoboy_code || '',
+          name: record.name || 'Motoboy',
+          phone: record.phone || '',
+          vehicle: record.vehicle || 'Moto',
+          plate: record.plate || '',
+          status: record.status || 'Disponível',
+          battery: '🔋 Indisponível',
+          battery_level: record.battery_level || null,
+          is_charging: record.is_charging || null,
+          battery_supported: record.battery_supported || false,
+          last_seen_at: record.last_seen_at || null,
+          is_stale: false,
+          lat: record.lat,
+          lng: record.lng
+        });
+      }
     }
 
     renderFleetBar();
+
+    if (ownerFleetMap) {
+      renderMapMarkers(ownerFleetCenterCoords);
+    }
+    if (typeof renderFleetTable === 'function') {
+      renderFleetTable();
+    }
   }
 }
 
