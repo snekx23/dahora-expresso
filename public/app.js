@@ -983,10 +983,30 @@ async function handleLogout() {
   }, 600);
 }
 
-// Switching dashboard tab views
+function updateOwnerFabVisibility(targetTab) {
+  const ownerFab = document.getElementById('owner-fab-btn');
+  if (!ownerFab) return;
+
+  const currentTab = targetTab || document.querySelector('.nav-item.active')?.getAttribute('data-tab') || localStorage.getItem('activeDashboardTab') || '';
+  const isTelesTab = (currentTab === 'owner-teles');
+
+  const role = (currentAdminProfile?.role || '').toLowerCase();
+  const isAuthorizedRole = (role === 'owner' || role === 'admin') || ['dono', 'administrador', 'socio', 'operador', 'gerente'].includes(role);
+
+  if (isTelesTab && (isAuthorizedRole || !currentAdminProfile)) {
+    ownerFab.classList.remove('hidden');
+    ownerFab.style.display = 'flex';
+  } else {
+    ownerFab.classList.add('hidden');
+    ownerFab.style.display = 'none';
+  }
+}
+
 async function switchDashboardTab(targetTab) {
+  if (!targetTab) return;
+
   localStorage.setItem('activeDashboardTab', targetTab);
-  // Update Sidebar active items
+
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
   });
@@ -1006,25 +1026,6 @@ async function switchDashboardTab(targetTab) {
     activeTabEl.classList.add('active');
     activeTabEl.classList.remove('hidden');
   }
-
-function updateOwnerFabVisibility(targetTab) {
-  const ownerFab = document.getElementById('owner-fab-btn');
-  if (!ownerFab) return;
-
-  const currentTab = targetTab || document.querySelector('.nav-item.active')?.getAttribute('data-tab') || localStorage.getItem('activeDashboardTab') || '';
-  const isTelesTab = (currentTab === 'owner-teles');
-
-  const role = (currentAdminProfile?.role || mockData?.activeProfile || '').toLowerCase();
-  const isAuthorizedRole = (role === 'owner' || role === 'admin');
-
-  if (isTelesTab && isAuthorizedRole) {
-    ownerFab.classList.remove('hidden');
-    ownerFab.style.display = 'flex';
-  } else {
-    ownerFab.classList.add('hidden');
-    ownerFab.style.display = 'none';
-  }
-}
 
   updateOwnerFabVisibility(targetTab);
 
@@ -1162,6 +1163,7 @@ async function loadTelesManagement() {
   }
 
   renderTelesUnified();
+  updateOwnerFabVisibility('owner-teles');
 }
 
 function setTelesLoadingState() {
@@ -7755,19 +7757,59 @@ async function deleteCity(id) {
 // ─── MANUAL REQUEST MODAL HELPERS ───────────────────────────────────────────
 
 async function showRequestDeliveryModal() {
-  // Clear coordinates and reset form state
-  requestMaps.manual.destCoords = null;
+  if (requestMaps && requestMaps.manual) {
+    requestMaps.manual.destCoords = null;
+  }
   const form = document.getElementById('request-delivery-form');
   if (form) form.reset();
-  
+
+  const searchInput = document.getElementById('admin-client-search');
+  const selectedInput = document.getElementById('selectedClientId');
+  const destNameInput = document.getElementById('manual-delivery-dest-name');
+  const destPhoneInput = document.getElementById('manual-delivery-dest-phone');
+  const addrInput = document.getElementById('manual-delivery-address');
+  const numInput = document.getElementById('manual-delivery-number');
+  const numVisibleInput = document.getElementById('manual-delivery-number-input');
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  const compInput = document.getElementById('manual-delivery-complement');
+  const neighInput = document.getElementById('manual-delivery-neighborhood');
+  const cityInput = document.getElementById('manual-delivery-city');
+  const notesInput = document.getElementById('manual-order-notes');
+  const summaryBox = document.getElementById('manual-address-summary-box');
+  const confirmArea = document.getElementById('manual-number-confirm-area');
   const estimateBox = document.getElementById('manual-estimate-box');
-  if (estimateBox) estimateBox.classList.add('hidden');
-  
   const changeGroup = document.getElementById('manual-change-amount-group');
+
+  if (searchInput) searchInput.value = '';
+  if (selectedInput) selectedInput.value = '';
+  if (destNameInput) destNameInput.value = '';
+  if (destPhoneInput) destPhoneInput.value = '';
+  if (addrInput) addrInput.value = '';
+  if (numInput) numInput.value = '';
+  if (numVisibleInput) { numVisibleInput.value = ''; numVisibleInput.disabled = false; }
+  if (snCb) snCb.checked = false;
+  if (compInput) compInput.value = '';
+  if (neighInput) neighInput.value = '';
+  if (cityInput) cityInput.value = 'Sapucaia do Sul';
+  if (notesInput) notesInput.value = '';
+  if (summaryBox) summaryBox.classList.add('hidden');
+  if (confirmArea) confirmArea.classList.add('hidden');
+  if (estimateBox) estimateBox.classList.add('hidden');
   if (changeGroup) changeGroup.classList.add('hidden');
-  
-  // Clear map markers from previous session safely using Google Maps APIs
-  if (requestMaps.manual.map) {
+
+  const latEl = document.getElementById('manual-delivery-lat');
+  const lngEl = document.getElementById('manual-delivery-lng');
+  const precEl = document.getElementById('manual-geocoding-precision');
+  const manEl = document.getElementById('manual-location-adjusted-manually');
+  const warnEl = document.getElementById('manual-geocoding-warning');
+
+  if (latEl) latEl.value = '';
+  if (lngEl) lngEl.value = '';
+  if (precEl) precEl.value = 'unconfirmed';
+  if (manEl) manEl.value = 'false';
+  if (warnEl) warnEl.classList.add('hidden');
+
+  if (requestMaps && requestMaps.manual && requestMaps.manual.map) {
     if (requestMaps.manual.marker && requestMaps.manual.marker.setMap) {
       requestMaps.manual.marker.setMap(null);
     }
@@ -7784,16 +7826,25 @@ async function showRequestDeliveryModal() {
     requestMaps.manual.polyline = null;
   }
 
-  // Pre-fill next sequential Tele ID
-  const nextId = await getNextTeleId();
-  const idInput = document.getElementById('manual-delivery-id');
-  if (idInput) idInput.value = nextId;
+  try {
+    const nextId = await getNextTeleId();
+    const idInput = document.getElementById('manual-delivery-id');
+    if (idInput) idInput.value = nextId;
+  } catch (e) {
+    console.warn("Could not prefill next Tele ID:", e);
+  }
 
-  document.getElementById('modal-request-delivery').classList.remove('hidden');
-  
-  // Initialize or redraw map after modal opens
+  const modal = document.getElementById('modal-request-delivery');
+  if (modal) modal.classList.remove('hidden');
+
+  if (typeof fetchCommercialClientsForSelect === 'function') fetchCommercialClientsForSelect();
+
   setTimeout(() => {
-    initRequestDeliveryMap('manual');
+    if (typeof initRequestDeliveryMap === 'function') {
+      initRequestDeliveryMap('manual');
+    } else if (typeof initManualDeliveryMap === 'function') {
+      initManualDeliveryMap();
+    }
   }, 200);
 
   if (window.lucide) lucide.createIcons();
@@ -9046,6 +9097,7 @@ function openAddCommercialClientModal() {
   const modal = document.getElementById('modal-add-commercial-client');
   if (modal) modal.classList.remove('hidden');
 }
+window.openAddCommercialClientModal = openAddCommercialClientModal;
 
 function closeAddCommercialClientModal(event) {
   if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn')) {
@@ -9054,6 +9106,7 @@ function closeAddCommercialClientModal(event) {
   const modal = document.getElementById('modal-add-commercial-client');
   if (modal) modal.classList.add('hidden');
 }
+window.closeAddCommercialClientModal = closeAddCommercialClientModal;
 
 let isSubmittingCommercialClient = false;
 
@@ -9162,6 +9215,7 @@ async function submitAddCommercialClient(event) {
     }
   }
 }
+window.submitAddCommercialClient = submitAddCommercialClient;
 
 // 5. Ações Administrativas de Clientes
 async function toggleClientStatus(clientId) {
@@ -9739,63 +9793,7 @@ function handlePlaceSelection(place) {
   }
 }
 
-function showRequestDeliveryModal() {
-  const modal = document.getElementById('modal-request-delivery');
-  const searchInput = document.getElementById('admin-client-search');
-  const selectedInput = document.getElementById('selectedClientId');
-  const destNameInput = document.getElementById('manual-delivery-dest-name');
-  const destPhoneInput = document.getElementById('manual-delivery-dest-phone');
-  const addrInput = document.getElementById('manual-delivery-address');
-  const numInput = document.getElementById('manual-delivery-number');
-  const numVisibleInput = document.getElementById('manual-delivery-number-input');
-  const snCb = document.getElementById('manual-delivery-sn-cb');
-  const compInput = document.getElementById('manual-delivery-complement');
-  const neighInput = document.getElementById('manual-delivery-neighborhood');
-  const cityInput = document.getElementById('manual-delivery-city');
-  const notesInput = document.getElementById('manual-order-notes');
-  const summaryBox = document.getElementById('manual-address-summary-box');
-  const confirmArea = document.getElementById('manual-number-confirm-area');
 
-  if (searchInput) searchInput.value = '';
-  if (selectedInput) selectedInput.value = '';
-  if (destNameInput) destNameInput.value = '';
-  if (destPhoneInput) destPhoneInput.value = '';
-  if (addrInput) addrInput.value = '';
-  if (numInput) numInput.value = '';
-  if (numVisibleInput) { numVisibleInput.value = ''; numVisibleInput.disabled = false; }
-  if (snCb) snCb.checked = false;
-  if (compInput) compInput.value = '';
-  if (neighInput) neighInput.value = '';
-  if (cityInput) cityInput.value = 'Sapucaia do Sul';
-  if (notesInput) notesInput.value = '';
-  if (summaryBox) summaryBox.classList.add('hidden');
-  if (confirmArea) confirmArea.classList.add('hidden');
-
-  const latEl = document.getElementById('manual-delivery-lat');
-  const lngEl = document.getElementById('manual-delivery-lng');
-  const precEl = document.getElementById('manual-geocoding-precision');
-  const manEl = document.getElementById('manual-location-adjusted-manually');
-  const warnEl = document.getElementById('manual-geocoding-warning');
-
-  if (latEl) latEl.value = '';
-  if (lngEl) lngEl.value = '';
-  if (precEl) precEl.value = 'unconfirmed';
-  if (manEl) manEl.value = 'false';
-  if (warnEl) warnEl.classList.add('hidden');
-
-  if (modal) modal.classList.remove('hidden');
-  fetchCommercialClientsForSelect();
-  initManualDeliveryMap();
-}
-
-
-function closeRequestDeliveryModal(event) {
-  if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn')) {
-    return;
-  }
-  const modal = document.getElementById('modal-request-delivery');
-  if (modal) modal.classList.add('hidden');
-}
 
 async function submitDeliveryRequest(event, type = 'manual') {
   if (event) event.preventDefault();
