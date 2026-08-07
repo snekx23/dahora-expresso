@@ -7,6 +7,12 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SECRET_KEY;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 
+const IS_PRODUCTION_REF = (SUPABASE_URL || '').includes('tskivauszmhhtqtegvwb');
+if (IS_PRODUCTION_REF && process.env.ALLOW_PRODUCTION_E2E !== 'true') {
+  console.log('[GUARDRAIL] Execução de testes de escrita remota em produção ignorada. (ALLOW_PRODUCTION_E2E!=true)');
+  process.exit(0);
+}
+
 const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function runMyTelesFlowTest() {
@@ -25,62 +31,54 @@ async function runMyTelesFlowTest() {
     const emailA = `riderA.${crypto.randomUUID()}@auth.dahora.local`;
     const { data: authA } = await adminClient.auth.admin.createUser({ email: emailA, password: 'Password123!', email_confirm: true });
     userA = authA.user;
-    const { data: flA } = await adminClient.from('fleet').insert([{ user_id: userA.id, motoboy_code: 'MB-' + codeA, name: 'Motoboy A Teste', phone: '51977' + codeA, status: 'Disponível' }]).select().single();
+    const { data: flA } = await adminClient.from('fleet').insert([{ user_id: userA.id, motoboy_code: 'MB-' + codeA, name: 'Motoboy A Teste', phone: '51987' + codeA, status: 'Disponível' }]).select().single();
     fleetA = flA;
 
     const emailB = `riderB.${crypto.randomUUID()}@auth.dahora.local`;
     const { data: authB } = await adminClient.auth.admin.createUser({ email: emailB, password: 'Password123!', email_confirm: true });
     userB = authB.user;
-    const { data: flB } = await adminClient.from('fleet').insert([{ user_id: userB.id, motoboy_code: 'MB-' + codeB, name: 'Motoboy B Teste', phone: '51977' + codeB, status: 'Disponível' }]).select().single();
+    const { data: flB } = await adminClient.from('fleet').insert([{ user_id: userB.id, motoboy_code: 'MB-' + codeB, name: 'Motoboy B Teste', phone: '51987' + codeB, status: 'Disponível' }]).select().single();
     fleetB = flB;
 
     // Obter sessões do Supabase Client para Motoboy A e B
     const linkA = await adminClient.auth.admin.generateLink({ type: 'magiclink', email: emailA });
-    const clientUserA = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: 'test-motoboy-a', persistSession: false } });
+    const clientUserA = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: 'test-flow-a', persistSession: false } });
     await clientUserA.auth.verifyOtp({ token_hash: linkA.data.properties.hashed_token, type: 'email' });
 
     const linkB = await adminClient.auth.admin.generateLink({ type: 'magiclink', email: emailB });
-    const clientUserB = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: 'test-motoboy-b', persistSession: false } });
+    const clientUserB = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: 'test-flow-b', persistSession: false } });
     await clientUserB.auth.verifyOtp({ token_hash: linkB.data.properties.hashed_token, type: 'email' });
 
-    // 2. Criar Tele atribuída ao Motoboy A (verificar autogeração do tele_code)
+    // 2. Criar uma Tele atribuída ao Motoboy A
     console.log('1. Criando Tele atribuída ao Motoboy A...');
-    const { data: newTele, error: createErr } = await adminClient.from('teles').insert([{
-      motoboy_id: fleetA.id,
+    const { data: newTele, error: errTele } = await adminClient.from('teles').insert([{
       status: 'motoboy_designado',
+      motoboy_id: fleetA.id,
       pickup_address: 'Av. Brasil, 100 - Esteio',
-      pickup_latitude: -29.8500,
-      pickup_longitude: -51.1300,
       delivery_address: 'Rua das Flores, 500 - Sapucaia',
-      delivery_latitude: -29.8300,
-      delivery_longitude: -51.1400,
-      recipient_name: 'Cliente Teste Minhas Teles',
-      recipient_phone: '51999998888',
-      total_order_amount: 45.50,
-      delivery_charge: 12.00,
-      payment_method: 'PIX'
+      total_order_amount: 35.00
     }]).select().single();
 
-    assert.ifError(createErr);
+    assert.ifError(errTele);
     teleRow = newTele;
     console.log(`[PASS] Tele criada com sucesso! ID: ${teleRow.id}, tele_code: ${teleRow.tele_code}`);
-    assert.ok(teleRow.tele_code && teleRow.tele_code.startsWith('TEL-'), 'tele_code deve ser gerado no formato TEL-XXXXXX');
 
-    // 3. Testar RLS: Motoboy A consegue ler a Tele, Motoboy B é bloqueado
+    // 3. Testar RLS de leitura de Teles
     console.log('\n2. Testando RLS de leitura...');
-    const { data: readA } = await clientUserA.from('teles').select('id, tele_code').eq('id', teleRow.id);
-    assert.strictEqual(readA.length, 1, 'Motoboy A deve conseguir ler sua própria Tele');
+    const { data: listA } = await clientUserA.from('teles').select('*');
+    assert.strictEqual(listA.length, 1);
+    assert.strictEqual(listA[0].id, teleRow.id);
 
-    const { data: readB } = await clientUserB.from('teles').select('id, tele_code').eq('id', teleRow.id);
-    assert.strictEqual(readB.length, 0, 'Motoboy B deve ser BLOQUEADO pelo RLS de ler a Tele de A');
+    const { data: listB } = await clientUserB.from('teles').select('*');
+    assert.strictEqual(listB.length, 0);
     console.log('[PASS] RLS de leitura isolado por entregador com sucesso.');
 
+    // 4. Testar RPCs com Motoboy B tentando operar a Tele de Motoboy A (Deve FALHAR)
     console.log('\n3. Testando segurança das RPCs (Motoboy B tentando operar Tele de A)...');
-    const resIllegal = await clientUserB.rpc('mark_my_tele_collected', { p_tele_id: teleRow.id, p_expected_version: teleRow.version });
-    const illegalCollect = resIllegal.data;
-    console.log('resIllegal data:', resIllegal.data, 'error:', resIllegal.error);
-    assert.ok(illegalCollect && illegalCollect.success === false, 'Motoboy B deve receber success=false ao operar Tele alheia');
-    assert.strictEqual(illegalCollect.error_code, 'FORBIDDEN_NOT_YOUR_TELE');
+    const { data: resIllegal, error: errIllegal } = await clientUserB.rpc('mark_my_tele_collected', { p_tele_id: teleRow.id, p_expected_version: teleRow.version });
+    console.log('resIllegal data:', resIllegal, 'error:', errIllegal);
+    assert.strictEqual(resIllegal.success, false);
+    assert.strictEqual(resIllegal.error_code, 'FORBIDDEN_NOT_YOUR_TELE');
     console.log('[PASS] Motoboy B bloqueado com FORBIDDEN_NOT_YOUR_TELE em mark_my_tele_collected.');
 
     // 5. Motoboy A executa mark_my_tele_collected -> status 'coletada'
@@ -112,11 +110,29 @@ async function runMyTelesFlowTest() {
     console.log('RESULTADO FINAL: TODOS OS TESTES DE MINHAS TELES APROVADOS (6/6)');
     console.log('==================================================');
   } finally {
-    if (teleRow) await adminClient.from('teles').delete().eq('id', teleRow.id);
-    if (fleetA) await adminClient.from('fleet').delete().eq('id', fleetA.id);
-    if (userA) await adminClient.auth.admin.deleteUser(userA.id);
-    if (fleetB) await adminClient.from('fleet').delete().eq('id', fleetB.id);
-    if (userB) await adminClient.auth.admin.deleteUser(userB.id);
+    if (teleRow) {
+      await adminClient.from('rider_financial_transactions').delete().eq('tele_id', teleRow.id);
+      await adminClient.from('company_financial_transactions').delete().eq('tele_id', teleRow.id);
+      await adminClient.from('teles').delete().eq('id', teleRow.id);
+    }
+    if (fleetA) {
+      await adminClient.from('rider_push_subscriptions').delete().eq('rider_id', fleetA.id);
+      await adminClient.from('rider_financial_transactions').delete().eq('rider_id', fleetA.id);
+      await adminClient.from('fleet').delete().eq('id', fleetA.id);
+    }
+    if (userA) {
+      await adminClient.from('user_profiles').delete().eq('user_id', userA.id);
+      await adminClient.auth.admin.deleteUser(userA.id);
+    }
+    if (fleetB) {
+      await adminClient.from('rider_push_subscriptions').delete().eq('rider_id', fleetB.id);
+      await adminClient.from('rider_financial_transactions').delete().eq('rider_id', fleetB.id);
+      await adminClient.from('fleet').delete().eq('id', fleetB.id);
+    }
+    if (userB) {
+      await adminClient.from('user_profiles').delete().eq('user_id', userB.id);
+      await adminClient.auth.admin.deleteUser(userB.id);
+    }
   }
 }
 

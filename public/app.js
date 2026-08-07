@@ -96,6 +96,7 @@ async function checkAdminSession() {
       }
       currentAdminProfile = profile;
       console.log(`[AUTH AUDIT] Admin profile validated. role: ${profile.role}, is_active: ${profile.is_active}`);
+      if (typeof updateOwnerFabVisibility === 'function') updateOwnerFabVisibility();
     }
 
     return { session: currentActiveSession, profile: currentAdminProfile };
@@ -1006,21 +1007,26 @@ async function switchDashboardTab(targetTab) {
     activeTabEl.classList.remove('hidden');
   }
 
+function updateOwnerFabVisibility(targetTab) {
   const ownerFab = document.getElementById('owner-fab-btn');
-  if (ownerFab) {
-    const isOwnerOrAdmin = (
-      currentAdminProfile?.role === 'owner' ||
-      currentAdminProfile?.role === 'admin' ||
-      mockData?.activeProfile === 'owner' ||
-      mockData?.activeProfile === 'admin' ||
-      !!currentActiveSession
-    );
-    if (targetTab === 'owner-teles' && isOwnerOrAdmin) {
-      ownerFab.classList.remove('hidden');
-    } else {
-      ownerFab.classList.add('hidden');
-    }
+  if (!ownerFab) return;
+
+  const currentTab = targetTab || document.querySelector('.nav-item.active')?.getAttribute('data-tab') || localStorage.getItem('activeDashboardTab') || '';
+  const isTelesTab = (currentTab === 'owner-teles');
+
+  const role = (currentAdminProfile?.role || mockData?.activeProfile || '').toLowerCase();
+  const isAuthorizedRole = (role === 'owner' || role === 'admin');
+
+  if (isTelesTab && isAuthorizedRole) {
+    ownerFab.classList.remove('hidden');
+    ownerFab.style.display = 'flex';
+  } else {
+    ownerFab.classList.add('hidden');
+    ownerFab.style.display = 'none';
   }
+}
+
+  updateOwnerFabVisibility(targetTab);
 
   // Trigger specific tab initializers (like charts render)
   if (targetTab === 'owner-overview') {
@@ -2977,9 +2983,21 @@ window.renderTelesUnified = function() {
 
   // 1. Calculate Real-Time Stats
   const pendingCount = mockData.pendingDeliveries.length;
-  const activeCount = mockData.clientHistory.filter(o => o.status !== 'Entregue' && o.status !== 'Concluído' && o.status !== 'Cancelado').length;
-  const completedCount = mockData.clientHistory.filter(o => o.status === 'Entregue' || o.status === 'Concluído').length;
-  const canceledCount = mockData.clientHistory.filter(o => o.status === 'Cancelado').length;
+  const isTerminalStatus = (st) => {
+    if (!st) return false;
+    const s = String(st).toLowerCase();
+    return s === 'concluida' || s === 'concluido' || s === 'entregue';
+  };
+
+  const isCanceledStatus = (st) => {
+    if (!st) return false;
+    const s = String(st).toLowerCase();
+    return s === 'cancelada' || s === 'cancelado';
+  };
+
+  const activeCount = mockData.clientHistory.filter(o => !isTerminalStatus(o.status) && !isCanceledStatus(o.status)).length;
+  const completedCount = mockData.clientHistory.filter(o => isTerminalStatus(o.status)).length;
+  const canceledCount = mockData.clientHistory.filter(o => isCanceledStatus(o.status)).length;
   const allCount = pendingCount + activeCount + completedCount + canceledCount;
 
   // Update real-time counter badges in UI
@@ -3025,8 +3043,8 @@ window.renderTelesUnified = function() {
 
   const historyItems = mockData.clientHistory.map(o => {
     let type = 'active';
-    if (o.status === 'Entregue' || o.status === 'Concluído') type = 'completed';
-    else if (o.status === 'Cancelado') type = 'canceled';
+    if (isTerminalStatus(o.status)) type = 'completed';
+    else if (isCanceledStatus(o.status)) type = 'canceled';
     
     const fixedPrice = getFixedPriceByAddress(o.address);
     const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
@@ -3045,12 +3063,12 @@ window.renderTelesUnified = function() {
       payment: o.payment || 'Pago',
       cargo: o.cargo || 'Pedido',
       repasseMotoboy: repasseFormatted,
-      rider: o.rider,
+      rider: o.rider || 'Aguardando Despacho',
       riderId: (mockData.fleet.find(r => r.name === o.rider) || {}).id || null,
       date: o.date,
       created_at: o.created_at,
-      status: o.status,
-      statusClass: o.statusClass || (o.status === 'Entregue' || o.status === 'Concluído' ? 'status-success' : (o.status === 'Cancelado' ? 'status-danger' : 'status-progress'))
+      status: isTerminalStatus(o.status) ? 'Concluída' : (isCanceledStatus(o.status) ? 'Cancelada' : o.status),
+      statusClass: o.statusClass || (isTerminalStatus(o.status) ? 'status-success' : (isCanceledStatus(o.status) ? 'status-danger' : 'status-progress'))
     };
   });
 
@@ -4126,11 +4144,48 @@ function getActiveOrdersForRider(rider) {
   return mockData.clientHistory.filter(order => order.rider === rider.name && order.status !== 'Entregue' && order.status !== 'Removida');
 }
 
+async function deactivateRiderAccount(riderId) {
+  if (!supabaseClient) return;
+  try {
+    const { error } = await supabaseClient
+      .from('fleet')
+      .update({ status: 'Inativo' })
+      .eq('id', riderId);
+    if (error) throw error;
+    await fetchFleet();
+    renderFleetTable();
+    closeRiderActions();
+    showToastNotification('Entregador desativado com sucesso (status alterado para Inativo).');
+  } catch (err) {
+    console.error('Erro ao desativar motoboy:', err);
+    alert('Erro ao desativar entregador: ' + err.message);
+  }
+}
+
 async function deleteRiderAccountById(riderId) {
-  const rider = mockData.fleet.find(r => r.id === riderId);
+  const rider = (mockData.fleet || []).find(r => r.id === riderId);
   if (!rider) return;
 
-  if (!confirm(`Tem certeza que deseja EXCLUIR a conta de ${rider.name} (${rider.id})? Esta ação é irreversível e excluirá todos os dados do motoboy, incluindo histórico de entregas, valores, consumos e mensagens.`)) {
+  if (supabaseClient) {
+    // Audit operational/financial history before allowing delete
+    const [{ count: telesCount }, { count: txCount }, { count: consCount }] = await Promise.all([
+      supabaseClient.from('teles').select('id', { count: 'exact', head: true }).eq('motoboy_id', riderId),
+      supabaseClient.from('rider_financial_transactions').select('id', { count: 'exact', head: true }).eq('rider_id', riderId),
+      supabaseClient.from('rider_consumables').select('id', { count: 'exact', head: true }).eq('rider_id', riderId)
+    ]);
+
+    const hasHistory = (telesCount || 0) > 0 || (txCount || 0) > 0 || (consCount || 0) > 0;
+
+    if (hasHistory) {
+      const msg = `Este motoboy (${rider.name}) possui histórico operacional/financeiro (${telesCount || 0} teles, ${txCount || 0} transações) e não pode ser excluído definitivamente.\n\nDeseja desativar o acesso alterando o status para INATIVO?`;
+      if (confirm(msg)) {
+        await deactivateRiderAccount(riderId);
+      }
+      return;
+    }
+  }
+
+  if (!confirm(`Tem certeza que deseja EXCLUIR permanentemente o entregador ${rider.name}? Esta ação só é permitida pois não existe histórico operacional registrado.`)) {
     return;
   }
 
@@ -4138,27 +4193,6 @@ async function deleteRiderAccountById(riderId) {
 
   try {
     if (supabaseClient) {
-      // 1. Delete support messages where client_email matches the rider's ID
-      await supabaseClient
-        .from('support_messages')
-        .delete()
-        .eq('client_email', rider.id);
-
-      // 2. Delete consumables where rider_id matches the rider's ID
-      await supabaseClient
-        .from('rider_consumable_purchases')
-        .delete()
-        .eq('rider_id', rider.id);
-
-      // 3. Delete client history where rider name matches the rider's name
-      if (rider.name) {
-        await supabaseClient
-          .from('teles')
-          .delete()
-          .eq('rider', rider.name);
-      }
-
-      // 4. Delete the rider profile from fleet table
       const { error } = await supabaseClient
         .from('fleet')
         .delete()
@@ -4167,23 +4201,10 @@ async function deleteRiderAccountById(riderId) {
       if (error) throw error;
     }
 
-    // Refresh mockData and UI
     await fetchFleet();
-    await fetchRiderConsumables();
-    await fetchClientHistory();
     renderFleetTable();
-    renderRiderConsumables();
-    renderRiderPayments();
-    
-    // Close modal if open
     closeRiderActions();
-
-    if (ownerFleetMap) {
-      const center = ownerFleetMap.getCenter();
-      renderMapMarkers([center.lat, center.lng]);
-    }
-
-    showToastNotification(`Conta de ${rider.name} excluída e dados limpos.`);
+    showToastNotification(`Conta de ${rider.name} excluída com sucesso.`);
   } catch (err) {
     console.error('Error deleting rider account:', err);
     alert('Erro ao excluir conta do motoboy: ' + err.message);

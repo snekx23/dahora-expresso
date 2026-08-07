@@ -42,8 +42,8 @@ function runAdminPanelBugsTestSuite() {
   assert.ok(htmlContent.includes('id="owner-fab-btn"'), 'Botão flutuante id="owner-fab-btn" deve existir no HTML');
   assert.ok(htmlContent.includes('onclick="showRequestDeliveryModal()"'), 'FAB deve invocar showRequestDeliveryModal() no clique');
 
-  assert.ok(appJsContent.includes('const isOwnerOrAdmin ='), 'switchDashboardTab deve calcular se é sessão Owner/Admin');
-  assert.ok(appJsContent.includes('targetTab === \'owner-teles\' && isOwnerOrAdmin'), 'FAB deve ser exibido quando a aba for owner-teles para Owner/Admin');
+  assert.ok(appJsContent.includes('function updateOwnerFabVisibility'), 'updateOwnerFabVisibility deve estar definida');
+  assert.ok(appJsContent.includes('isAuthorizedRole = (role === \'owner\' || role === \'admin\')'), 'FAB deve ser visível exclusivamente para perfil autoritativo owner ou admin');
 
   console.log('[PASS] BUG 2: FAB "Chamar Tele" configurado para exibição contínua na aba Gestão de Teles.');
 
