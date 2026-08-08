@@ -2411,7 +2411,6 @@ function renderMapMarkers(centerCoords) {
 
   const centerLatLng = new window.google.maps.LatLng(centerCoords[0], centerCoords[1]);
 
-
   if (!ownerCentralMarker) {
     const el = document.createElement('div');
     el.className = 'custom-map-marker central-marker';
@@ -2430,65 +2429,54 @@ function renderMapMarkers(centerCoords) {
     ownerCentralMarker.setLatLng(centerLatLng);
   }
 
-  const offsets = [
-    [0.004, -0.006],
-    [0.008, 0.012],
-    [-0.005, 0.009],
-    [-0.012, -0.004],
-    [0.003, -0.015],
-    [-0.009, 0.005]
-  ];
+  // Filtrar motoboys com coordenadas válidas (jamais criar marcadores em posições fictícias)
+  const validRiders = (mockData.fleet || []).filter(rider => {
+    return rider.lat !== null &&
+           rider.lat !== undefined &&
+           !isNaN(parseFloat(rider.lat)) &&
+           rider.lng !== null &&
+           rider.lng !== undefined &&
+           !isNaN(parseFloat(rider.lng));
+  });
 
-  const ridersLocations = mockData.fleet.length
-    ? mockData.fleet.map((rider, index) => ({
-        id: rider.id,
-        name: rider.name,
-        vehicle: rider.vehicle,
-        plate: rider.plate,
-        status: rider.status,
-        statusColor: rider.status === 'Em Descanso' ? '#8e8e9f' : (rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e'),
-        offset: offsets[index % offsets.length]
-      }))
-    : [];
+  const currentRidersIds = new Set(validRiders.map(r => String(r.id)));
 
-  const currentRidersNames = new Set(ridersLocations.map(r => r.name));
-
-  if (activePanelRiderName && !currentRidersNames.has(activePanelRiderName)) {
+  if (activePanelRiderId && !currentRidersIds.has(String(activePanelRiderId))) {
     closeFleetRiderPanel();
   }
 
-  Object.keys(ownerFleetMarkers).forEach(name => {
-    if (!currentRidersNames.has(name)) {
-      if (ownerFleetMarkers[name] && ownerFleetMarkers[name].setMap) {
-        ownerFleetMarkers[name].setMap(null);
+  // Remover do mapa marcadores de entregadores deletados ou sem coordenadas válidas (usando rider.id)
+  Object.keys(ownerFleetMarkers).forEach(riderId => {
+    if (!currentRidersIds.has(String(riderId))) {
+      if (ownerFleetMarkers[riderId] && ownerFleetMarkers[riderId].setMap) {
+        ownerFleetMarkers[riderId].setMap(null);
       }
-      delete ownerFleetMarkers[name];
+      delete ownerFleetMarkers[riderId];
     }
   });
 
-  ridersLocations.forEach(rider => {
-    const mockRider = mockData.fleet.find(r => r.name === rider.name);
-    const currentStatus = mockRider ? mockRider.status : rider.status;
-    const currentStatusColor = mockRider 
-      ? (mockRider.status === 'Em Descanso' ? '#8e8e9f' : (mockRider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e')) 
-      : rider.statusColor;
+  validRiders.forEach(rider => {
+    const riderId = String(rider.id);
+    const currentStatus = rider.status || 'Disponível';
 
-    const hasRealGPS = mockRider && 
-                       mockRider.lat !== null && 
-                       mockRider.lat !== undefined && 
-                       !isNaN(parseFloat(mockRider.lat)) && 
-                       mockRider.lng !== null && 
-                       mockRider.lng !== undefined && 
-                       !isNaN(parseFloat(mockRider.lng));
+    const isUnavailableOrRest = currentStatus === 'Indisponível' || currentStatus === 'Em Descanso';
+    const isOperationalGreen = currentStatus === 'Disponível' || currentStatus === 'Ativo' || currentStatus === 'Em Rota';
 
-    let riderCoords;
-    if (hasRealGPS) {
-      riderCoords = [parseFloat(mockRider.lat), parseFloat(mockRider.lng)];
+    let currentStatusColor;
+    let isPulsing;
+
+    if (isUnavailableOrRest) {
+      currentStatusColor = '#8e8e9f';
+      isPulsing = false;
+    } else if (isOperationalGreen) {
+      currentStatusColor = '#22c55e';
+      isPulsing = true;
     } else {
-      riderCoords = [centerCoords[0] + rider.offset[0], centerCoords[1] + rider.offset[1]];
+      currentStatusColor = rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e';
+      isPulsing = currentStatus !== 'Inativo' && currentStatus !== 'Suspenso' && currentStatus !== 'Bloqueado';
     }
 
-    const isPulsing = currentStatus !== 'Em Descanso';
+    const riderCoords = [parseFloat(rider.lat), parseFloat(rider.lng)];
     const markerHtml = `
       <div class="custom-map-marker" style="background-color: ${currentStatusColor}; box-shadow: 0 0 10px ${currentStatusColor}; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer;">
         ${isPulsing ? `<div class="marker-pulse" style="border-color: ${currentStatusColor}; position: absolute; top: -5px; left: -5px; width: 24px; height: 24px; border: 2px solid ${currentStatusColor}; border-radius: 50%; animation: pulse-dot-anim 2.5s infinite;"></div>` : ''}
@@ -2498,7 +2486,7 @@ function renderMapMarkers(centerCoords) {
 
     const riderLatLng = new window.google.maps.LatLng(riderCoords[0], riderCoords[1]);
 
-    let markerEntry = ownerFleetMarkers[rider.name];
+    let markerEntry = ownerFleetMarkers[riderId];
     if (markerEntry) {
       markerEntry.setLatLng(riderLatLng);
       if (typeof markerEntry.setContent === 'function') {
@@ -2510,10 +2498,10 @@ function renderMapMarkers(centerCoords) {
       const marker = new window.CustomHTMLMapMarker(riderLatLng, ownerFleetMap, markerHtml, () => {
         window.openRiderMapPopup(rider.id);
       });
-      ownerFleetMarkers[rider.name] = marker;
+      ownerFleetMarkers[riderId] = marker;
     }
 
-    if (mockRider && selectedMapRiderId === mockRider.id) {
+    if (selectedMapRiderId === rider.id) {
       ownerFleetMap.setCenter(riderLatLng);
       ownerFleetMap.setZoom(16);
       setTimeout(() => window.openRiderMapPopup(rider.id), 150);
@@ -2523,11 +2511,14 @@ function renderMapMarkers(centerCoords) {
 }
 
 window.openRiderMapPopup = function(riderId) {
-  const rider = mockData.fleet.find(r => r.id === riderId);
+  const rider = mockData.fleet.find(r => String(r.id) === String(riderId));
   if (!rider) return;
 
-  const currentStatus = rider.status;
-  const currentStatusColor = rider.status === 'Em Descanso' ? '#8e8e9f' : (rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e');
+  const currentStatus = rider.status || 'Disponível';
+  const isUnavailableOrRest = currentStatus === 'Indisponível' || currentStatus === 'Em Descanso';
+  const currentStatusColor = isUnavailableOrRest
+    ? '#8e8e9f'
+    : (rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e');
 
   let pendingOptions = '<option value="" disabled selected>Vincular Tele...</option>';
   if (mockData.pendingDeliveries.length > 0) {
@@ -3514,13 +3505,13 @@ window.handlePopupDispatch = function(riderName) {
   dispatchDelivery(select.value, rider.id);
 };
 
-let activePanelRiderName = null;
+let activePanelRiderId = null;
 
 window.showFleetRiderPanel = function(rider, mockRider, currentStatus, currentStatusColor) {
   const panel = document.getElementById('fleet-dispatch-panel');
   if (!panel) return;
 
-  activePanelRiderName = rider.name;
+  activePanelRiderId = mockRider ? mockRider.id : rider.id;
 
   // Generate pending deliveries options for popup dropdown
   let dispatchHtml = '';
@@ -3602,12 +3593,12 @@ window.closeFleetRiderPanel = function() {
     panel.classList.add('hidden');
     panel.classList.remove('active');
   }
-  activePanelRiderName = null;
+  activePanelRiderId = null;
 };
 
 window.updatePanelPosition = function() {
-  if (!activePanelRiderName || !ownerFleetMap) return;
-  const marker = ownerFleetMarkers[activePanelRiderName];
+  if (!activePanelRiderId || !ownerFleetMap) return;
+  const marker = ownerFleetMarkers[activePanelRiderId];
   if (!marker) return;
 
   const panel = document.getElementById('fleet-dispatch-panel');
@@ -11702,11 +11693,11 @@ function handleRealtimeEvent(table, eventType, record) {
         const rName = deletedRider.name;
         mockData.fleet.splice(idx, 1);
 
-        if (rName && ownerFleetMarkers[rName]) {
-          if (ownerFleetMarkers[rName].setMap) {
-            ownerFleetMarkers[rName].setMap(null);
+        if (ownerFleetMarkers[riderId]) {
+          if (ownerFleetMarkers[riderId].setMap) {
+            ownerFleetMarkers[riderId].setMap(null);
           }
-          delete ownerFleetMarkers[rName];
+          delete ownerFleetMarkers[riderId];
         }
       }
     } else {
