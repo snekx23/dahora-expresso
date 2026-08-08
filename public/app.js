@@ -2409,9 +2409,14 @@ async function initClientFleetMap() {
 
 
 window.getRiderStatusDetails = function(status) {
-  const norm = String(status || '').trim().toLowerCase();
+  const rawStr = String(status || '').trim();
+  const norm = rawStr
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 
-  if (norm === 'indisponível' || norm === 'indisponivel' || norm === 'em descanso' || norm === 'descanso' || norm === 'offline') {
+  if (norm.includes('indisponivel') || norm.includes('descanso') || norm.includes('offline') || norm.includes('desconectado')) {
     return {
       statusClass: 'status-neutral',
       color: '#8e8e9f',
@@ -2421,7 +2426,7 @@ window.getRiderStatusDetails = function(status) {
     };
   }
 
-  if (norm === 'disponível' || norm === 'disponivel' || norm === 'ativo' || norm === 'online') {
+  if (norm === 'disponivel' || norm === 'ativo' || norm === 'online') {
     return {
       statusClass: 'status-success',
       color: '#22c55e',
@@ -2431,11 +2436,11 @@ window.getRiderStatusDetails = function(status) {
     };
   }
 
-  if (norm === 'em rota' || norm === 'em coleta' || norm === 'coletando' || norm === 'em entrega') {
+  if (norm.includes('rota') || norm.includes('coleta') || norm.includes('entrega')) {
     return {
       statusClass: 'status-progress',
       color: '#ffb700',
-      label: status || 'Em Rota',
+      label: rawStr || 'Em Rota',
       isPulsing: true,
       isUnavailable: false
     };
@@ -2445,7 +2450,7 @@ window.getRiderStatusDetails = function(status) {
   return {
     statusClass: 'status-danger',
     color: '#ef4444',
-    label: status || 'Inativo',
+    label: rawStr || 'Inativo',
     isPulsing: false,
     isUnavailable: true
   };
