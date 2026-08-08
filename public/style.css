@@ -3831,10 +3831,20 @@ gmp-place-autocomplete::part(input):focus {
   overflow: hidden;
 }
 
+#request-delivery-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+}
+
 #modal-request-delivery .modal-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto !important;
+  overscroll-behavior: contain;
 }
 
 #modal-request-delivery .modal-footer {
