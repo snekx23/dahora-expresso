@@ -1570,13 +1570,23 @@ select {
 }
 
 .status-indicator.status-progress {
-  background-color: rgba(59, 130, 246, 0.15);
-  color: var(--info);
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #ffb700;
 }
 
 .status-indicator.status-warning {
   background-color: rgba(245, 158, 11, 0.15);
   color: var(--warning);
+}
+
+.status-indicator.status-neutral {
+  background-color: rgba(142, 142, 159, 0.15);
+  color: #8e8e9f;
+}
+
+.status-indicator.status-danger {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
 
 /* List element inside Card */
@@ -3813,9 +3823,22 @@ gmp-place-autocomplete::part(input):focus {
   box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.25) !important;
 }
 
-#modal-request-delivery .modal-body,
-.modal-body {
-  overflow: visible !important;
+#modal-request-delivery .modal-card {
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#modal-request-delivery .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto !important;
+}
+
+#modal-request-delivery .modal-footer {
+  flex-shrink: 0;
 }
 
 /* =====================================================================

@@ -19,17 +19,17 @@ test('Mapa da Frota — Auditoria de Regras do Motoboy Desconectado e Reutiliza�
   });
 
   await t.test('3. Status Indisponível / Em Descanso renderiza marcadores cinzas (#8e8e9f) e sem pulso', () => {
-    assert.ok(appJs.includes("currentStatus === 'Indisponível' || currentStatus === 'Em Descanso'"), 'Deve verificar status Indisponível e Em Descanso');
-    assert.ok(appJs.includes("currentStatusColor = '#8e8e9f'"), 'Cor cinza #8e8e9f deve ser atribuída a Indisponível/Em Descanso');
+    assert.ok(appJs.includes('getRiderStatusDetails'), 'Deve possuir a função unificada getRiderStatusDetails');
+    assert.ok(appJs.includes("color: '#8e8e9f'"), 'Cor cinza #8e8e9f deve ser atribuída a Indisponível/Em Descanso');
   });
 
   await t.test('4. Status Disponível / Ativo / Em Rota renderiza marcadores verdes (#22c55e) com pulso ativo', () => {
-    assert.ok(appJs.includes("currentStatus === 'Disponível' || currentStatus === 'Ativo' || currentStatus === 'Em Rota'"), 'Deve verificar os status operacionais para verde');
-    assert.ok(appJs.includes("currentStatusColor = '#22c55e'"), 'Cor verde #22c55e deve ser atribuída a status operacionais');
+    assert.ok(appJs.includes("color: '#22c55e'"), 'Cor verde #22c55e deve ser atribuída a status operacionais');
+    assert.ok(appJs.includes("color: '#ffb700'"), 'Cor amarela #ffb700 deve ser atribuída a Em Rota / Em Coleta');
   });
 
   await t.test('5. openRiderMapPopup atribui a badge de status cinza para entregadores Indisponíveis ou em Descanso', () => {
-    assert.ok(appJs.includes("const isUnavailableOrRest = currentStatus === 'Indisponível' || currentStatus === 'Em Descanso'"), 'openRiderMapPopup deve verificar isUnavailableOrRest');
+    assert.ok(appJs.includes('const statusDetails = getRiderStatusDetails(rider.status)'), 'openRiderMapPopup deve utilizar getRiderStatusDetails');
   });
 
   await t.test('6. Reutilização de marcador sem duplicação ao reconectar (usa setLatLng e setContent)', () => {

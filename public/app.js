@@ -270,6 +270,7 @@ async function fetchFleet() {
         vehicle: item.vehicle,
         plate: item.plate,
         status: item.status,
+        statusClass: getRiderStatusDetails(item.status).statusClass,
         battery: batteryDisplay,
         battery_level: batteryLevel,
         is_charging: isCharging,
@@ -1232,6 +1233,7 @@ function renderFleetTable() {
 
   tbody.innerHTML = '';
   mockData.fleet.forEach(rider => {
+    const statusDetails = getRiderStatusDetails(rider.status);
     const tr = document.createElement('tr');
     tr.className = 'clickable-row';
     const numRating = Number(rider.rating);
@@ -1253,7 +1255,7 @@ function renderFleetTable() {
         <strong>${escapeHtml(rider.vehicle)}</strong>
         <p class="text-muted">${escapeHtml(rider.plate)}</p>
       </td>
-      <td><span class="status-indicator ${escapeHtml(rider.statusClass)}">${escapeHtml(rider.status)}</span></td>
+      <td><span class="status-indicator ${statusDetails.statusClass}">${escapeHtml(statusDetails.label)}</span></td>
       <td><strong>${escapeHtml(rider.delivery)}</strong></td>
       <td>
         <div class="perf-bar-group" style="width: 100px;">
@@ -2406,6 +2408,49 @@ async function initClientFleetMap() {
 }
 
 
+window.getRiderStatusDetails = function(status) {
+  const norm = String(status || '').trim().toLowerCase();
+
+  if (norm === 'indisponível' || norm === 'indisponivel' || norm === 'em descanso' || norm === 'descanso' || norm === 'offline') {
+    return {
+      statusClass: 'status-neutral',
+      color: '#8e8e9f',
+      label: norm.includes('descanso') ? 'Em Descanso' : 'Indisponível',
+      isPulsing: false,
+      isUnavailable: true
+    };
+  }
+
+  if (norm === 'disponível' || norm === 'disponivel' || norm === 'ativo' || norm === 'online') {
+    return {
+      statusClass: 'status-success',
+      color: '#22c55e',
+      label: 'Disponível',
+      isPulsing: true,
+      isUnavailable: false
+    };
+  }
+
+  if (norm === 'em rota' || norm === 'em coleta' || norm === 'coletando' || norm === 'em entrega') {
+    return {
+      statusClass: 'status-progress',
+      color: '#ffb700',
+      label: status || 'Em Rota',
+      isPulsing: true,
+      isUnavailable: false
+    };
+  }
+
+  // Inativo / Suspenso / Bloqueado
+  return {
+    statusClass: 'status-danger',
+    color: '#ef4444',
+    label: status || 'Inativo',
+    isPulsing: false,
+    isUnavailable: true
+  };
+};
+
 function renderMapMarkers(centerCoords) {
   if (!ownerFleetMap || !window.google?.maps) return;
 
@@ -2457,24 +2502,9 @@ function renderMapMarkers(centerCoords) {
 
   validRiders.forEach(rider => {
     const riderId = String(rider.id);
-    const currentStatus = rider.status || 'Disponível';
-
-    const isUnavailableOrRest = currentStatus === 'Indisponível' || currentStatus === 'Em Descanso';
-    const isOperationalGreen = currentStatus === 'Disponível' || currentStatus === 'Ativo' || currentStatus === 'Em Rota';
-
-    let currentStatusColor;
-    let isPulsing;
-
-    if (isUnavailableOrRest) {
-      currentStatusColor = '#8e8e9f';
-      isPulsing = false;
-    } else if (isOperationalGreen) {
-      currentStatusColor = '#22c55e';
-      isPulsing = true;
-    } else {
-      currentStatusColor = rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e';
-      isPulsing = currentStatus !== 'Inativo' && currentStatus !== 'Suspenso' && currentStatus !== 'Bloqueado';
-    }
+    const statusDetails = getRiderStatusDetails(rider.status);
+    const currentStatusColor = statusDetails.color;
+    const isPulsing = statusDetails.isPulsing;
 
     const riderCoords = [parseFloat(rider.lat), parseFloat(rider.lng)];
     const markerHtml = `
@@ -2514,11 +2544,7 @@ window.openRiderMapPopup = function(riderId) {
   const rider = mockData.fleet.find(r => String(r.id) === String(riderId));
   if (!rider) return;
 
-  const currentStatus = rider.status || 'Disponível';
-  const isUnavailableOrRest = currentStatus === 'Indisponível' || currentStatus === 'Em Descanso';
-  const currentStatusColor = isUnavailableOrRest
-    ? '#8e8e9f'
-    : (rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e');
+  const statusDetails = getRiderStatusDetails(rider.status);
 
   let pendingOptions = '<option value="" disabled selected>Vincular Tele...</option>';
   if (mockData.pendingDeliveries.length > 0) {
@@ -2534,43 +2560,43 @@ window.openRiderMapPopup = function(riderId) {
   if (assignedTeles.length > 0) {
     assignedTeles.forEach(t => {
       assignedHtml += `
-        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.05); padding: 6px 8px; border-radius: 4px; margin-bottom: 6px;">
-          <div style="font-size: 0.8rem; color: #fff;">
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.05); padding: 4px 6px; border-radius: 4px; margin-bottom: 4px;">
+          <div style="font-size: 0.75rem; color: #fff;">
             <strong>${t.id}</strong> • ${t.destName || 'Cliente'} (${t.price})
           </div>
-          <button onclick="window.removeTeleFromRiderFromPopup('${t.id}', '${rider.id}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 4px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none;" title="Desvincular Tele">
-            <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+          <button onclick="window.removeTeleFromRiderFromPopup('${t.id}', '${rider.id}')" style="background: rgba(239, 68, 68, 0.15); border: none; color: #ef4444; border-radius: 4px; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;" title="Desvincular Tele">
+            <i data-lucide="trash-2" style="width: 11px; height: 11px;"></i>
           </button>
         </div>
       `;
     });
   } else {
-    assignedHtml = `<p style="margin: 0; font-size: 0.8rem; color: #8e8e9f; font-style: italic;">Nenhuma tele atribuída</p>`;
+    assignedHtml = `<p style="margin: 0; font-size: 0.75rem; color: #8e8e9f; font-style: italic;">Nenhuma tele atribuída</p>`;
   }
 
   const htmlContent = `
-    <div style="padding: 16px; min-width: 260px; font-family: sans-serif; color: #fff; box-sizing: border-box;">
-      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 8px; margin-bottom: 12px; padding-right: 28px;">
-        <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #fff;">${rider.name}</h4>
-        <span class="status-indicator" style="background-color: ${currentStatusColor}; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; color: #fff; font-weight: 600; flex-shrink: 0; margin-left: 8px;">
-          ${currentStatus}
+    <div style="padding: 8px 10px; min-width: 210px; max-width: 240px; font-family: sans-serif; color: #fff; box-sizing: border-box;">
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 4px; margin-bottom: 8px; padding-right: 20px;">
+        <h4 style="margin: 0; font-size: 0.88rem; font-weight: 700; color: #fff;">${escapeHtml(rider.name)}</h4>
+        <span class="status-indicator ${statusDetails.statusClass}" style="padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; margin-left: 6px;">
+          ${escapeHtml(statusDetails.label)}
         </span>
       </div>
       
-      <div style="margin-bottom: 12px;">
-        <label style="display: block; font-size: 0.75rem; color: #8e8e9f; margin-bottom: 4px;">Vincular Nova Tele</label>
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <select id="popup-select-${rider.id}" style="flex: 1; background: #121216; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; color: #fff; font-size: 0.8rem; padding: 4px 8px; outline: none; height: 32px; box-sizing: border-box;">
+      <div style="margin-bottom: 8px;">
+        <label style="display: block; font-size: 0.72rem; color: #8e8e9f; margin-bottom: 3px;">Vincular Nova Tele</label>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <select id="popup-select-${rider.id}" style="flex: 1; background: #121216; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; color: #fff; font-size: 0.76rem; padding: 2px 6px; outline: none; height: 28px; box-sizing: border-box;">
             ${pendingOptions}
           </select>
-          <button onclick="window.dispatchDeliveryFromPopup('${rider.id}', 'popup-select-${rider.id}')" style="background: #ffb700; border: none; border-radius: 4px; color: #000; font-size: 0.8rem; font-weight: 700; padding: 0 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 32px; box-sizing: border-box; flex-shrink: 0; transition: all 0.2s;">
+          <button onclick="window.dispatchDeliveryFromPopup('${rider.id}', 'popup-select-${rider.id}')" style="background: #ffb700; border: none; border-radius: 4px; color: #000; font-size: 0.76rem; font-weight: 700; padding: 0 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; height: 28px; box-sizing: border-box; flex-shrink: 0; transition: all 0.2s;">
             Adicionar
           </button>
         </div>
       </div>
       
       <div>
-        <label style="display: block; font-size: 0.75rem; color: #8e8e9f; margin-bottom: 6px;">Teles Atribuídas (${assignedTeles.length})</label>
+        <label style="display: block; font-size: 0.72rem; color: #8e8e9f; margin-bottom: 4px;">Teles Atribuídas (${assignedTeles.length})</label>
         ${assignedHtml}
       </div>
     </div>
@@ -3561,8 +3587,7 @@ window.showFleetRiderPanel = function(rider, mockRider, currentStatus, currentSt
     }
   }
 
-  const badgeColor = currentStatusColor === '#8e8e9f' ? 'var(--color-text-muted)' : (currentStatusColor === '#ffb700' ? 'var(--primary)' : 'var(--accent-cyan)');
-  const badgeBg = currentStatusColor === '#8e8e9f' ? 'rgba(142, 142, 159, 0.15)' : (currentStatusColor === '#ffb700' ? 'var(--primary-glow)' : 'var(--accent-cyan-glow)');
+  const statusDetails = getRiderStatusDetails(currentStatus);
 
   panel.innerHTML = `
     <div class="fleet-panel-header">
@@ -3572,7 +3597,7 @@ window.showFleetRiderPanel = function(rider, mockRider, currentStatus, currentSt
       </button>
     </div>
     <p class="fleet-panel-subtitle">${escapeHtml(rider.vehicle)} • <strong>${escapeHtml(rider.plate)}</strong></p>
-    <span class="status-indicator" style="display: inline-block; padding: 4px 10px; font-size: 0.75rem; border-radius: 12px; font-weight: 600; color: ${badgeColor}; background: ${badgeBg};">${escapeHtml(currentStatus)}</span>
+    <span class="status-indicator ${statusDetails.statusClass}">${escapeHtml(statusDetails.label)}</span>
     ${dispatchHtml}
   `;
 
