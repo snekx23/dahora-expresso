@@ -41,4 +41,9 @@ test('Mapa da Frota — Auditoria de Regras do Motoboy Desconectado e Reutiliza�
     assert.ok(appJs.includes('ownerFleetMarkers[riderId].setMap(null)'), 'Realtime DELETE deve zerar o marcador por riderId');
     assert.ok(appJs.includes('delete ownerFleetMarkers[riderId]'), 'Realtime DELETE deve remover riderId do dicionário ownerFleetMarkers');
   });
+
+  await t.test('8. Preserva lat/lng anteriores em UPDATEs parciais de Realtime se novo evento não trouxer coords válidas', () => {
+    assert.ok(appJs.includes('isValidCoord(record.lat) ? record.lat : currentItem.lat'), 'Deve preservar lat anterior se record.lat for inválido');
+    assert.ok(appJs.includes('isValidCoord(record.lng) ? record.lng : currentItem.lng'), 'Deve preservar lng anterior se record.lng for inválido');
+  });
 });

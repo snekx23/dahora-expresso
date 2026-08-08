@@ -11701,10 +11701,14 @@ function handleRealtimeEvent(table, eventType, record) {
         }
       }
     } else {
+      const isValidCoord = (val) => val !== null && val !== undefined && val !== '' && !isNaN(parseFloat(val));
+
       const updatedRider = {
         ...(existingRider || {}),
         ...record,
-        id: riderId
+        id: riderId,
+        lat: isValidCoord(record.lat) ? record.lat : (existingRider ? existingRider.lat : record.lat),
+        lng: isValidCoord(record.lng) ? record.lng : (existingRider ? existingRider.lng : record.lng)
       };
       opRidersStoreMap.set(riderId, updatedRider);
 
@@ -11715,9 +11719,9 @@ function handleRealtimeEvent(table, eventType, record) {
           ...currentItem,
           ...record,
           id: riderId,
-          lat: record.lat !== undefined ? record.lat : currentItem.lat,
-          lng: record.lng !== undefined ? record.lng : currentItem.lng,
-          status: record.status !== undefined ? record.status : currentItem.status,
+          lat: isValidCoord(record.lat) ? record.lat : currentItem.lat,
+          lng: isValidCoord(record.lng) ? record.lng : currentItem.lng,
+          status: record.status !== undefined && record.status !== null ? record.status : currentItem.status,
           name: record.name || currentItem.name,
           vehicle: record.vehicle || currentItem.vehicle,
           plate: record.plate || currentItem.plate
