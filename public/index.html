@@ -1912,6 +1912,23 @@
                       <div id="client-request-delivery-map" style="height: 250px; width: 100%; border-radius: var(--border-radius-md); border: 1px solid var(--border-color); z-index: 1;"></div>
                     </div>
 
+                    <div class="form-row mt-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                      <div class="form-group flex-1">
+                        <label for="client-delivery-price" style="font-weight: 600; color: var(--primary);">Valor da Tele (R$) *</label>
+                        <div class="input-wrapper">
+                          <span class="input-prefix">R$</span>
+                          <input type="text" id="client-delivery-price" required placeholder="Ex: 18,50" style="border: 1px solid var(--primary); font-weight: 600;">
+                        </div>
+                      </div>
+                      <div class="form-group flex-1">
+                        <label for="client-order-value">Valor do Pedido (R$)</label>
+                        <div class="input-wrapper">
+                          <span class="input-prefix">R$</span>
+                          <input type="text" id="client-order-value" placeholder="Ex: 120,00">
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="form-row mt-3">
                       <div class="form-group flex-1">
                         <label for="client-cargo-type">Tipo de Mercadoria</label>
@@ -2850,13 +2867,13 @@
 
   <!-- Modal: Solicitar/Criar Tele Manualmente -->
   <div id="modal-request-delivery" class="modal-overlay hidden" onclick="closeRequestDeliveryModal(event)">
-    <div class="modal-card" style="max-width: 520px; max-height: calc(100vh - 32px); display: flex; flex-direction: column;" onclick="event.stopPropagation()">
-      <div class="modal-header" style="flex-shrink: 0;">
+    <div class="modal-card" style="max-width: 540px; width: 100%; max-height: min(90vh, calc(100vh - 32px)); display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: var(--border-radius-lg);" onclick="event.stopPropagation()">
+      <div class="modal-header" style="flex-shrink: 0; padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-card);">
         <h3>Nova Tele Manual</h3>
         <button class="modal-close-btn" onclick="closeRequestDeliveryModal()"><i data-lucide="x"></i></button>
       </div>
-      <form id="request-delivery-form" onsubmit="submitDeliveryRequest(event, 'manual')" style="display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; margin: 0;">
-        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; flex: 1; overflow-y: auto; padding-right: 6px; padding-bottom: 10px;">
+      <form id="request-delivery-form" onsubmit="submitDeliveryRequest(event, 'manual')" style="display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; margin: 0;">
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px 20px;">
           
           <div class="form-group">
             <label for="manual-delivery-id" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Código da Tele (Gerado no Envio)</label>
@@ -2956,6 +2973,17 @@
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
+              <label for="manual-delivery-charge" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem; color: var(--primary);">Valor da Tele (R$) *</label>
+              <input type="text" id="manual-delivery-charge" required placeholder="Ex: 20,00" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--primary); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.9rem; font-weight: 600; outline: none; width: 100%;">
+            </div>
+            <div class="form-group">
+              <label for="manual-order-value" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Valor do Pedido (R$)</label>
+              <input type="text" id="manual-order-value" placeholder="Ex: 120,00" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
               <label for="manual-cargo-type" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Mercadoria</label>
               <select id="manual-cargo-type" style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%; cursor: pointer;">
                 <option value="lanche">🍔 Lanches e Bebidas</option>
@@ -3006,7 +3034,7 @@
           </div>
 
         </div>
-        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; border-top: 1px solid var(--border-color); padding-top: 14px; background: var(--bg-card); margin-top: 0;">
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; border-top: 1px solid var(--border-color); padding: 14px 20px; background: var(--bg-card); position: sticky; bottom: 0; z-index: 10;">
           <button type="button" class="btn btn-secondary" onclick="closeRequestDeliveryModal()" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Cancelar</button>
           <button type="submit" class="btn btn-primary" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Chamar Tele</button>
         </div>

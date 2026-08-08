@@ -9569,59 +9569,111 @@ function syncManualDeliveryNumberInput(val) {
   if (snCb && val.trim()) snCb.checked = false;
 }
 
-function toggleManualDeliverySN() {
-  const snCb = document.getElementById('manual-delivery-sn-cb');
-  const numInput = document.getElementById('manual-delivery-number-input');
-  const hiddenNum = document.getElementById('manual-delivery-number');
-
-  if (snCb && snCb.checked) {
-    if (numInput) { numInput.value = ''; numInput.disabled = true; }
-    if (hiddenNum) hiddenNum.value = 'S/N';
-  } else {
-    if (numInput) { numInput.disabled = false; }
-    if (hiddenNum) hiddenNum.value = numInput ? numInput.value.trim() : '';
+function extractHouseNumberFromAddress(addrText) {
+  if (!addrText || typeof addrText !== 'string') return null;
+  // Remover CEP (ex: 93260-000 ou 93260000) e rodovias para evitar falsos positivos
+  let clean = addrText.replace(/\b\d{5}-?\d{3}\b/g, '').replace(/\b(?:RS|BR)-\d+\b/gi, '');
+  // Regex estrita para número de imóvel inequivocamente associado à rua
+  const match = clean.match(/(?:,\s*|\s+nº\s*|\s+n°\s*|\s+num\s*|\s+n\.\s*)(\d+[a-zA-Z]?)(?=\s*[,-]|\s*$)/i);
+  if (match && match[1]) {
+    const candidate = match[1].trim();
+    if (candidate.length <= 5 && !/^(19|20)\d{2}$/.test(candidate)) {
+      return candidate;
+    }
   }
+  return null;
 }
 
-function onMapMarkerPositionChanged(lat, lng) {
+let manualAddressGeocodeTimeout = null;
+async function geocodeManualAddressText() {
+  const addrInput = document.getElementById('manual-delivery-address');
+  const addressText = addrInput?.value?.trim();
+  if (!addressText) return;
+
   const latInput = document.getElementById('manual-delivery-lat');
   const lngInput = document.getElementById('manual-delivery-lng');
   const precInput = document.getElementById('manual-geocoding-precision');
-  const adjInput = document.getElementById('manual-location-adjusted-manually');
-  const warnBox = document.getElementById('manual-geocoding-warning');
+  const numInput = document.getElementById('manual-delivery-number');
+  const numVisibleInput = document.getElementById('manual-delivery-number-input');
 
-  if (latInput) latInput.value = typeof lat === 'number' ? lat.toFixed(7) : lat;
-  if (lngInput) lngInput.value = typeof lng === 'number' ? lng.toFixed(7) : lng;
-  if (precInput) precInput.value = 'manual';
-  if (adjInput) adjInput.value = 'true';
-  if (warnBox) warnBox.classList.add('hidden');
-}
+  try {
+    await loadGoogleMapsApi();
+    if (!window.google || !window.google.maps) return;
+    const geocoder = new window.google.maps.Geocoder();
 
-let isPlacesApi403Blocked = false;
+    const query = (addressText.toLowerCase().includes('rio grande do sul') || addressText.toLowerCase().includes(' rs'))
+      ? addressText
+      : `${addressText}, Sapucaia do Sul, RS, Brasil`;
 
-function showPlacesApi403Warning() {
-  const warnBox = document.getElementById('manual-geocoding-warning');
-  if (warnBox) {
-    warnBox.classList.remove('hidden');
-    warnBox.innerHTML = '⚠️ <strong>A busca de endereços está indisponível.</strong> Ative a Places API (New) e permita essa API nas restrições da chave.';
-  }
-}
+    geocoder.geocode({ address: query }, (results, status) => {
+      if (status === 'OK' && results && results[0]) {
+        const place = results[0];
+        const location = place.geometry?.location;
+        if (!location) return;
 
-function handlePlacesApi403Error() {
-  if (isPlacesApi403Blocked) return;
-  isPlacesApi403Blocked = true;
-  console.warn("Places API (New) indisponível ou bloqueada (Erro 403 Forbidden).");
-  showPlacesApi403Warning();
+        const lat = typeof location.lat === 'function' ? location.lat() : location.lat;
+        const lng = typeof location.lng === 'function' ? location.lng() : location.lng;
 
-  const existingInput = document.getElementById('manual-delivery-address');
-  if (existingInput) {
-    existingInput.style.display = 'block';
+        if (latInput) latInput.value = lat.toFixed(7);
+        if (lngInput) lngInput.value = lng.toFixed(7);
+
+        if (manualDeliveryMap) {
+          manualDeliveryMap.setCenter({ lat, lng });
+          manualDeliveryMap.setZoom(16);
+        }
+        if (manualDeliveryMarker) {
+          if (manualDeliveryMarker.position) {
+            manualDeliveryMarker.position = { lat, lng };
+          } else if (typeof manualDeliveryMarker.setPosition === 'function') {
+            manualDeliveryMarker.setPosition({ lat, lng });
+          }
+        }
+
+        let streetNumber = '';
+        if (place.address_components) {
+          place.address_components.forEach(comp => {
+            if (comp.types && comp.types.includes('street_number')) {
+              streetNumber = comp.long_name || comp.short_name || '';
+            }
+          });
+        }
+        const resolvedNumber = streetNumber || extractHouseNumberFromAddress(addressText);
+        if (resolvedNumber) {
+          if (numInput) numInput.value = resolvedNumber;
+          if (numVisibleInput) numVisibleInput.value = resolvedNumber;
+          if (precInput) precInput.value = 'rooftop';
+          document.getElementById('manual-number-confirm-area')?.classList.add('hidden');
+          document.getElementById('manual-geocoding-warning')?.classList.add('hidden');
+        }
+      }
+    });
+  } catch (err) {
+    console.warn("geocodeManualAddressText notice:", err);
   }
 }
 
 async function initGooglePlacesAutocomplete() {
   const container = document.getElementById('manual-address-suggestions')?.parentElement || document.getElementById('manual-delivery-address')?.parentElement;
   if (!container || container.dataset.googleAutocompleteAttached === 'true') return;
+
+  const addrInput = document.getElementById('manual-delivery-address');
+  if (addrInput && !addrInput.dataset.listenerAttached) {
+    addrInput.dataset.listenerAttached = 'true';
+    addrInput.addEventListener('input', () => {
+      // Invalidação imediata de coordenadas ao editar o endereço
+      const latInput = document.getElementById('manual-delivery-lat');
+      const lngInput = document.getElementById('manual-delivery-lng');
+      const precInput = document.getElementById('manual-geocoding-precision');
+      if (latInput) latInput.value = '';
+      if (lngInput) lngInput.value = '';
+      if (precInput) precInput.value = 'unconfirmed';
+
+      if (manualAddressGeocodeTimeout) clearTimeout(manualAddressGeocodeTimeout);
+      manualAddressGeocodeTimeout = setTimeout(() => {
+        geocodeManualAddressText();
+      }, 600);
+    });
+  }
 
   if (isPlacesApi403Blocked) {
     showPlacesApi403Warning();
@@ -9753,15 +9805,17 @@ function handlePlaceSelection(place) {
   const stateInput = document.getElementById('manual-delivery-state');
   const postalCodeInput = document.getElementById('manual-delivery-postal-code');
   const precInput = document.getElementById('manual-geocoding-precision');
-  const snCb = document.getElementById('manual-delivery-sn-cb');
   const confirmArea = document.getElementById('manual-number-confirm-area');
   const summaryBox = document.getElementById('manual-address-summary-box');
   const summaryTitle = document.getElementById('manual-address-summary-title');
   const summarySubtitle = document.getElementById('manual-address-summary-subtitle');
 
+  // Determinar o número do imóvel: 1. street_number dos componentes, 2. Fallback estrito do texto
+  const resolvedNumber = streetNumber || extractHouseNumberFromAddress(cleanFormatted) || extractHouseNumberFromAddress(addrInput?.value);
+
   if (addrInput) addrInput.value = cleanFormatted;
-  if (numInput) numInput.value = streetNumber || '';
-  if (numVisibleInput) numVisibleInput.value = streetNumber || '';
+  if (numInput) numInput.value = resolvedNumber || '';
+  if (numVisibleInput) numVisibleInput.value = resolvedNumber || '';
   if (neighInput) neighInput.value = sublocality || '';
   if (cityInput) cityInput.value = city || 'Sapucaia do Sul';
   if (stateInput) stateInput.value = 'RS';
@@ -9772,15 +9826,15 @@ function handlePlaceSelection(place) {
 
   // Resumo Compacto do Endereço (Somente Leitura)
   if (summaryBox && summaryTitle && summarySubtitle) {
-    const mainTitle = route ? (streetNumber ? `${route}, ${streetNumber}` : route) : cleanFormatted;
+    const mainTitle = route ? (resolvedNumber ? `${route}, ${resolvedNumber}` : route) : cleanFormatted;
     const subText = `${sublocality ? sublocality + ' • ' : ''}${city || 'Sapucaia do Sul'} - RS`;
     summaryTitle.innerText = mainTitle;
     summarySubtitle.innerText = subText;
     summaryBox.classList.remove('hidden');
   }
 
-  // Área Dinâmica de Número Não Confirmado
-  if (streetNumber) {
+  // Área Dinâmica de Número
+  if (resolvedNumber) {
     if (precInput) precInput.value = 'rooftop';
     if (confirmArea) confirmArea.classList.add('hidden');
     if (warnBox) warnBox.classList.add('hidden');
@@ -9806,10 +9860,12 @@ function handlePlaceSelection(place) {
   }
 }
 
-
-
 async function submitDeliveryRequest(event, type = 'manual') {
   if (event) event.preventDefault();
+
+  if (type === 'client') {
+    return submitClientDeliveryRequest(event);
+  }
 
   const selectedClientId = document.getElementById('selectedClientId')?.value;
   if (!selectedClientId) {
@@ -9841,20 +9897,65 @@ async function submitDeliveryRequest(event, type = 'manual') {
     return;
   }
 
-  const number = document.getElementById('manual-delivery-number')?.value?.trim();
-  const isSN = document.getElementById('manual-delivery-sn-cb')?.checked;
-  if (!number && !isSN) {
-    showToastNotification('Informe o número da residência ou marque S/N (Sem número).');
+  // Capturar e validar Valor da Tele (R$) autoritativo
+  const rawDeliveryCharge = document.getElementById('manual-delivery-charge')?.value;
+  let deliveryCharge = 0;
+  try {
+    deliveryCharge = parseMoneyBR(rawDeliveryCharge);
+  } catch (err) {
+    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    return;
+  }
+  if (!deliveryCharge || deliveryCharge <= 0) {
+    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
     return;
   }
 
-  const latRaw = document.getElementById('manual-delivery-lat')?.value;
-  const lngRaw = document.getElementById('manual-delivery-lng')?.value;
+  // Capturar e validar Valor do Pedido (R$)
+  const rawOrderValue = document.getElementById('manual-order-value')?.value;
+  let orderValue = 0;
+  if (rawOrderValue && rawOrderValue.trim()) {
+    try {
+      orderValue = parseMoneyBR(rawOrderValue);
+    } catch (err) {
+      showToastNotification(`Valor do Pedido inválido: ${err.message}`);
+      return;
+    }
+  }
+
+  // Tentar re-geocodificar se as coordenadas estiverem ausentes por edição manual
+  let latRaw = document.getElementById('manual-delivery-lat')?.value;
+  let lngRaw = document.getElementById('manual-delivery-lng')?.value;
+  if (!latRaw || !lngRaw) {
+    await geocodeManualAddressText();
+    latRaw = document.getElementById('manual-delivery-lat')?.value;
+    lngRaw = document.getElementById('manual-delivery-lng')?.value;
+  }
+
   const lat = latRaw ? parseFloat(latRaw) : null;
   const lng = lngRaw ? parseFloat(lngRaw) : null;
 
   if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
     showToastNotification('Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas.');
+    return;
+  }
+
+  // Resolver número se ainda estiver ausente
+  let number = document.getElementById('manual-delivery-number')?.value?.trim();
+  const isSN = document.getElementById('manual-delivery-sn-cb')?.checked;
+  if (!number && !isSN) {
+    const extracted = extractHouseNumberFromAddress(address);
+    if (extracted) {
+      number = extracted;
+      const numInput = document.getElementById('manual-delivery-number');
+      const numVisibleInput = document.getElementById('manual-delivery-number-input');
+      if (numInput) numInput.value = extracted;
+      if (numVisibleInput) numVisibleInput.value = extracted;
+    }
+  }
+
+  if (!number && !isSN) {
+    showToastNotification('Selecione um endereço que contenha o número do imóvel.');
     return;
   }
 
@@ -9888,7 +9989,7 @@ async function submitDeliveryRequest(event, type = 'manual') {
         p_idempotency_key: idempotencyKey,
         p_reference: null,
         p_notes: notes,
-        p_order_value: 0,
+        p_order_value: orderValue,
         p_operation_source: 'owner_panel',
         p_delivery_number: isSN ? 'S/N' : number,
         p_delivery_complement: complement,
@@ -9897,7 +9998,8 @@ async function submitDeliveryRequest(event, type = 'manual') {
         p_delivery_latitude: lat,
         p_delivery_longitude: lng,
         p_geocoding_precision: precision,
-        p_location_adjusted_manually: isManual
+        p_location_adjusted_manually: isManual,
+        p_delivery_charge: deliveryCharge
       });
 
       if (error) throw error;
@@ -9974,6 +10076,7 @@ async function computeCanonicalPayloadFingerprint(payload, userId) {
     reference: (payload.p_reference || '').trim(),
     notes: (payload.p_notes || '').trim(),
     order_value: Number(payload.p_order_value || 0).toFixed(2),
+    delivery_charge: Number(payload.p_delivery_charge || 0).toFixed(2),
     delivery_lat: payload.p_delivery_latitude ?? null,
     delivery_lng: payload.p_delivery_longitude ?? null,
     pickup_lat: payload.p_pickup_latitude ?? null,
@@ -10014,14 +10117,29 @@ async function submitClientDeliveryRequest(event) {
   const address = document.getElementById('client-delivery-address')?.value.trim();
   const phone = document.getElementById('client-dest-phone')?.value.trim() || '';
   const cargo = document.getElementById('client-cargo-notes')?.value.trim() || 'Sem observações';
-  const rawPrice = document.getElementById('client-delivery-price')?.value || '15,00';
-  
-  let orderValue = 0;
+
+  const rawDeliveryCharge = document.getElementById('client-delivery-price')?.value;
+  let deliveryCharge = 0;
   try {
-    orderValue = parseMoneyBR(rawPrice);
+    deliveryCharge = parseMoneyBR(rawDeliveryCharge);
   } catch (err) {
-    showToastNotification(`Erro no valor da entrega: ${err.message}`);
+    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
     return;
+  }
+  if (!deliveryCharge || deliveryCharge <= 0) {
+    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    return;
+  }
+
+  const rawOrderValue = document.getElementById('client-order-value')?.value;
+  let orderValue = 0;
+  if (rawOrderValue && rawOrderValue.trim()) {
+    try {
+      orderValue = parseMoneyBR(rawOrderValue);
+    } catch (err) {
+      showToastNotification(`Valor do Pedido inválido: ${err.message}`);
+      return;
+    }
   }
 
   if (!address) {
@@ -10037,6 +10155,7 @@ async function submitClientDeliveryRequest(event) {
     p_reference: null,
     p_notes: cargo,
     p_order_value: orderValue,
+    p_delivery_charge: deliveryCharge,
     p_operation_source: 'client_portal',
     p_delivery_number: null,
     p_delivery_complement: null,
