@@ -270,6 +270,7 @@ async function fetchFleet() {
         vehicle: item.vehicle,
         plate: item.plate,
         status: item.status,
+        bypassDistanceLimit: Boolean(item.bypass_distance_limit),
         statusClass: getRiderStatusDetails(item.status).statusClass,
         battery: batteryDisplay,
         battery_level: batteryLevel,
@@ -355,6 +356,9 @@ async function fetchClientHistory() {
       status: escapeHtml(item.status),
       statusClass: item.status === 'concluida' ? 'status-success' : (item.status === 'cancelada' ? 'status-danger' : 'status-warning'),
       payment_status: 'Pendente',
+      dest_lat: item.dest_lat !== undefined && item.dest_lat !== null ? Number(item.dest_lat) : (item.delivery_latitude !== undefined && item.delivery_latitude !== null ? Number(item.delivery_latitude) : null),
+      dest_lng: item.dest_lng !== undefined && item.dest_lng !== null ? Number(item.dest_lng) : (item.delivery_longitude !== undefined && item.delivery_longitude !== null ? Number(item.delivery_longitude) : null),
+      motoboy_id: item.motoboy_id || null,
       created_at: item.created_at,
       version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
       total_order_amount: item.total_order_amount || null
@@ -539,7 +543,7 @@ async function fetchPendingDeliveries() {
     const { data, error } = await supabaseClient
       .from('teles')
       .select('*')
-      .in('status', ['solicitada', 'solicitado', 'criada'])
+      .in('status', ['solicitada', 'solicitado', 'criada', 'aguardando_despacho'])
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -1285,11 +1289,6 @@ function renderFleetTable() {
 }
 
 
-function parseMoneyBR(value) {
-  if (!value) return 0;
-  return Number(String(value).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
-}
-
 function formatMoneyBR(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -1317,8 +1316,30 @@ function getCurrentWeekBounds() {
   return { monday, sunday };
 }
 
-function formatOrderIdForDisplay(id, payment, client) {
-  return id || '';
+function formatOrderIdForDisplay(teleCode, fallbackObj) {
+  let code = teleCode;
+  if (!code && fallbackObj) {
+    if (typeof fallbackObj === 'string') {
+      code = fallbackObj;
+    } else {
+      code = fallbackObj.tele_code || fallbackObj.teleCode || fallbackObj.code;
+    }
+  }
+  if (code && typeof code === 'string') {
+    const trimmed = code.trim();
+    if (trimmed.startsWith('TEL-')) return trimmed;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+    if (!isUuid) return 'TEL-' + trimmed.replace(/^#/, '');
+  }
+  return 'Código indisponível';
+}
+
+function formatRiderOptionLabel(rider) {
+  if (!rider) return '';
+  const statusNorm = String(rider.status || '').toLowerCase();
+  const isOnline = rider.status === 'Disponível' || rider.status === 'disponivel' || statusNorm === 'disponivel' || rider.status === 'Em Atendimento' || rider.status === 'A caminho da coleta';
+  const displayStatus = isOnline ? 'Disponível' : (rider.status || 'Indisponível');
+  return `${escapeHtml(rider.name)} — ${escapeHtml(displayStatus)}`;
 }
 
 function formatOrderDate(dateText, createdAt) {
@@ -1344,17 +1365,7 @@ function formatOrderDate(dateText, createdAt) {
   } else {
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
-    return `${day}/${month}, ${timeStr}`;
   }
-}
-
-function parseLocalDate(dateStr) {
-  if (!dateStr) return null;
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-  }
-  return new Date(dateStr);
 }
 
 function parseOrderDate(dateText, createdAt) {
@@ -1833,7 +1844,7 @@ function calculateEstimate(type = 'client') {
 }
 
 // Submit delivery request and trigger live tracking simulation
-async function submitDeliveryRequest(event, type = 'client') {
+async function submitDeliveryRequestLegacy(event, type = 'client') {
   event.preventDefault();
 
   const destAddress = document.getElementById(`${type}-delivery-address`).value;
@@ -3000,20 +3011,21 @@ function getOriginBadgeHtml(paymentStr, idStr) {
   return `<span class="badge" style="background: rgba(255, 183, 0, 0.1); color: var(--primary); border: 1px solid var(--primary-glow);">Manual</span>`;
 }
 
-function getFixedPriceByAddress(address) {
-  const addr = (address || '').toLowerCase();
-  if (addr.includes('esteio')) {
-    return 10.00;
-  }
-  return 8.00;
-}
+window.activeRouteMaps = window.activeRouteMaps || {};
 
 // Unified Teles Render Engine
 window.renderTelesUnified = function() {
   const container = document.getElementById('teles-content-container');
   if (!container) return;
 
-  // 1. Calculate Real-Time Stats
+  window.activeRouteMaps = {};
+
+  const isPendingStatus = (st) => {
+    if (!st) return false;
+    const s = String(st).toLowerCase();
+    return s === 'solicitada' || s === 'solicitado' || s === 'criada' || s === 'novo' || s === 'aguardando_despacho';
+  };
+
   const pendingCount = mockData.pendingDeliveries.length;
   const isTerminalStatus = (st) => {
     if (!st) return false;
@@ -3027,9 +3039,10 @@ window.renderTelesUnified = function() {
     return s === 'cancelada' || s === 'cancelado';
   };
 
-  const activeCount = mockData.clientHistory.filter(o => !isTerminalStatus(o.status) && !isCanceledStatus(o.status)).length;
-  const completedCount = mockData.clientHistory.filter(o => isTerminalStatus(o.status)).length;
-  const canceledCount = mockData.clientHistory.filter(o => isCanceledStatus(o.status)).length;
+  const historyNonPending = mockData.clientHistory.filter(o => !isPendingStatus(o.status));
+  const activeCount = historyNonPending.filter(o => !isTerminalStatus(o.status) && !isCanceledStatus(o.status)).length;
+  const completedCount = historyNonPending.filter(o => isTerminalStatus(o.status)).length;
+  const canceledCount = historyNonPending.filter(o => isCanceledStatus(o.status)).length;
   const allCount = pendingCount + activeCount + completedCount + canceledCount;
 
   // Update real-time counter badges in UI
@@ -3073,7 +3086,7 @@ window.renderTelesUnified = function() {
     };
   });
 
-  const historyItems = mockData.clientHistory.map(o => {
+  const historyItems = historyNonPending.map(o => {
     let type = 'active';
     if (isTerminalStatus(o.status)) type = 'completed';
     else if (isCanceledStatus(o.status)) type = 'canceled';
@@ -3090,6 +3103,7 @@ window.renderTelesUnified = function() {
       address: o.address,
       dest_lat: o.dest_lat,
       dest_lng: o.dest_lng,
+      motoboy_id: o.motoboy_id,
       dist: o.dist || '—',
       price: priceFormatted,
       payment: o.payment || 'Pago',
@@ -3144,14 +3158,13 @@ function renderTelesGrid(list) {
   list.forEach(item => {
     const originBadge = getOriginBadgeHtml(item.payment, item.id);
     if (item.type === 'pending') {
-      const onlineRiders = mockData.fleet.filter(r => r.status !== 'Em Descanso');
       const selectId = `pending-select-${item.id.replace('#', '')}`;
-      const riderOptions = onlineRiders.map(r => `<option value="${r.id}">${escapeHtml(r.name)} (${escapeHtml(r.status)})</option>`).join('');
+      const riderOptions = mockData.fleet.map(r => `<option value="${r.id}">${formatRiderOptionLabel(r)}</option>`).join('');
       
       html += `
         <div class="active-card" style="border: 1px solid rgba(255, 183, 0, 0.2);">
           <div class="active-card-header">
-            <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.id, item.payment, item.client)}</strong>
+            <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.tele_code, item)}</strong>
             <div style="display: flex; gap: 6px; align-items: center;">
               ${originBadge}
               <span class="badge badge-warning" style="background: var(--primary-glow); color: var(--primary);">${item.client}</span>
@@ -3230,7 +3243,7 @@ function renderTelesGrid(list) {
       html += `
         <div class="active-card" style="border: 1px solid ${isCanceled ? 'rgba(239, 68, 68, 0.2)' : (isCompleted ? 'rgba(34, 197, 94, 0.2)' : 'var(--border-color)')};">
           <div class="active-card-header">
-            <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.id, item.payment, item.client)}</strong>
+            <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.tele_code, item)}</strong>
             <div style="display: flex; gap: 6px; align-items: center;">
               ${originBadge}
               <span class="badge ${isCanceled ? 'badge-danger' : 'badge-success'}" style="background: ${isCanceled ? 'rgba(239, 68, 68, 0.1)' : 'var(--success-glow)'}; color: ${isCanceled ? '#ef4444' : 'var(--success)'}; border-color: rgba(255,255,255,0.05);">${item.client}</span>
@@ -3266,6 +3279,18 @@ function renderTelesGrid(list) {
                 <strong style="font-size: 0.85rem; color: var(--color-text);">${item.rider}</strong>
               </div>
             </div>
+
+            ${item.type === 'active' ? `
+              <div style="margin-top: 10px;">
+                <button class="btn btn-sm" onclick="window.toggleTeleRouteMap('${item.id}')" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background-color: rgba(255, 183, 0, 0.1); color: var(--primary); border: 1px solid rgba(255, 183, 0, 0.25); width: 100%; justify-content: center;">
+                  <i data-lucide="map" style="width: 14px; height: 14px;"></i>
+                  <span id="tele-route-btn-text-${item.id.replace(/[^a-zA-Z0-9_-]/g, '')}">Ver Rota no Mapa</span>
+                </button>
+                <div id="tele-route-map-wrapper-${item.id.replace(/[^a-zA-Z0-9_-]/g, '')}" class="tele-route-map-wrapper hidden" style="margin-top: 10px;">
+                  <div id="tele-route-map-${item.id.replace(/[^a-zA-Z0-9_-]/g, '')}" style="width: 100%; height: 180px; border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden; background: var(--bg-card);"></div>
+                </div>
+              </div>
+            ` : ''}
           </div>
           ${footerHtml}
         </div>
@@ -3321,7 +3346,7 @@ function renderTelesTable(list) {
 
     if (isPending) {
       const selectId = `table-select-${item.id.replace('#', '')}`;
-      const riderOptions = onlineRiders.map(r => `<option value="${r.id}">${escapeHtml(r.name)} (${escapeHtml(r.status)})</option>`).join('');
+      const riderOptions = mockData.fleet.map(r => `<option value="${r.id}">${formatRiderOptionLabel(r)}</option>`).join('');
       riderColumnHtml = `
         <div style="display: flex; gap: 6px; align-items: center;">
           <select id="${selectId}" class="inline-select" onchange="handleTableDispatch('${item.id}', '${selectId}')" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--color-text); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; outline: none; width: 100%;">
@@ -3332,7 +3357,7 @@ function renderTelesTable(list) {
       `;
     } else if (item.type === 'active') {
       const selectId = `table-select-${item.id.replace('#', '')}`;
-      const riderOptions = onlineRiders.map(r => `<option value="${r.id}" ${r.name === item.rider ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(r.status)})</option>`).join('');
+      const riderOptions = mockData.fleet.map(r => `<option value="${r.id}" ${r.name === item.rider ? 'selected' : ''}>${formatRiderOptionLabel(r)}</option>`).join('');
       riderColumnHtml = `
         <select id="${selectId}" class="inline-select" onchange="handleTableReassign('${item.id}', '${item.rider}', this.value)" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--color-text); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; outline: none; width: 100%;">
           ${riderOptions}
@@ -3373,7 +3398,7 @@ function renderTelesTable(list) {
     html += `
       <tr>
         <td>${originBadge}</td>
-        <td><strong>${formatOrderIdForDisplay(item.id, item.payment, item.client)}</strong></td>
+        <td><strong>${formatOrderIdForDisplay(item.tele_code, item)}</strong></td>
         <td><span class="badge" style="background: var(--bg-card-hover); border: 1px solid var(--border-color); color: var(--color-text);">${item.client}</span></td>
         <td>
           <div style="font-weight: 600;">${item.destName}</div>
@@ -3461,7 +3486,7 @@ window.handleTableReassignRider = async function(deliveryId, oldRiderName, newRi
       // 3. Update history
       await supabaseClient
         .from('teles')
-        .update({ rider: newRider.name })
+        .update({ motoboy_id: newRiderId, updated_at: new Date().toISOString() })
         .eq('id', deliveryId);
     }
 
@@ -3473,45 +3498,186 @@ window.handleTableReassignRider = async function(deliveryId, oldRiderName, newRi
 };
 
 window.handleCancelTeleClick = async function(deliveryId, riderName, type) {
-  if (confirm(`Deseja realmente cancelar a tele ${deliveryId}?`)) {
-    if (supabaseClient) {
-      if (type === 'pending') {
-        // Delete ONLY from teles
-        await supabaseClient
-          .from('teles')
-          .delete()
-          .eq('id', deliveryId);
-      } else if (type === 'active') {
-        // Delete ONLY from teles
-        await supabaseClient
-          .from('teles')
-          .delete()
-          .eq('id', deliveryId);
+  if (!confirm(`Deseja realmente cancelar a tele ${deliveryId}?`)) return;
 
-        // Free rider if they were assigned
-        if (riderName && riderName !== 'Nenhum' && riderName !== 'Aguardando...') {
-          const rider = mockData.fleet.find(r => r.name === riderName);
-          if (rider) {
-            await supabaseClient
-              .from('fleet')
-              .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
-              .eq('id', rider.id);
-          }
-        }
-      } else {
-        // Fallback for safety: match strictly by ID in both tables
-        await supabaseClient
-          .from('teles')
-          .delete()
-          .eq('id', deliveryId);
-        await supabaseClient
-          .from('teles')
-          .delete()
-          .eq('id', deliveryId);
+  const tele = mockData.clientHistory.find(item => item.id === deliveryId || item.raw_id === deliveryId || item.tele_code === deliveryId) ||
+               mockData.pendingDeliveries.find(item => item.id === deliveryId || item.raw_id === deliveryId || item.tele_code === deliveryId);
+  const targetUuid = (tele && tele.raw_id) ? tele.raw_id : deliveryId;
+  const expectedVersion = (tele && tele.version) ? tele.version : 1;
+
+  if (supabaseClient) {
+    let rpcSuccess = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabaseClient.rpc('cancel_tele', {
+        p_tele_id: targetUuid,
+        p_expected_version: expectedVersion,
+        p_reason: 'Cancelado pelo painel admin'
+      });
+      if (!rpcErr && rpcRes && rpcRes.success) {
+        rpcSuccess = true;
+      }
+    } catch (e) {
+      console.warn("RPC cancel_tele indisponível, realizando atualização direta de status:", e);
+    }
+
+    if (!rpcSuccess) {
+      const { error: updateErr } = await supabaseClient
+        .from('teles')
+        .update({
+          status: 'cancelada',
+          cancelled_at: new Date().toISOString(),
+          cancellation_reason: 'Cancelado pelo painel admin',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetUuid);
+
+      if (updateErr) {
+        console.error('Erro ao cancelar tele:', updateErr);
+        alert('Erro ao cancelar tele: ' + updateErr.message);
+        return;
       }
     }
-    await loadTelesManagement();
-    showToastNotification(`Tele ${deliveryId} cancelada com sucesso.`);
+
+    if (riderName && riderName !== 'Nenhum' && riderName !== 'Aguardando...') {
+      const rider = mockData.fleet.find(r => r.name === riderName || r.id === riderName);
+      if (rider) {
+        const remainingOrders = getActiveOrdersForRider(rider).filter(item => item.id !== deliveryId && item.raw_id !== targetUuid);
+        if (remainingOrders.length === 0) {
+          await supabaseClient
+            .from('fleet')
+            .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
+            .eq('id', rider.id);
+        }
+      }
+    }
+  }
+
+  await loadTelesManagement();
+  showToastNotification(`Tele ${deliveryId} cancelada com sucesso.`);
+};
+
+window.toggleTeleRouteMap = async function(deliveryId) {
+  const safeId = String(deliveryId).replace(/[^a-zA-Z0-9_-]/g, '');
+  const container = document.getElementById(`tele-route-map-wrapper-${safeId}`);
+  if (!container) return;
+
+  const isHidden = container.classList.contains('hidden');
+  if (!isHidden) {
+    container.classList.add('hidden');
+    const btnText = document.getElementById(`tele-route-btn-text-${safeId}`);
+    if (btnText) btnText.innerText = 'Ver Rota no Mapa';
+    return;
+  }
+
+  container.classList.remove('hidden');
+  const btnText = document.getElementById(`tele-route-btn-text-${safeId}`);
+  if (btnText) btnText.innerText = 'Ocultar Mapa';
+
+  const mapDiv = document.getElementById(`tele-route-map-${safeId}`);
+  if (!mapDiv) return;
+
+  const tele = mockData.clientHistory.find(item => item.id === deliveryId || item.raw_id === deliveryId || item.tele_code === deliveryId) ||
+               mockData.pendingDeliveries.find(item => item.id === deliveryId || item.raw_id === deliveryId || item.tele_code === deliveryId);
+
+  const rider = tele ? mockData.fleet.find(r => (tele.motoboy_id && String(r.id) === String(tele.motoboy_id)) || (tele.rider && r.name === tele.rider)) : null;
+
+  const riderLat = rider ? Number(rider.lat) : null;
+  const riderLng = rider ? Number(rider.lng) : null;
+  const destLat = tele && tele.dest_lat != null ? Number(tele.dest_lat) : null;
+  const destLng = tele && tele.dest_lng != null ? Number(tele.dest_lng) : null;
+
+  const isValidRiderGps = riderLat !== null && !isNaN(riderLat) && riderLng !== null && !isNaN(riderLng) && (riderLat !== 0 || riderLng !== 0);
+  const isValidDestGps = destLat !== null && !isNaN(destLat) && destLng !== null && !isNaN(destLng) && (destLat !== 0 || destLng !== 0);
+
+  if (!isValidRiderGps || !isValidDestGps) {
+    mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px; padding:16px; gap:8px;"><i data-lucide="map-pin-off" style="width:16px;height:16px;"></i><span>Rota indisponível</span></div>`;
+    lucide.createIcons();
+    return;
+  }
+
+  try {
+    const maps = await loadGoogleMapsApi();
+    if (!maps || !window.google?.maps) {
+      mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px;">Rota indisponível</div>`;
+      return;
+    }
+
+    const riderLatLng = new window.google.maps.LatLng(riderLat, riderLng);
+    const destLatLng = new window.google.maps.LatLng(destLat, destLng);
+
+    if (!window.activeRouteMaps[safeId]) {
+      const mapOptions = {
+        zoom: 13,
+        center: riderLatLng,
+        disableDefaultUI: true,
+        zoomControl: true,
+        mapTypeId: window.google.maps.MapTypeId.ROADMAP,
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#212121' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#212121' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2c2c2c' }] },
+          { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3c3c3c' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] }
+        ]
+      };
+
+      const map = new window.google.maps.Map(mapDiv, mapOptions);
+
+      const directionsService = new window.google.maps.DirectionsService();
+      const directionsRenderer = new window.google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: false,
+        polylineOptions: {
+          strokeColor: '#ffb700',
+          strokeOpacity: 0.9,
+          strokeWeight: 5
+        }
+      });
+
+      window.activeRouteMaps[safeId] = { map, directionsService, directionsRenderer };
+
+      directionsService.route({
+        origin: riderLatLng,
+        destination: destLatLng,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      }, (result, status) => {
+        if (status === 'OK' && result) {
+          directionsRenderer.setDirections(result);
+          if (result.routes && result.routes[0] && result.routes[0].bounds) {
+            map.fitBounds(result.routes[0].bounds);
+          }
+        } else {
+          const bounds = new window.google.maps.LatLngBounds();
+          bounds.extend(riderLatLng);
+          bounds.extend(destLatLng);
+
+          new window.google.maps.Marker({ position: riderLatLng, map, title: 'Motoboy' });
+          new window.google.maps.Marker({ position: destLatLng, map, title: 'Destino' });
+          new window.google.maps.Polyline({
+            path: [riderLatLng, destLatLng],
+            map,
+            strokeColor: '#ffb700',
+            strokeWeight: 4
+          });
+          map.fitBounds(bounds);
+        }
+      });
+    } else {
+      const itemData = window.activeRouteMaps[safeId];
+      if (itemData && itemData.map) {
+        window.google.maps.event.trigger(itemData.map, 'resize');
+        if (itemData.directionsRenderer && itemData.directionsRenderer.getDirections()) {
+          const dirs = itemData.directionsRenderer.getDirections();
+          if (dirs.routes && dirs.routes[0] && dirs.routes[0].bounds) {
+            itemData.map.fitBounds(dirs.routes[0].bounds);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Aviso ao inicializar mapa de rota para tele:', deliveryId, err);
+    mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px;">Rota indisponível</div>`;
   }
 };
 
@@ -3686,101 +3852,80 @@ window.updatePanelPosition = function() {
 
 // Dispatch delivery function
 async function dispatchDelivery(deliveryId, riderId) {
-  // Find delivery
-  const deliveryIndex = mockData.pendingDeliveries.findIndex(d => d.id === deliveryId);
-  if (deliveryIndex === -1) return;
-  const delivery = mockData.pendingDeliveries[deliveryIndex];
+  const delivery = mockData.pendingDeliveries.find(d => d.id === deliveryId || d.raw_id === deliveryId || d.tele_code === deliveryId) ||
+                   mockData.clientHistory.find(d => d.id === deliveryId || d.raw_id === deliveryId || d.tele_code === deliveryId);
 
-  // Find rider
-  const rider = mockData.fleet.find(r => r.id === riderId);
-  if (!rider) return;
+  const rider = mockData.fleet.find(r => r.id === riderId || String(r.id) === String(riderId));
+  if (!rider) {
+    alert("Selecione um motoboy válido para atribuição.");
+    return;
+  }
+
+  const statusNorm = String(rider.status || '').toLowerCase();
+  const isAvailable = rider.status === 'Disponível' || rider.status === 'disponivel' || statusNorm === 'disponivel';
+  const isRestingOrOffline = rider.status === 'Indisponível' || rider.status === 'Em Descanso' || statusNorm === 'indisponivel' || statusNorm === 'em_descanso' || statusNorm === 'offline';
+  const isBlockedOrInactive = rider.status === 'Inativo' || rider.status === 'Suspenso' || rider.status === 'Bloqueado' || statusNorm === 'inativo' || statusNorm === 'suspenso' || statusNorm === 'bloqueado';
+
+  if (!isAvailable) {
+    if (isRestingOrOffline) {
+      alert("Este motoboy está desconectado no PWA. Conecte o aplicativo antes de atribuir a Tele.");
+      return;
+    }
+    if (isBlockedOrInactive) {
+      alert("Este motoboy não está disponível para receber Teles.");
+      return;
+    }
+    alert("Este motoboy não está disponível para receber Teles no momento.");
+    return;
+  }
+
+  const targetUuid = (delivery && delivery.raw_id) ? delivery.raw_id : deliveryId;
+  const displayCode = delivery ? (delivery.tele_code || delivery.id) : deliveryId;
 
   if (supabaseClient) {
-    // 1. Update rider status and delivery in fleet table
-    const { error: fleetError } = await supabaseClient
-      .from('fleet')
-      .update({
-        status: 'A caminho da coleta',
-        status_class: 'status-progress',
-        delivery: deliveryId
-      })
-      .eq('id', riderId);
-
-    if (fleetError) {
-      console.error("Error updating rider status on Supabase:", fleetError);
-      alert("Erro ao atualizar o status do motoboy no Supabase.");
-      return;
+    let rpcSuccess = false;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabaseClient.rpc('assign_rider_to_tele', {
+        p_tele_id: targetUuid,
+        p_rider_id: rider.id,
+        p_expected_version: (delivery && delivery.version) ? delivery.version : 1
+      });
+      if (!rpcErr && rpcRes && rpcRes.success) {
+        rpcSuccess = true;
+      }
+    } catch (e) {
+      console.warn("RPC assign_rider_to_tele indisponível, realizando atribuição direta:", e);
     }
 
-    // 2. Add order details into teles table first (to prevent orphaned deletions on key conflicts)
-    const newHistoryItem = {
-      id: deliveryId,
-      client: delivery.client,
-      dest_name: delivery.destName,
-      address: delivery.address,
-      rider: rider.name,
-      dist: delivery.dist + '|' + (delivery.payment || 'Dinheiro'),
-      price: delivery.price,
-      date: 'Hoje, ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      status: 'A caminho da coleta',
-      status_class: 'status-progress',
-      pickup_lat: delivery.pickup_lat,
-      pickup_lng: delivery.pickup_lng,
-      dest_lat: delivery.dest_lat,
-      dest_lng: delivery.dest_lng,
-      total_order_amount: delivery.total_order_amount || null
-    };
-
-    let { error: historyError } = await supabaseClient
-      .from('teles')
-      .insert([newHistoryItem]);
-
-    if (historyError && historyError.code === '42703') {
-      delete newHistoryItem.total_order_amount;
-      const { error: retryError } = await supabaseClient
+    if (!rpcSuccess) {
+      const { error: teleError } = await supabaseClient
         .from('teles')
-        .insert([newHistoryItem]);
-      historyError = retryError;
-    }
+        .update({
+          motoboy_id: rider.id,
+          status: 'motoboy_designado',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetUuid);
 
-    if (historyError) {
-      console.error("Error inserting delivery history on Supabase:", historyError);
-      alert("Erro ao salvar o histórico de entrega no Supabase.");
-      return;
-    }
+      if (teleError) {
+        console.error("Erro ao atribuir Tele ao motoboy:", teleError);
+        alert("Erro ao atribuir Tele ao motoboy: " + teleError.message);
+        return;
+      }
 
-    // 3. Delete delivery from teles table only after history is saved successfully
-    const { error: deleteError } = await supabaseClient
-      .from('teles')
-      .delete()
-      .eq('id', deliveryId);
-
-    if (deleteError) {
-      console.error("Error deleting pending delivery on Supabase:", deleteError);
-      alert("Erro ao remover a tele das pendências no Supabase.");
-      return;
+      await supabaseClient
+        .from('fleet')
+        .update({
+          status: 'Em Atendimento',
+          status_class: 'status-progress',
+          delivery: displayCode
+        })
+        .eq('id', rider.id);
     }
   }
 
-  // Refresh all state arrays from Supabase
-  await fetchPendingDeliveries();
-  await fetchFleet();
-  await fetchClientHistory();
-
-  // Re-render components
-  renderTelesUnified();
-  renderFleetTable();
-  renderClientHistoryTable();
-
-  // Get current active map coordinates (from geolocation or fallback)
-  // Re-render the map markers to show the updated status
-  if (ownerFleetMap) {
-    const center = ownerFleetMap.getCenter();
-    renderMapMarkers([center.lat, center.lng]);
-  }
-
-  // Display Premium Alert/Notification
-  showToastNotification(`Tele ${deliveryId} enviada com sucesso para ${rider.name}!`);
+  await loadTelesManagement();
+  showToastNotification(`Tele ${displayCode} atribuída com sucesso a ${rider.name}.`);
 }
 
 
@@ -3931,7 +4076,7 @@ function renderClientTelesGrid(list) {
     html += `
       <div class="active-card" style="border: 1px solid ${isCanceled ? 'rgba(239, 68, 68, 0.2)' : (isCompleted ? 'rgba(34, 197, 94, 0.2)' : 'var(--border-color)')};">
         <div class="active-card-header">
-          <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.id, item.payment, item.client)}</strong>
+          <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.tele_code, item)}</strong>
           <div style="display: flex; gap: 6px; align-items: center;">
             ${originBadge}
           </div>
@@ -4006,7 +4151,7 @@ function renderClientTelesTable(list) {
     html += `
       <tr>
         <td>${originBadge}</td>
-        <td><strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.id, item.payment, item.client)}</strong></td>
+        <td><strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.tele_code, item)}</strong></td>
         <td>${escapeHtml(item.destName)}</td>
         <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.address)}">${escapeHtml(item.address)}</td>
         <td><span class="badge badge-soft">${escapeHtml(item.rider)}</span></td>
@@ -4248,67 +4393,44 @@ async function deleteRiderAccount() {
 }
 
 async function removeTeleFromRider(deliveryId, riderId) {
-  const rider = mockData.fleet.find(r => r.id === riderId);
-  const order = mockData.clientHistory.find(item => item.id === deliveryId);
-  if (!rider || !order) return;
+  const rider = mockData.fleet.find(r => r.id === riderId || r.name === riderId);
+  const order = mockData.clientHistory.find(item => item.id === deliveryId || item.raw_id === deliveryId || item.tele_code === deliveryId) ||
+                mockData.pendingDeliveries.find(item => item.id === deliveryId || item.raw_id === deliveryId || item.tele_code === deliveryId);
 
-  if (!confirm(`Remover a tele ${deliveryId} de ${rider.name} e devolver para pendentes?`)) return;
+  const riderLabel = rider ? rider.name : (riderId || 'motoboy');
+  if (!confirm(`Remover a tele ${deliveryId} de ${riderLabel} e devolver para Aguardando Despacho?`)) return;
 
-  const cleanDist = order.dist.includes('|') ? order.dist.split('|')[0] : order.dist;
-  const paymentMethod = order.dist.includes('|') ? order.dist.split('|')[1] : 'A combinar';
-  const pendingPayload = {
-    id: order.id,
-    client: order.client || 'Cliente não vinculado',
-    dest_name: order.destName || 'Cliente informado',
-    address: order.address,
-    dist: cleanDist,
-    price: order.price,
-    payment: paymentMethod,
-    cargo: 'Pedido'
-  };
+  const targetUuid = (order && order.raw_id) ? order.raw_id : deliveryId;
 
   if (supabaseClient) {
-    const { error: pendingError } = await supabaseClient
+    const { error } = await supabaseClient
       .from('teles')
-      .upsert([pendingPayload]);
-    if (pendingError) {
-      alert('Erro ao devolver a tele para pendentes.');
+      .update({
+        motoboy_id: null,
+        status: 'aguardando_despacho',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', targetUuid);
+
+    if (error) {
+      console.error('Erro ao retirar motoboy da tele:', error);
+      alert('Erro ao retirar motoboy da tele: ' + error.message);
       return;
     }
 
-    const { error: historyError } = await supabaseClient
-      .from('teles')
-      .delete()
-      .eq('id', deliveryId);
-    if (historyError) {
-      alert('Erro ao remover a tele do histórico ativo.');
-      return;
-    }
-
-    const remainingOrders = getActiveOrdersForRider(rider).filter(item => item.id !== deliveryId);
-    if (remainingOrders.length === 0) {
-      await supabaseClient
-        .from('fleet')
-        .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
-        .eq('id', riderId);
+    if (rider) {
+      const remainingOrders = getActiveOrdersForRider(rider).filter(item => item.id !== deliveryId && item.raw_id !== targetUuid);
+      if (remainingOrders.length === 0) {
+        await supabaseClient
+          .from('fleet')
+          .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
+          .eq('id', rider.id);
+      }
     }
   }
 
-  await fetchPendingDeliveries();
-  await fetchFleet();
-  await fetchClientHistory();
-  renderTelesUnified();
-  renderFleetTable();
-  renderRiderPayments();
-
-  if (ownerFleetMap) {
-    const center = ownerFleetMap.getCenter();
-    renderMapMarkers([center.lat, center.lng]);
-  }
-
-  const modal = document.getElementById('modal-remove-tele');
-  if (modal) modal.classList.add('hidden');
-  showToastNotification(`Tele ${deliveryId} removida de ${rider.name}.`);
+  await loadTelesManagement();
+  showToastNotification(`Motoboy retirado. Tele ${deliveryId} devolvida para Aguardando Despacho.`);
 }
 
 function openRiderActions(riderId) {
@@ -4389,7 +4511,7 @@ function closeEditRider(event) {
   modal.classList.add('hidden');
 }
 
-function getStatusClass(status) {
+function getRiderStatusClass(status) {
   if (status === 'Disponível') return 'status-success';
   if (status === 'Em Descanso') return 'status-neutral';
   return 'status-progress';
@@ -4635,34 +4757,6 @@ function closeRegisterMotoboy(event) {
   // If called from overlay click, close; if called directly, close
   if (event && event.target !== document.getElementById('modal-register-motoboy')) return;
   document.getElementById('modal-register-motoboy').classList.add('hidden');
-}
-
-async function submitEditRider(event) {
-  event.preventDefault();
-  const riderId = document.getElementById('edit-rider-id').value;
-  const status = document.getElementById('edit-rider-status').value;
-  const payload = {
-    name: document.getElementById('edit-rider-name').value.trim(),
-    vehicle: document.getElementById('edit-rider-vehicle').value.trim(),
-    plate: document.getElementById('edit-rider-plate').value.trim().toUpperCase(),
-    status: status
-  };
-
-  if (supabaseClient) {
-    const { error } = await supabaseClient
-      .from('fleet')
-      .update(payload)
-      .eq('id', riderId);
-    if (error) {
-      alert('Erro ao editar motoboy: ' + error.message);
-      return;
-    }
-  }
-
-  await fetchFleet();
-  renderFleetTable();
-  closeEditRider();
-  showToastNotification('Dados do motoboy atualizados.');
 }
 
 function formatPhoneBR(value) {
@@ -5720,6 +5814,7 @@ function subscribeDashboardRealtime() {
         console.log('Realtime fleet update:', payload);
         await fetchFleet();
         renderFleetTable();
+        renderTelesUnified();
         if (ownerFleetMap) {
           renderMapMarkers(ownerFleetCenterCoords);
         }
@@ -6140,6 +6235,11 @@ function updateRequestDeliveryDestination(lat, lng, shouldCenter = false, should
 
   const destLatLng = new window.google.maps.LatLng(lat, lng);
 
+  const latInput = document.getElementById(`${type}-delivery-lat`) || document.getElementById('manual-delivery-lat');
+  const lngInput = document.getElementById(`${type}-delivery-lng`) || document.getElementById('manual-delivery-lng');
+  if (latInput) latInput.value = lat;
+  if (lngInput) lngInput.value = lng;
+
   if (requestMaps[type].marker) {
     requestMaps[type].marker.setPosition(destLatLng);
   } else {
@@ -6159,13 +6259,26 @@ function updateRequestDeliveryDestination(lat, lng, shouldCenter = false, should
 
     requestMaps[type].marker.addListener('dragend', () => {
       const pos = requestMaps[type].marker.getPosition();
-      updateRequestDeliveryDestination(pos.lat(), pos.lng(), false, false, type);
+      const newLat = pos.lat();
+      const newLng = pos.lng();
+      requestMaps[type].destCoords = { lat: newLat, lng: newLng, isManualPin: true };
+      const isManualInput = document.getElementById(`${type}-location-adjusted-manually`) || document.getElementById('manual-location-adjusted-manually');
+      if (isManualInput) isManualInput.value = 'true';
+      const precisionInput = document.getElementById(`${type}-geocoding-precision`) || document.getElementById('manual-geocoding-precision');
+      if (precisionInput) precisionInput.value = 'manual_pin';
+
+      const curLatInput = document.getElementById(`${type}-delivery-lat`) || document.getElementById('manual-delivery-lat');
+      const curLngInput = document.getElementById(`${type}-delivery-lng`) || document.getElementById('manual-delivery-lng');
+      if (curLatInput) curLatInput.value = newLat;
+      if (curLngInput) curLngInput.value = newLng;
+
+      updateRequestDeliveryDestination(newLat, newLng, false, false, type);
     });
   }
 
   if (shouldCenter) {
     requestMaps[type].map.setCenter(destLatLng);
-    requestMaps[type].map.setZoom(15);
+    requestMaps[type].map.setZoom(16);
   }
 
   const startLatLng = requestMaps[type].restaurantMarker ? requestMaps[type].restaurantMarker.getPosition() : new window.google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
@@ -6220,17 +6333,7 @@ async function setupAddressGeocodingListener(type = 'client') {
 
     addressInput.dataset.autocompleteInitialized = "true";
 
-    const centerCoords = requestMaps[type].centerCoords || [-29.8378, -51.1444];
-    const defaultBounds = {
-      north: centerCoords[0] + 0.3,
-      south: centerCoords[0] - 0.3,
-      east: centerCoords[1] + 0.3,
-      west: centerCoords[1] - 0.3
-    };
-
     const options = {
-      bounds: defaultBounds,
-      strictBounds: true,
       componentRestrictions: { country: "br" },
       fields: ["address_components", "geometry", "formatted_address"],
       types: ["address"]
@@ -6246,13 +6349,23 @@ async function setupAddressGeocodingListener(type = 'client') {
         return;
       }
 
-      const hasStreetNumber = (place.address_components || []).some(component => 
-        component.types.includes("street_number")
-      );
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      const locType = place.geometry.location_type || 'ROOFTOP';
 
-      if (!hasStreetNumber) {
-        alert("Atenção: Por favor, informe o número exato da casa/estabelecimento no endereço para garantir a entrega.");
-        addressInput.value = "";
+      requestMaps[type].destCoords = { lat, lng, isManualPin: false };
+      addressInput.value = place.formatted_address;
+      addressInput.dataset.lastResolvedAddress = place.formatted_address;
+
+      const precisionInput = document.getElementById(`${type}-geocoding-precision`) || document.getElementById('manual-geocoding-precision');
+      if (precisionInput) precisionInput.value = String(locType).toLowerCase();
+
+      updateRequestDeliveryDestination(lat, lng, true, false, type);
+    });
+
+    addressInput.addEventListener('input', () => {
+      const val = addressInput.value.trim();
+      if (val !== addressInput.dataset.lastResolvedAddress) {
         requestMaps[type].destCoords = null;
         if (requestMaps[type].marker) {
           requestMaps[type].marker.setMap(null);
@@ -6262,18 +6375,7 @@ async function setupAddressGeocodingListener(type = 'client') {
           requestMaps[type].polyline.setMap(null);
           requestMaps[type].polyline = null;
         }
-        const estBox = document.getElementById(`${type}-estimate-box`);
-        if (estBox) estBox.classList.add('hidden');
-        return;
       }
-
-      const lat = place.geometry.location.lat();
-      const lng = place.geometry.location.lng();
-      requestMaps[type].destCoords = { lat, lng };
-      addressInput.value = place.formatted_address;
-      addressInput.dataset.lastResolvedAddress = place.formatted_address;
-
-      updateRequestDeliveryDestination(lat, lng, true, false, type);
     });
 
     const handleManualGeocode = () => {
@@ -6719,7 +6821,7 @@ function initRiderPaymentDates() {
 }
 
 // Clear all rider payment filters
-function clearRiderPaymentFilters() {
+function clearRiderPaymentFiltersLegacy() {
   const startEl = document.getElementById('rider-payment-start-date');
   const endEl = document.getElementById('rider-payment-end-date');
   const searchEl = document.getElementById('rider-search-input');
@@ -6740,7 +6842,7 @@ function clearRiderPaymentFilters() {
 }
 
 // Toggle display of custom rider search dropdown
-function toggleRiderSearchDropdown(show) {
+function toggleRiderSearchDropdownLegacy(show) {
   const dropdown = document.getElementById('rider-search-dropdown');
   const icon = document.querySelector('.rider-search-wrapper i[data-lucide="chevron-down"]');
   if (!dropdown) return;
@@ -8239,7 +8341,9 @@ window.openQuickMapModal = function(teleId, lat, lng) {
   const container = document.getElementById('quick-map-container');
   if (!modal || !span || !container) return;
 
-  span.innerText = formatOrderIdForDisplay(teleId);
+  const teleObj = mockData.pendingDeliveries.find(t => t.id === teleId || t.raw_id === teleId || t.tele_code === teleId) ||
+                  mockData.clientHistory.find(t => t.id === teleId || t.raw_id === teleId || t.tele_code === teleId);
+  span.innerText = formatOrderIdForDisplay(teleObj ? teleObj.tele_code : teleId, teleObj);
   modal.classList.remove('hidden');
 
   // Insert a clean loading state inside the container
@@ -9583,6 +9687,28 @@ async function initManualDeliveryMap() {
   initGooglePlacesAutocomplete();
 }
 
+function onMapMarkerPositionChanged(lat, lng) {
+  const latInput = document.getElementById('manual-delivery-lat');
+  const lngInput = document.getElementById('manual-delivery-lng');
+  const isManualInput = document.getElementById('manual-location-adjusted-manually');
+  const precInput = document.getElementById('manual-geocoding-precision');
+
+  if (latInput) latInput.value = typeof lat === 'number' ? lat.toFixed(7) : lat;
+  if (lngInput) lngInput.value = typeof lng === 'number' ? lng.toFixed(7) : lng;
+  if (isManualInput) isManualInput.value = 'true';
+  if (precInput) precInput.value = 'manual_pin';
+
+  if (requestMaps.manual) {
+    requestMaps.manual.destCoords = { lat: Number(lat), lng: Number(lng), isManualPin: true };
+  }
+
+  const warnBox = document.getElementById('manual-geocoding-warning');
+  if (warnBox) {
+    warnBox.classList.remove('hidden');
+    warnBox.innerHTML = `📌 <strong>Localização ajustada manualmente no mapa.</strong> As coordenadas do marcador serão utilizadas como autoritativas para esta entrega.`;
+  }
+}
+
 function syncManualDeliveryNumberInput(val) {
   const hiddenNum = document.getElementById('manual-delivery-number');
   if (hiddenNum) hiddenNum.value = val ? val.trim() : '';
@@ -9611,8 +9737,12 @@ async function geocodeManualAddressText() {
   const addressText = addrInput?.value?.trim();
   if (!addressText) return;
 
+  const isManualAdjusted = document.getElementById('manual-location-adjusted-manually')?.value === 'true';
   const latInput = document.getElementById('manual-delivery-lat');
   const lngInput = document.getElementById('manual-delivery-lng');
+  if (isManualAdjusted && latInput?.value && lngInput?.value) {
+    return;
+  }
   const precInput = document.getElementById('manual-geocoding-precision');
   const numInput = document.getElementById('manual-delivery-number');
   const numVisibleInput = document.getElementById('manual-delivery-number-input');
@@ -9755,6 +9885,10 @@ async function initGooglePlacesAutocomplete() {
   }
 }
 
+function normalizeAddressText(str) {
+  return String(str || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
 function handlePlaceSelection(place) {
   const components = place.addressComponents || place.address_components || [];
   let route = '';
@@ -9787,11 +9921,14 @@ function handlePlaceSelection(place) {
   const placeIdInput = document.getElementById('manual-delivery-place-id');
   const latInput = document.getElementById('manual-delivery-lat');
   const lngInput = document.getElementById('manual-delivery-lng');
+  const isManualInput = document.getElementById('manual-location-adjusted-manually');
+  const addrInput = document.getElementById('manual-delivery-address');
 
-  const stateUpper = (state || '').toUpperCase();
-  const isRS = stateUpper === 'RS' || state.toLowerCase().includes('rio grande do sul');
+  const userTypedText = normalizeAddressText(addrInput?.value);
 
   // Validação Estrita de Estado: Apenas RS é aceito
+  const stateUpper = (state || '').toUpperCase();
+  const isRS = stateUpper === 'RS' || state.toLowerCase().includes('rio grande do sul');
   if (state && !isRS) {
     if (placeIdInput) placeIdInput.value = '';
     if (latInput) latInput.value = '';
@@ -9804,6 +9941,25 @@ function handlePlaceSelection(place) {
     return;
   }
 
+  // Validação de Coerência de Cidade
+  if (city && userTypedText) {
+    const normCity = normalizeAddressText(city);
+    if ((userTypedText.includes('sapucaia') && !normCity.includes('sapucaia')) ||
+        (userTypedText.includes('esteio') && !normCity.includes('esteio')) ||
+        (userTypedText.includes('sao leopoldo') && !normCity.includes('sao leopoldo')) ||
+        (userTypedText.includes('canoas') && !normCity.includes('canoas'))) {
+      if (placeIdInput) placeIdInput.value = '';
+      if (latInput) latInput.value = '';
+      if (lngInput) lngInput.value = '';
+
+      if (warnBox) {
+        warnBox.classList.remove('hidden');
+        warnBox.innerHTML = `⚠️ <strong>Confirme o endereço:</strong> a localização encontrada (${city}${sublocality ? ' - ' + sublocality : ''}) não corresponde à cidade/bairro informado. Ajuste o marcador no mapa.`;
+      }
+      return;
+    }
+  }
+
   let lat = 0;
   let lng = 0;
   if (place.location) {
@@ -9814,11 +9970,12 @@ function handlePlaceSelection(place) {
     lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
   }
 
+  const locType = ((place.geometry && place.geometry.location_type) || place.locationType || (streetNumber ? 'ROOFTOP' : 'RANGE_INTERPOLATED')).toUpperCase();
+
   const placeId = place.id || place.place_id || '';
   const formattedAddress = place.formattedAddress || place.formatted_address || route;
   const cleanFormatted = formattedAddress.replace(/, Brasil$/i, '');
 
-  const addrInput = document.getElementById('manual-delivery-address');
   const numInput = document.getElementById('manual-delivery-number');
   const numVisibleInput = document.getElementById('manual-delivery-number-input');
   const neighInput = document.getElementById('manual-delivery-neighborhood');
@@ -9831,7 +9988,6 @@ function handlePlaceSelection(place) {
   const summaryTitle = document.getElementById('manual-address-summary-title');
   const summarySubtitle = document.getElementById('manual-address-summary-subtitle');
 
-  // Determinar o número do imóvel: 1. street_number dos componentes, 2. Fallback estrito do texto
   const resolvedNumber = streetNumber || extractHouseNumberFromAddress(cleanFormatted) || extractHouseNumberFromAddress(addrInput?.value);
 
   if (addrInput) addrInput.value = cleanFormatted;
@@ -9844,28 +10000,27 @@ function handlePlaceSelection(place) {
   if (placeIdInput) placeIdInput.value = placeId;
   if (latInput) latInput.value = typeof lat === 'number' ? lat.toFixed(7) : lat;
   if (lngInput) lngInput.value = typeof lng === 'number' ? lng.toFixed(7) : lng;
+  if (isManualInput) isManualInput.value = 'false';
 
-  // Resumo Compacto do Endereço (Somente Leitura)
   if (summaryBox && summaryTitle && summarySubtitle) {
     const mainTitle = route ? (resolvedNumber ? `${route}, ${resolvedNumber}` : route) : cleanFormatted;
-    const subText = `${sublocality ? sublocality + ' • ' : ''}${city || 'Sapucaia do Sul'} - RS`;
+    const subText = `${sublocality ? sublocality + ' • ' : ''}${city || 'Sapucaia do Sul'} - RS${postalCode ? ' • CEP ' + postalCode : ''}`;
     summaryTitle.innerText = mainTitle;
     summarySubtitle.innerText = subText;
     summaryBox.classList.remove('hidden');
   }
 
-  // Área Dinâmica de Número
-  if (resolvedNumber) {
-    if (precInput) precInput.value = 'rooftop';
-    if (confirmArea) confirmArea.classList.add('hidden');
-    if (warnBox) warnBox.classList.add('hidden');
-  } else {
-    if (precInput) precInput.value = 'street';
+  if (precInput) precInput.value = locType.toLowerCase();
+
+  if (locType !== 'ROOFTOP') {
     if (confirmArea) confirmArea.classList.remove('hidden');
     if (warnBox) {
       warnBox.classList.remove('hidden');
-      warnBox.innerHTML = '⚠️ <strong>O Google não confirmou o número deste endereço.</strong> Informe o número ou marque S/N e confira o marcador.';
+      warnBox.innerHTML = `📍 <strong>Posição aproximada (${locType === 'RANGE_INTERPOLATED' ? 'Interpolação na rua' : 'Centro do bairro/área'}).</strong> Se necessário, ajuste o marcador amarelo no ponto exato da casa no mapa.`;
     }
+  } else {
+    if (confirmArea) confirmArea.classList.add('hidden');
+    if (warnBox) warnBox.classList.add('hidden');
   }
 
   if (manualDeliveryMap) {
@@ -9944,9 +10099,35 @@ async function submitDeliveryRequest(event, type = 'manual') {
     }
   }
 
+function showModalSubmitError(msg) {
+  let errEl = document.getElementById('manual-modal-error-banner');
+  if (!errEl) {
+    const form = document.getElementById('request-delivery-form');
+    if (form) {
+      errEl = document.createElement('div');
+      errEl.id = 'manual-modal-error-banner';
+      errEl.style.cssText = 'background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; border-radius: 6px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;';
+      form.insertBefore(errEl, form.firstChild);
+    }
+  }
+  if (errEl) {
+    errEl.innerHTML = `<span>${escapeHtml(msg)}</span><button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-weight:bold;">&times;</button>`;
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else {
+    alert(msg);
+  }
+}
+
+  const existingErrBanner = document.getElementById('manual-modal-error-banner');
+  if (existingErrBanner) existingErrBanner.remove();
+
   // Tentar re-geocodificar se as coordenadas estiverem ausentes por edição manual
   let latRaw = document.getElementById('manual-delivery-lat')?.value;
   let lngRaw = document.getElementById('manual-delivery-lng')?.value;
+  if ((!latRaw || !lngRaw) && requestMaps.manual?.destCoords) {
+    latRaw = requestMaps.manual.destCoords.lat;
+    lngRaw = requestMaps.manual.destCoords.lng;
+  }
   if (!latRaw || !lngRaw) {
     await geocodeManualAddressText();
     latRaw = document.getElementById('manual-delivery-lat')?.value;
@@ -9957,7 +10138,7 @@ async function submitDeliveryRequest(event, type = 'manual') {
   const lng = lngRaw ? parseFloat(lngRaw) : null;
 
   if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
-    showToastNotification('Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas.');
+    showModalSubmitError('Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas.');
     return;
   }
 
@@ -9976,13 +10157,7 @@ async function submitDeliveryRequest(event, type = 'manual') {
   }
 
   if (!number && !isSN) {
-    showToastNotification('Selecione um endereço que contenha o número do imóvel.');
-    return;
-  }
-
-  const placeId = document.getElementById('manual-delivery-place-id')?.value?.trim();
-  if (!placeId && !isPlacesApi403Blocked) {
-    showToastNotification('Selecione uma sugestão válida do Google Autocomplete.');
+    showModalSubmitError('Selecione um endereço que contenha o número do imóvel.');
     return;
   }
 
@@ -9995,7 +10170,11 @@ async function submitDeliveryRequest(event, type = 'manual') {
   const isManual = document.getElementById('manual-location-adjusted-manually')?.value === 'true';
 
   const btnSubmit = document.querySelector('#request-delivery-form button[type="submit"]');
-  if (btnSubmit) btnSubmit.disabled = true;
+  const originalBtnText = btnSubmit ? btnSubmit.innerText : 'Chamar Tele';
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Criando Tele...';
+  }
 
   const idempotencyKey = `idemp-admin-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
@@ -10023,24 +10202,33 @@ async function submitDeliveryRequest(event, type = 'manual') {
         p_delivery_charge: deliveryCharge
       });
 
-      if (error) throw error;
-      if (!data.success) {
-        showToastNotification(`Erro ao criar Tele: ${data.message}`);
-        if (btnSubmit) btnSubmit.disabled = false;
+      if (error) {
+        showModalSubmitError(`Erro ao criar Tele: ${error.message || error}`);
+        if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerText = originalBtnText; }
+        return;
+      }
+      if (!data || data.success === false) {
+        showModalSubmitError(`Erro ao criar Tele: ${data?.message || 'Falha ao processar solicitação.'}`);
+        if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerText = originalBtnText; }
         return;
       }
 
-      showToastNotification(`Tele ${data.tele_code || ''} criada com sucesso! (Status: Aguardando Despacho)`);
+      const createdCode = data.tele_code || (data.id ? 'TEL-' + data.id.slice(0, 6).toUpperCase() : '');
+      showToastNotification(`Tele ${createdCode} criada com sucesso! (Status: Aguardando Despacho)`);
       if (typeof fetchPendingDeliveries === 'function') await fetchPendingDeliveries();
+      if (typeof loadTelesManagement === 'function') await loadTelesManagement();
       if (typeof renderTelesUnified === 'function') renderTelesUnified();
     }
 
     closeRequestDeliveryModal();
   } catch (err) {
     console.error("Erro ao criar Tele manual:", err);
-    showToastNotification("Erro de conexão ao criar a Tele.");
+    showModalSubmitError("Erro de conexão ao criar a Tele.");
   } finally {
-    if (btnSubmit) btnSubmit.disabled = false;
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = originalBtnText;
+    }
   }
 }
 

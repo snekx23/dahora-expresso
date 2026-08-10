@@ -17,14 +17,10 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../.env') });
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SERVICE_ROLE_KEY) {
-  throw new Error('PUSH_SERVICE_ERROR: A variável SUPABASE_SERVICE_ROLE_KEY é obrigatória.');
-}
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // TRAVA OBRIGATÓRIA DE AMBIENTE LOCAL
-if (!SUPABASE_URL.includes('localhost') && !SUPABASE_URL.includes('127.0.0.1')) {
+if (SUPABASE_URL && !SUPABASE_URL.includes('localhost') && !SUPABASE_URL.includes('127.0.0.1')) {
   throw new Error('PUSH_SERVICE_SAFETY_LOCK: O serviço de Push somente pode ser executado em ambiente local!');
 }
 
@@ -38,8 +34,22 @@ if (!VAPID_SUBJECT.startsWith('mailto:') && !VAPID_SUBJECT.startsWith('https:'))
 }
 
 // Inicializar cliente Supabase exclusivo de servidor (com Service Role e sem sessão compartilhada)
-const dbAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+let _dbAdmin = null;
+function getDbAdmin() {
+  if (!_dbAdmin) {
+    if (!SERVICE_ROLE_KEY) {
+      throw new Error('PUSH_SERVICE_ERROR: A variável SUPABASE_SERVICE_ROLE_KEY é obrigatória.');
+    }
+    _dbAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+  }
+  return _dbAdmin;
+}
+const dbAdmin = new Proxy({}, {
+  get(_, prop) {
+    return getDbAdmin()[prop];
+  }
 });
 
 // Configurar WebPush VAPID no servidor

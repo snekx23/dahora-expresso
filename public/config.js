@@ -21,8 +21,8 @@
     if (window.LOCAL_SUPABASE_CONFIG && window.LOCAL_SUPABASE_CONFIG.url && window.LOCAL_SUPABASE_CONFIG.key) {
       config.url = window.LOCAL_SUPABASE_CONFIG.url;
       config.key = window.LOCAL_SUPABASE_CONFIG.key;
-      config.googleMapsApiKey = window.LOCAL_SUPABASE_CONFIG.googleMapsApiKey || '';
-      config.googleMapsMapId = window.LOCAL_SUPABASE_CONFIG.googleMapsMapId || 'DEMO_MAP_ID';
+      config.googleMapsApiKey = window.LOCAL_SUPABASE_CONFIG.googleMapsApiKey || window.__ENV_GOOGLE_MAPS_API_KEY || '';
+      config.googleMapsMapId = window.LOCAL_SUPABASE_CONFIG.googleMapsMapId || window.__ENV_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
       config.vapidPublicKey = window.LOCAL_SUPABASE_CONFIG.vapidPublicKey || window.__ENV_VAPID_PUBLIC_KEY || '';
       config.environmentKind = window.LOCAL_SUPABASE_CONFIG.environmentKind || window.__ENV_ENVIRONMENT_KIND || 'local';
       config.demoResetEnabled = window.LOCAL_SUPABASE_CONFIG.demoResetEnabled ?? (window.__ENV_DEMO_RESET_ENABLED === 'true');

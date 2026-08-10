@@ -108,7 +108,7 @@ export async function runBootstrap(options = {}) {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  // Configurações das Contas do Ambiente de Produção
+  // Configurações das Contas do Ambiente de Produção (Apenas Donos/Administradores)
   const accountsToProvision = [
     {
       type: 'owner1',
@@ -127,31 +127,6 @@ export async function runBootstrap(options = {}) {
       name: process.env.OWNER_2_NAME || 'Owner Secundario',
       role: 'owner',
       accessLevel: 'owner'
-    },
-    {
-      type: 'demo_client',
-      label: 'Cliente Demo — painel isolado do cliente',
-      email: process.env.DEMO_CLIENT_EMAIL || 'cliente.demo@dahoraexpresso.local',
-      password: process.env.DEMO_CLIENT_PASSWORD || 'SenhaForteClientDemo#2026',
-      name: process.env.DEMO_CLIENT_NAME || 'Carlos Responsavel Demo',
-      establishment: process.env.DEMO_CLIENT_ESTABLISHMENT || 'Restaurante Demo Dahora',
-      document: process.env.DEMO_CLIENT_DOCUMENT || '00.111.222/0001-99',
-      phone: process.env.DEMO_CLIENT_PHONE || '(51) 98888-0001',
-      address: process.env.DEMO_CLIENT_ADDRESS || 'Av. Central, 500 - Centro, Sapucaia do Sul - RS',
-      role: 'client_user',
-      accessLevel: 'operador'
-    },
-    {
-      type: 'demo_rider',
-      label: 'Motoboy Demo — PWA do entregador',
-      email: process.env.DEMO_RIDER_EMAIL || 'motoboy.demo@dahoraexpresso.local',
-      password: process.env.DEMO_RIDER_PASSWORD || 'SenhaForteRiderDemo#2026',
-      name: process.env.DEMO_RIDER_NAME || 'Joao Motoboy Demo',
-      phone: process.env.DEMO_RIDER_PHONE || '(51) 97777-0001',
-      vehicle: process.env.DEMO_RIDER_VEHICLE || 'Honda CG 160',
-      plate: process.env.DEMO_RIDER_PLATE || 'DEM-1A23',
-      role: 'motoboy',
-      accessLevel: 'operador'
     }
   ];
 
@@ -209,7 +184,7 @@ export async function runBootstrap(options = {}) {
         }
       }
 
-      // Provisionar user_profiles
+      // Provisionar user_profiles (Apenas roles de administradores/owners)
       if (!isDryRun) {
         const { error: profileErr } = await adminClient.from('user_profiles').upsert({
           id: authUserId,
@@ -230,107 +205,22 @@ export async function runBootstrap(options = {}) {
         console.log(`  └─ [DRY-RUN] Planejado upsert em public.user_profiles (role: ${acc.role})`);
       }
 
-      // Vínculos Específicos por Tipo de Conta
-      let linkedEntityId = null;
-
-      if (acc.type === 'demo_client') {
-        if (!isDryRun) {
-          const { data: existingClient } = await adminClient
-            .from('commercial_clients')
-            .select('id')
-            .eq('email', acc.email)
-            .maybeSingle();
-
-          if (existingClient) {
-            linkedEntityId = existingClient.id;
-          } else {
-            const { data: newClient, error: clientErr } = await adminClient
-              .from('commercial_clients')
-              .insert({
-                client_code: 'CLI-DEMO-001',
-                establishment_name: acc.establishment,
-                responsible_name: acc.name,
-                phone: acc.phone,
-                email: acc.email,
-                address: acc.address,
-                document: acc.document,
-                rider_percentage: 85.00,
-                lifecycle_status: 'ativo',
-                financial_status: 'em_dia'
-              })
-              .select('id')
-              .single();
-
-            if (clientErr) throw new Error(`Falha ao criar commercial_client: ${clientErr.message}`);
-            linkedEntityId = newClient.id;
-          }
-
-          const { error: linkErr } = await adminClient.from('client_users').upsert({
-            client_id: linkedEntityId,
-            user_id: authUserId,
-            role: 'owner',
-            status: 'ativo'
-          }, { onConflict: 'client_id,user_id' });
-
-          if (linkErr) throw new Error(`Falha ao criar vínculo client_users: ${linkErr.message}`);
-          console.log(`  └─ ✅ Tabela commercial_clients e vínculo client_users ok (Client ID: ${linkedEntityId})`);
-        } else {
-          console.log(`  └─ [DRY-RUN] Planejado vínculo commercial_clients e client_users`);
-          linkedEntityId = 'simulated-client-id';
-        }
-      } else if (acc.type === 'demo_rider') {
-        if (!isDryRun) {
-          const { data: existingFleet } = await adminClient
-            .from('fleet')
-            .select('id')
-            .eq('user_id', authUserId)
-            .maybeSingle();
-
-          if (existingFleet) {
-            linkedEntityId = existingFleet.id;
-          } else {
-            const { data: newFleet, error: fleetErr } = await adminClient
-              .from('fleet')
-              .insert({
-                user_id: authUserId,
-                motoboy_code: 'MB-DEMO-001',
-                name: acc.name,
-                phone: acc.phone,
-                vehicle: acc.vehicle,
-                plate: acc.plate,
-                status: 'Ativo',
-                simultaneous_limit: 3
-              })
-              .select('id')
-              .single();
-
-            if (fleetErr) throw new Error(`Falha ao criar fleet: ${fleetErr.message}`);
-            linkedEntityId = newFleet.id;
-          }
-          console.log(`  └─ ✅ Tabela public.fleet provisionada (Fleet ID: ${linkedEntityId})`);
-        } else {
-          console.log(`  └─ [DRY-RUN] Planejada inserção na tabela public.fleet`);
-          linkedEntityId = 'simulated-fleet-id';
-        }
-      }
-
       reportSummary.push({
         label: acc.label,
         emailMasked: maskEmail(acc.email),
         authUserId,
         role: acc.role,
-        linkedEntityId,
         status: actionTaken
       });
     }
 
     console.log(`\n=====================================================================`);
-    console.log(`📊 RESUMO FINAL DO BOOTSTRAP (${isDryRun ? 'DRY-RUN' : 'EFETIVO'})`);
+    console.log(`📊 RESUMO FINAL DO BOOTSTRAP DE PRODUÇÃO (${isDryRun ? 'DRY-RUN' : 'EFETIVO'})`);
     console.log('=====================================================================');
     console.table(reportSummary);
 
     if (!isDryRun) {
-      const credentialsText = `# Dahora Expresso — Relatório Local de Credenciais de Bootstrap Remoto
+      const credentialsText = `# Dahora Expresso — Relatório Local de Credenciais de Bootstrap Remoto de Produção
 # Gerado em: ${new Date().toISOString()}
 # ATENÇÃO: NÃO COMMITAR OU COMPARTILHAR ESTE ARQUIVO!
 
@@ -339,12 +229,6 @@ Owner Principal:
 
 Owner Secundário:
 - Email: ${accountsToProvision[1].email}
-
-Cliente Demonstração:
-- Email: ${accountsToProvision[2].email}
-
-Motoboy Demonstração:
-- Email: ${accountsToProvision[3].email}
 `;
 
       const credPath = path.join(projectRoot, 'bootstrap-credentials.local.txt');

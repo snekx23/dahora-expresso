@@ -1,5 +1,7 @@
 {
+  "type": "module",
   "scripts": {
+    "dev": "node serve.js",
     "build:pages": "node scripts/generate-runtime-config.mjs",
     "bootstrap:remote:dry-run": "node scripts/bootstrap-remote-environment.mjs --dry-run",
     "bootstrap:remote": "node scripts/bootstrap-remote-environment.mjs",

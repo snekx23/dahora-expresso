@@ -1617,6 +1617,19 @@
     </div>
   </div>
 
+  <!-- Modal: Confirmação de Ação Operacional (Coletar, Iniciar, Finalizar) -->
+  <div id="pwa-action-confirm-modal" class="modal-overlay hidden" style="z-index: 99995; backdrop-filter: blur(4px);">
+    <div class="modal-card" style="max-width: 380px; width: 90%; padding: 22px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; text-align: center;">
+      <h3 id="pwa-confirm-title" style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: var(--text); margin-bottom: 8px;">Confirmar Ação</h3>
+      <p id="pwa-confirm-message" style="font-size: 0.88rem; color: var(--muted); margin-bottom: 20px; line-height: 1.4;">Tem certeza de que deseja realizar esta ação?</p>
+
+      <div style="display: flex; gap: 10px;">
+        <button onclick="closeActionConfirmModal()" class="pwa-btn" style="flex: 1; padding: 11px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 10px; font-weight: 600; cursor: pointer;">Cancelar</button>
+        <button id="pwa-confirm-submit-btn" class="pwa-btn" style="flex: 1; padding: 11px; background: var(--primary); border: none; color: #000; border-radius: 10px; font-weight: 700; cursor: pointer;">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Detalhes da Transação Financeira -->
   <div id="pwa-transaction-detail-modal" class="modal-overlay hidden" style="z-index: 99996; backdrop-filter: blur(4px);">
     <div class="modal-card" style="max-width: 400px; width: 90%; padding: 22px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;">
@@ -1676,15 +1689,12 @@
     </div>
   </div>
 
-  <script src="runtime-config.js?v=20260806_v1"></script>
+  <script src="runtime-config.js"></script>
   <script>
     (function() {
       var h = typeof window !== 'undefined' && window.location && window.location.hostname;
       if (h === 'localhost' || h === '127.0.0.1' || h === '') {
-        var s = document.createElement('script');
-        s.src = 'config.local.js';
-        s.async = false;
-        document.head.appendChild(s);
+        document.write('<script src="config.local.js"><\/script>');
       }
     })();
   </script>

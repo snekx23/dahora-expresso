@@ -48,6 +48,8 @@ let knownActiveTeleIds = null;
 let activeRiderDeliveryMarkers = {};
 let activeDeliveriesList = [];
 let lastActiveTeleId = null;
+let currentPWATab = 'map';
+let activeOpenTeleId = null;
 
 // ─── SAFARI PRIVATE BROWSING SAFE STORAGE HELPER ─────────────────────────────
 const memoryStorageMap = new Map();
@@ -976,6 +978,7 @@ async function toggleConnectionState() {
 // ─── TAB NAVIGATION ──────────────────────────────────────────────────────────
 
 function switchPWATab(tab) {
+  currentPWATab = tab;
   safeSetStorage('activePWATab', tab);
   document.querySelectorAll('.pwa-tab').forEach(t => t.classList.add('hidden'));
   document.querySelectorAll('.pwa-drawer-item').forEach(b => b.classList.remove('active'));
@@ -1072,107 +1075,115 @@ async function loadMyDeliveries() {
     `;
   }
 
-  if (!db || !currentRiderId) {
-    if (container) renderEmptyStateCard();
-    return;
-  }
-
-  const { data: telesData, error } = await db
-    .from('teles')
-    .select('id, tele_code, client_id, motoboy_id, status, version, pickup_address, pickup_latitude, pickup_longitude, delivery_address, delivery_reference, delivery_latitude, delivery_longitude, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_postal_code, recipient_name, recipient_phone, notes, total_order_amount, delivery_charge, payment_method, created_at, updated_at, completed_at')
-    .eq('motoboy_id', currentRiderId)
-    .in('status', ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega'])
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    logSafeError('loadMyDeliveries', error);
-    if (container) container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
-    return;
-  }
-
-  const telesList = telesData || [];
-
-  const clientIds = [...new Set(telesList.map(t => t.client_id).filter(Boolean))];
-  if (clientIds.length > 0) {
-    try {
-      const { data: clientsData } = await db
-        .from('commercial_clients')
-        .select('id, establishment_name, responsible_name, phone')
-        .in('id', clientIds);
-
-      (clientsData || []).forEach(c => {
-        commercialClientsMapCache.set(String(c.id), c);
-      });
-    } catch (e) {
-      logSafeError('loadCommercialClients', e);
+  try {
+    const riderId = currentRiderId || currentRider?.id;
+    if (!db || !riderId) {
+      if (container) renderEmptyStateCard();
+      return;
     }
-  }
 
-  const activeDeliveries = await Promise.all(telesList.map(async (item) => {
-    let riderEarning = null;
-    try {
-      const { data: earningRes } = await db.rpc('get_tele_rider_earning', { p_tele_id: item.id });
-      if (earningRes !== null && earningRes !== undefined) {
-        riderEarning = parseFloat(earningRes);
+    const { data: telesData, error } = await db
+      .from('teles')
+      .select('id, tele_code, client_id, motoboy_id, status, version, pickup_address, pickup_latitude, pickup_longitude, delivery_address, delivery_reference, delivery_latitude, delivery_longitude, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_postal_code, recipient_name, recipient_phone, notes, total_order_amount, delivery_charge, payment_method, created_at, updated_at, completed_at')
+      .eq('motoboy_id', riderId)
+      .in('status', ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega'])
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      logSafeError('loadMyDeliveries', error);
+      if (container) container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
+      return;
+    }
+
+    const telesList = telesData || [];
+
+    const clientIds = [...new Set(telesList.map(t => t.client_id).filter(Boolean))];
+    if (clientIds.length > 0) {
+      try {
+        const { data: clientsData } = await db
+          .from('commercial_clients')
+          .select('id, establishment_name, responsible_name, phone')
+          .in('id', clientIds);
+
+        (clientsData || []).forEach(c => {
+          commercialClientsMapCache.set(String(c.id), c);
+        });
+      } catch (e) {
+        logSafeError('loadCommercialClients', e);
       }
-    } catch (e) {}
+    }
 
-    const clientInfo = item.client_id ? commercialClientsMapCache.get(String(item.client_id)) : null;
+    const activeDeliveries = await Promise.all(telesList.map(async (item) => {
+      let riderEarning = null;
+      try {
+        const { data: earningRes } = await db.rpc('get_tele_rider_earning', { p_tele_id: item.id });
+        if (earningRes !== null && earningRes !== undefined) {
+          riderEarning = parseFloat(earningRes);
+        }
+      } catch (e) {}
 
-    const formattedTele = {
-      ...item,
-      establishment_name: clientInfo?.establishment_name || 'Cliente Comercial',
-      client_phone: clientInfo?.phone || null,
-      rider_earning: riderEarning,
-      rider_earning_display: (riderEarning !== null && !isNaN(riderEarning))
-        ? `R$ ${riderEarning.toFixed(2).replace('.', ',')}`
-        : 'Valor do motoboy ainda não calculado'
-    };
+      const clientInfo = item.client_id ? commercialClientsMapCache.get(String(item.client_id)) : null;
 
-    activeTeleDetailsMap.set(String(item.id), formattedTele);
-    return formattedTele;
-  }));
+      const formattedTele = {
+        ...item,
+        establishment_name: clientInfo?.establishment_name || 'Cliente Comercial',
+        client_phone: clientInfo?.phone || null,
+        rider_earning: riderEarning,
+        rider_earning_display: (riderEarning !== null && !isNaN(riderEarning))
+          ? `R$ ${riderEarning.toFixed(2).replace('.', ',')}`
+          : 'Valor do motoboy ainda não calculado'
+      };
 
-  // Ordenação estrita: 1. Não coletadas -> 2. Coletadas -> 3. Em entrega -> 4. Mais antigas primeiro
-  activeDeliveries.sort((a, b) => {
-    const getStageWeight = (st) => {
-      if (st === 'motoboy_designado' || st === 'indo_coletar' || st === 'aguardando_coleta') return 1;
-      if (st === 'coletada') return 2;
-      if (st === 'em_entrega') return 3;
-      return 4;
-    };
-    const wA = getStageWeight(a.status);
-    const wB = getStageWeight(b.status);
-    if (wA !== wB) return wA - wB;
-    return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-  });
+      activeTeleDetailsMap.set(String(item.id), formattedTele);
+      return formattedTele;
+    }));
 
-  const currentIds = activeDeliveries.map(t => t.id);
+    // Ordenação estrita: 1. Não coletadas -> 2. Coletadas -> 3. Em entrega -> 4. Mais antigas primeiro
+    activeDeliveries.sort((a, b) => {
+      const getStageWeight = (st) => {
+        if (st === 'motoboy_designado' || st === 'indo_coletar' || st === 'aguardando_coleta') return 1;
+        if (st === 'coletada') return 2;
+        if (st === 'em_entrega') return 3;
+        return 4;
+      };
+      const wA = getStageWeight(a.status);
+      const wB = getStageWeight(b.status);
+      if (wA !== wB) return wA - wB;
+      return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    });
 
-  if (knownActiveTeleIds !== null) {
-    const newTeles = currentIds.filter(id => !knownActiveTeleIds.includes(id));
-    if (newTeles.length > 0) {
-      playNotificationSound();
+    const currentIds = activeDeliveries.map(t => t.id);
+
+    if (knownActiveTeleIds !== null) {
+      const newTeles = currentIds.filter(id => !knownActiveTeleIds.includes(id));
+      if (newTeles.length > 0) {
+        playNotificationSound();
+      }
+    }
+    knownActiveTeleIds = currentIds;
+    activeDeliveriesList = activeDeliveries;
+
+    // Sincronizar badge de Minhas Teles (#map-teles-badge)
+    const activeCount = activeDeliveries.length;
+    const mapBadgeEl = document.getElementById('map-teles-badge');
+    if (mapBadgeEl) {
+      if (activeCount > 0) {
+        mapBadgeEl.innerText = activeCount;
+        mapBadgeEl.classList.remove('hidden');
+      } else {
+        mapBadgeEl.innerText = '0';
+        mapBadgeEl.classList.add('hidden');
+      }
+    }
+
+    updateMapOverlays(activeDeliveries);
+    renderTeleCards(activeDeliveries);
+  } catch (err) {
+    logSafeError('loadMyDeliveriesCatch', err);
+    if (container) {
+      container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
     }
   }
-  knownActiveTeleIds = currentIds;
-  activeDeliveriesList = activeDeliveries;
-
-  // Sincronizar badge de Minhas Teles (#map-teles-badge)
-  const activeCount = activeDeliveries.length;
-  const mapBadgeEl = document.getElementById('map-teles-badge');
-  if (mapBadgeEl) {
-    if (activeCount > 0) {
-      mapBadgeEl.innerText = activeCount;
-      mapBadgeEl.classList.remove('hidden');
-    } else {
-      mapBadgeEl.innerText = '0';
-      mapBadgeEl.classList.add('hidden');
-    }
-  }
-
-  updateMapOverlays(activeDeliveries);
-  renderTeleCards(activeDeliveries);
 }
 
 function formatOrderDateForPWA(dateText, createdAt) {
@@ -1240,6 +1251,49 @@ function getCommercialPaymentBadge(paymentMethod) {
   return paymentBadge;
 }
 
+function toggleTeleAccordion(teleId) {
+  const targetId = String(teleId);
+  if (activeOpenTeleId === targetId) {
+    activeOpenTeleId = null;
+  } else {
+    activeOpenTeleId = targetId;
+  }
+  if (activeDeliveriesList) {
+    renderTeleCards(activeDeliveriesList);
+  }
+}
+
+function openPWARoute(teleId, targetType = 'delivery') {
+  const tele = activeTeleDetailsMap.get(String(teleId));
+  if (!tele) return;
+
+  if (targetType === 'pickup') {
+    let routeUrl = '';
+    if (tele.pickup_latitude !== null && tele.pickup_longitude !== null && !isNaN(tele.pickup_latitude) && !isNaN(tele.pickup_longitude)) {
+      routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.pickup_latitude},${tele.pickup_longitude}&travelmode=driving`;
+    } else {
+      const pickupAddress = tele.pickup_address || tele.establishment_name || 'Endereço de Coleta';
+      routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupAddress)}&travelmode=driving`;
+    }
+    window.open(routeUrl, '_blank');
+  } else {
+    let routeUrl = '';
+    const fullDeliveryAddress = [
+      tele.delivery_address,
+      tele.delivery_number ? `nº ${tele.delivery_number}` : '',
+      tele.delivery_neighborhood ? `- ${tele.delivery_neighborhood}` : '',
+      tele.delivery_city ? `/ ${tele.delivery_city}` : ''
+    ].filter(Boolean).join(' ');
+
+    if (tele.delivery_latitude !== null && tele.delivery_longitude !== null && !isNaN(tele.delivery_latitude) && !isNaN(tele.delivery_longitude)) {
+      routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.delivery_latitude},${tele.delivery_longitude}&travelmode=driving`;
+    } else {
+      routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullDeliveryAddress || 'Endereço de Entrega')}&travelmode=driving`;
+    }
+    window.open(routeUrl, '_blank');
+  }
+}
+
 function renderTeleCards(deliveries) {
   const container = document.getElementById('pwa-teles-container');
   if (!container) return;
@@ -1286,7 +1340,37 @@ function renderTeleCards(deliveries) {
   }
 }
 
+function renderWhatsAppButtonHtml(order) {
+  const teleCode = order.tele_code || 'TEL-000000';
+  const rawPhone = String(order.recipient_phone || '').trim();
+  const digitsOnly = rawPhone.replace(/\D/g, '');
+
+  let finalPhone = digitsOnly;
+  if (finalPhone && !finalPhone.startsWith('55') && (finalPhone.length === 10 || finalPhone.length === 11)) {
+    finalPhone = '55' + finalPhone;
+  }
+
+  const isValidPhone = (finalPhone.length >= 12 && finalPhone.startsWith('55'));
+
+  if (isValidPhone) {
+    const msg = encodeURIComponent(`Olá, sou o entregador da Tele ${teleCode}.`);
+    const waUrl = `https://wa.me/${finalPhone}?text=${msg}`;
+    return `
+      <button class="pwa-btn" onclick="event.stopPropagation(); window.open('${waUrl}', '_blank')" style="width: 100%; padding: 10px; font-weight: 700; font-size: 0.85rem; background: #25d366; color: #fff; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px;">
+        💬 Chamar cliente
+      </button>
+    `;
+  } else {
+    return `
+      <button class="pwa-btn" disabled style="width: 100%; padding: 10px; font-weight: 600; font-size: 0.85rem; background: #3f3f46; color: #a1a1aa; border: none; border-radius: 8px; cursor: not-allowed; opacity: 0.6; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px;">
+        WhatsApp indisponível
+      </button>
+    `;
+  }
+}
+
 function createSingleTeleCard(order, isMain) {
+  const isOpen = (activeOpenTeleId === String(order.id));
   const isCollected = order.status === 'coletada';
   const isInTransit = order.status === 'em_entrega';
   const isAssigned = order.status === 'motoboy_designado' || order.status === 'indo_coletar' || order.status === 'aguardando_coleta';
@@ -1301,9 +1385,27 @@ function createSingleTeleCard(order, isMain) {
     statusBadgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981;';
     statusText = 'Coletada';
   } else if (isInTransit) {
-    statusBadgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981;';
+    statusBadgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #3b82f6;';
     statusText = 'Em entrega';
   }
+
+  const orderCode = order.tele_code || 'TELE';
+  const pickupAddress = order.pickup_address || order.establishment_name || 'Endereço de Coleta';
+  const recipientName = order.recipient_name || 'Destinatário informado';
+  const orderAmount = parseFloat(order.total_order_amount) || 0;
+  const deliveryCharge = parseFloat(order.delivery_charge) || 0;
+
+  const fullDeliveryAddress = [
+    order.delivery_address,
+    order.delivery_number ? `nº ${order.delivery_number}` : '',
+    order.delivery_neighborhood ? `- ${order.delivery_neighborhood}` : '',
+    order.delivery_city ? `/ ${order.delivery_city}` : ''
+  ].filter(Boolean).join(' ') || 'Endereço não informado';
+
+  const detailsTxt = [
+    order.delivery_complement ? `Comp: ${order.delivery_complement}` : '',
+    order.delivery_reference ? `Ref: ${order.delivery_reference}` : ''
+  ].filter(Boolean).join(' | ');
 
   const card = document.createElement('div');
   card.className = 'pwa-tele-card';
@@ -1311,59 +1413,102 @@ function createSingleTeleCard(order, isMain) {
     background: var(--bg-card);
     border: 1px solid ${isMain ? 'var(--primary)' : 'var(--border)'};
     border-radius: var(--radius);
-    padding: 16px;
+    padding: 14px 16px;
     margin-bottom: 12px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    cursor: pointer;
-    transition: transform 0.15s, border-color 0.15s;
+    gap: 8px;
+    transition: all 0.2s ease-in-out;
   `;
 
-  const orderCode = order.tele_code;
-  const shortDest = [order.delivery_neighborhood, order.delivery_city].filter(Boolean).join(', ') || order.delivery_address || 'Endereço de Entrega';
+  // 1. HEADER (SEMPRE VISÍVEL - ESTADO FECHADO)
+  // Contém somente: tele_code, endereço da COLETA, nome do destinatário, Valor do Pedido, status e seta ▼
+  const headerHtml = `
+    <div onclick="toggleTeleAccordion('${order.id}')" style="display: flex; flex-direction: column; gap: 8px; cursor: pointer;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <strong style="font-family: var(--font-display); font-size: 1.05rem; color: var(--text);">${escapeHtml(orderCode)}</strong>
+          <span class="pwa-tele-status" style="padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; ${statusBadgeStyle}">${statusText}</span>
+        </div>
+        <span style="font-size: 0.85rem; color: var(--muted); transform: ${isOpen ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s ease;">▼</span>
+      </div>
 
-  let actionButtonHtml = '';
-  if (isAssigned) {
-    actionButtonHtml = `
-      <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'collect')" style="width: 100%; padding: 10px; font-weight: 700; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
-        Marcar como coletada
-      </button>
-    `;
-  } else if (isCollected) {
-    actionButtonHtml = `
-      <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'start')" style="width: 100%; padding: 10px; font-weight: 700; background: #10b981; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
-        Iniciar entrega
-      </button>
-    `;
-  } else if (isInTransit) {
-    actionButtonHtml = `
-      <button class="pwa-btn pwa-btn-success" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'complete')" style="width: 100%; padding: 10px; font-weight: 700; background: #10b981; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
-        Finalizar entrega
-      </button>
+      <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.83rem;">
+        <div><span style="color: var(--muted);">Endereço Coleta:</span> <strong style="color: var(--text);">${escapeHtml(pickupAddress)}</strong></div>
+        <div><span style="color: var(--muted);">Destinatário:</span> <strong style="color: var(--text);">${escapeHtml(recipientName)}</strong></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+          <div><span style="color: var(--muted);">Valor do Pedido:</span> <strong style="color: #10b981; font-weight: 700;">${formatMoney(orderAmount)}</strong></div>
+          <span style="color: var(--muted); font-size: 0.76rem;">${formatOrderDateForPWA(null, order.created_at)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 2. DRAWER (ESTADO ABERTO)
+  let drawerHtml = '';
+  if (isOpen) {
+    let actionButtonsHtml = '';
+    if (isAssigned) {
+      actionButtonsHtml = `
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+          <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'collect', this)" style="width: 100%; padding: 11px; font-weight: 700; font-size: 0.9rem; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
+            Marcar como coletada
+          </button>
+          <button class="pwa-btn" onclick="event.stopPropagation(); openPWARoute('${order.id}', 'pickup')" style="width: 100%; padding: 10px; font-weight: 600; font-size: 0.85rem; background: #272732; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 8px; cursor: pointer;">
+            🗺️ Rota para Coleta
+          </button>
+        </div>
+      `;
+    } else if (isCollected) {
+      actionButtonsHtml = `
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+          <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'start', this)" style="width: 100%; padding: 11px; font-weight: 700; font-size: 0.9rem; background: #10b981; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+            Iniciar entrega
+          </button>
+          <button class="pwa-btn" onclick="event.stopPropagation(); openPWARoute('${order.id}', 'delivery')" style="width: 100%; padding: 10px; font-weight: 600; font-size: 0.85rem; background: #272732; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 8px; cursor: pointer;">
+            🗺️ Rota para Entrega
+          </button>
+        </div>
+      `;
+    } else if (isInTransit) {
+      actionButtonsHtml = `
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+          <button class="pwa-btn pwa-btn-success" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'complete', this)" style="width: 100%; padding: 11px; font-weight: 700; font-size: 0.9rem; background: #10b981; color: #fff; border: none; border-radius: 8px; cursor: pointer;">
+            Finalizar entrega
+          </button>
+          <button class="pwa-btn" onclick="event.stopPropagation(); openPWARoute('${order.id}', 'delivery')" style="width: 100%; padding: 10px; font-weight: 600; font-size: 0.85rem; background: #272732; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 8px; cursor: pointer;">
+            🗺️ Rota para Entrega
+          </button>
+        </div>
+      `;
+    }
+
+    const whatsAppButtonHtml = renderWhatsAppButtonHtml(order);
+
+    drawerHtml = `
+      <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; display: flex; flex-direction: column; gap: 8px; font-size: 0.82rem;">
+        <div><span style="color: var(--muted);">Estabelecimento:</span> <strong style="color: var(--text);">${escapeHtml(order.establishment_name || 'Cliente Comercial')}</strong></div>
+        <div><span style="color: var(--muted);">Endereço Coleta:</span> <strong style="color: var(--text);">${escapeHtml(pickupAddress)}</strong></div>
+        <div><span style="color: var(--muted);">Destinatário:</span> <strong style="color: var(--text);">${escapeHtml(recipientName)}</strong> ${order.recipient_phone ? `<span style="color: var(--muted);">(${escapeHtml(order.recipient_phone)})</span>` : ''}</div>
+        <div><span style="color: var(--muted);">Endereço Entrega:</span> <strong style="color: var(--text);">${escapeHtml(fullDeliveryAddress)}</strong></div>
+        ${detailsTxt ? `<div><span style="color: var(--muted);">Detalhamento:</span> <strong style="color: var(--text);">${escapeHtml(detailsTxt)}</strong></div>` : ''}
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 8px; margin-top: 4px; border: 1px solid rgba(255,255,255,0.05);">
+          <div><span style="color: var(--muted);">Valor da Tele:</span> <strong style="color: var(--text);">${formatMoney(deliveryCharge)}</strong></div>
+          <div><span style="color: var(--muted);">Valor do Pedido:</span> <strong style="color: var(--text);">${formatMoney(orderAmount)}</strong></div>
+          <div><span style="color: var(--muted);">Pagamento:</span> <strong style="color: var(--text);">${escapeHtml(order.payment_method || 'Faturado')}</strong></div>
+          <div><span style="color: var(--muted);">Repasse Motoboy:</span> <strong style="color: #10b981;">${order.rider_earning_display}</strong></div>
+        </div>
+
+        ${order.notes ? `<div style="color: #fbbf24; font-size: 0.8rem; background: rgba(251,191,36,0.1); padding: 8px; border-radius: 6px; border: 1px solid rgba(251,191,36,0.2);"><strong>Obs / Mercadoria:</strong> ${escapeHtml(order.notes)}</div>` : ''}
+
+        ${whatsAppButtonHtml}
+        ${actionButtonsHtml}
+      </div>
     `;
   }
 
-  card.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center;" onclick="showTeleDetailsModal('${order.id}')">
-      <strong style="font-family: var(--font-display); font-size: 1.05rem; color: var(--text);">${orderCode}</strong>
-      <span class="pwa-tele-status" style="padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; ${statusBadgeStyle}">${statusText}</span>
-    </div>
-
-    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;" onclick="showTeleDetailsModal('${order.id}')">
-      <div><span style="color: var(--muted);">Estabelecimento:</span> <strong style="color: var(--text);">${escapeHtml(order.establishment_name)}</strong></div>
-      <div><span style="color: var(--muted);">Destino:</span> <strong style="color: var(--text);">${escapeHtml(shortDest)}</strong></div>
-      <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-        <span style="color: var(--muted);">Solicitado às: ${formatOrderDateForPWA(null, order.created_at)}</span>
-        <strong style="color: #10b981; font-weight: 700;">${order.rider_earning_display}</strong>
-      </div>
-    </div>
-
-    <div style="margin-top: 4px;">
-      ${actionButtonHtml}
-    </div>
-  `;
-
+  card.innerHTML = headerHtml + drawerHtml;
   return card;
 }
 
@@ -1514,9 +1659,15 @@ function closeTeleDetailsModal() {
 
 // ─── ACTION CONFIRMATION MODAL & EXECUTION ─────────────────────────────────────
 
-function requestActionConfirmation(teleId, actionType) {
+function requestActionConfirmation(teleId, actionType, btnEl) {
+  console.log(`[ACTION:${actionType}] click`, { teleId, actionType });
+
   const tele = activeTeleDetailsMap.get(String(teleId));
-  if (!tele) return;
+  if (!tele) {
+    console.error(`[ACTION:${actionType}] error: Tele not found in activeTeleDetailsMap for teleId:`, teleId);
+    showPWAToast('Tele não encontrada nos dados ativos.');
+    return;
+  }
 
   currentModalActionTele = tele;
   currentModalActionType = actionType;
@@ -1526,7 +1677,11 @@ function requestActionConfirmation(teleId, actionType) {
   const msgEl = document.getElementById('pwa-confirm-message');
   const submitBtn = document.getElementById('pwa-confirm-submit-btn');
 
-  if (!modal || !submitBtn) return;
+  if (!modal || !submitBtn) {
+    console.log(`[ACTION:${actionType}] modal missing, executing directly`);
+    executeTeleAction(teleId, actionType, btnEl);
+    return;
+  }
 
   if (actionType === 'collect') {
     titleEl.innerText = 'Confirmar Coleta';
@@ -1545,7 +1700,12 @@ function requestActionConfirmation(teleId, actionType) {
     submitBtn.style.color = '#fff';
   }
 
-  submitBtn.onclick = () => executeConfirmedAction();
+  console.log(`[ACTION:${actionType}] confirmation opened`, { teleId, version: tele.version });
+
+  submitBtn.onclick = () => {
+    console.log(`[ACTION:${actionType}] confirmed`, { teleId, actionType });
+    executeTeleAction(teleId, actionType, btnEl);
+  };
   modal.classList.remove('hidden');
 }
 
@@ -1556,79 +1716,119 @@ function closeActionConfirmModal() {
   currentModalActionType = null;
 }
 
-async function executeConfirmedAction() {
-  if (!currentModalActionTele || !currentModalActionType || !db) return;
-
-  const tele = currentModalActionTele;
-  const actionType = currentModalActionType;
-
-  if (!tele.version || !Number.isInteger(Number(tele.version))) {
-    closeActionConfirmModal();
-    closeTeleDetailsModal();
-    showPWAToast('Versão da entrega é inválida. Os dados foram recarregados.');
-    loadMyDeliveries();
+async function executeTeleAction(teleId, actionType, btnEl) {
+  const tele = activeTeleDetailsMap.get(String(teleId)) || currentModalActionTele;
+  if (!tele || !db) {
+    console.error('[ACTION] error: Tele or db missing', { tele, db: !!db });
+    showPWAToast('Dados da entrega indisponíveis.');
     return;
   }
 
-  const expectedVersion = parseInt(tele.version, 10);
+  const targetAction = actionType || currentModalActionType;
+  const originalText = btnEl ? btnEl.innerText : '';
 
-  const submitBtn = document.getElementById('pwa-confirm-submit-btn');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.innerText = 'Processando...';
+  if (btnEl) {
+    btnEl.disabled = true;
+    if (targetAction === 'collect') btnEl.innerText = 'Marcando como coletada...';
+    else if (targetAction === 'start') btnEl.innerText = 'Iniciando entrega...';
+    else if (targetAction === 'complete') btnEl.innerText = 'Finalizando entrega...';
+    else btnEl.innerText = 'Processando...';
+  }
+
+  const modalSubmitBtn = document.getElementById('pwa-confirm-submit-btn');
+  if (modalSubmitBtn) {
+    modalSubmitBtn.disabled = true;
+    modalSubmitBtn.innerText = targetAction === 'collect' ? 'Marcando como coletada...' : (targetAction === 'complete' ? 'Finalizando entrega...' : 'Processando...');
   }
 
   try {
     let rpcName = '';
-    if (actionType === 'collect') rpcName = 'mark_my_tele_collected';
-    else if (actionType === 'start') rpcName = 'start_my_tele_delivery';
-    else if (actionType === 'complete') rpcName = 'complete_my_tele';
+    if (targetAction === 'collect') rpcName = 'mark_my_tele_collected';
+    else if (targetAction === 'start') rpcName = 'start_my_tele_delivery';
+    else if (targetAction === 'complete') rpcName = 'complete_my_tele';
 
-    const { data: res, error: rpcErr } = await db.rpc(rpcName, {
+    const expectedVersion = (tele && tele.version !== null && tele.version !== undefined && !isNaN(Number(tele.version)))
+      ? parseInt(tele.version, 10)
+      : null;
+
+    const riderLat = lastPosition?.lat ?? currentRider?.lat ?? null;
+    const riderLng = lastPosition?.lng ?? currentRider?.lng ?? null;
+
+    const rpcParams = {
       p_tele_id: tele.id,
       p_expected_version: expectedVersion
-    });
+    };
 
-    closeActionConfirmModal();
-    closeTeleDetailsModal();
-
-    if (rpcErr) {
-      logSafeError(rpcName, rpcErr);
-      showPWAToast('Erro ao processar transição. Tente novamente.');
-      return;
+    if (targetAction === 'collect') {
+      rpcParams.p_rider_lat = riderLat;
+      rpcParams.p_rider_lng = riderLng;
     }
 
-    if (res && res.success === false) {
-      if (res.error_code === 'TELE_VERSION_CONFLICT') {
-        showPWAToast('Esta Tele foi atualizada em outro dispositivo. Atualizando informações...');
-        loadMyDeliveries();
-      } else {
-        showPWAToast(res.message || 'Erro operacional.');
+    console.log(`[ACTION:${targetAction}] rpc calling ${rpcName}`, { rpcParams });
+
+    const { data: res, error: rpcErr } = await db.rpc(rpcName, rpcParams);
+
+    console.log(`[ACTION:${targetAction}] rpc result`, { data: res, error: rpcErr });
+
+    if (rpcErr) {
+      console.error(`[ACTION:${targetAction}] rpc error:`, rpcErr);
+      showPWAToast(rpcErr.message || 'Erro ao processar ação no banco.');
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerText = originalText;
+      }
+      if (modalSubmitBtn) {
+        modalSubmitBtn.disabled = false;
+        modalSubmitBtn.innerText = 'Confirmar';
       }
       return;
     }
 
-    if (res && res.success === true) {
-      if (actionType === 'complete') {
-        if (selectedTeleId === tele.id) {
-          selectedTeleId = null;
+    if (res && res.success === false) {
+      console.error(`[ACTION:${targetAction}] rpc business failure:`, res);
+      if (res.error_code === 'TELE_VERSION_CONFLICT') {
+        showPWAToast('Esta Tele foi alterada em outro dispositivo. Atualizando...');
+        closeActionConfirmModal();
+        closeTeleDetailsModal();
+        loadMyDeliveries();
+      } else {
+        showPWAToast(res.message || 'Erro operacional na transição.');
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.innerText = originalText;
         }
+        if (modalSubmitBtn) {
+          modalSubmitBtn.disabled = false;
+          modalSubmitBtn.innerText = 'Confirmar';
+        }
+      }
+      return;
+    }
+
+    closeActionConfirmModal();
+    closeTeleDetailsModal();
+
+    if (res && res.success === true) {
+      if (targetAction === 'complete') {
+        if (selectedTeleId === tele.id) selectedTeleId = null;
         showPWAToast('Entrega concluída com sucesso! 🏍️');
-      } else if (actionType === 'collect') {
+      } else if (targetAction === 'collect') {
         showPWAToast('Pedido marcado como coletado.');
-      } else if (actionType === 'start') {
+      } else if (targetAction === 'start') {
         showPWAToast('Entrega iniciada com sucesso.');
       }
       await loadMyDeliveries();
     }
   } catch (e) {
-    logSafeError('executeConfirmedAction', e);
-    closeActionConfirmModal();
-    showPWAToast('Falha na comunicação com o servidor.');
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerText = 'Confirmar';
+    console.error(`[RPC Exception] executeTeleAction:`, e);
+    showPWAToast(e.message || 'Falha de comunicação com o servidor.');
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerText = originalText;
+    }
+    if (modalSubmitBtn) {
+      modalSubmitBtn.disabled = false;
+      modalSubmitBtn.innerText = 'Confirmar';
     }
   }
 }
@@ -1636,57 +1836,73 @@ async function executeConfirmedAction() {
 // ─── REALTIME SUBSCRIPTION ────────────────────────────────────────────────────
 
 function subscribeRealtime() {
-  if (!db || !currentRider) return;
-  if (realtimeChannel) db.removeChannel(realtimeChannel);
+  const activeRiderId = currentRiderId || currentRider?.id;
+  if (!db || !activeRiderId) return;
 
-  realtimeChannel = db.channel('moto-realtime-' + currentRider.id)
+  if (realtimeChannel) {
+    try {
+      db.removeChannel(realtimeChannel);
+    } catch (e) {
+      console.warn('[REALTIME MOTOBOY] Erro ao remover canal anterior:', e.message);
+    }
+    realtimeChannel = null;
+  }
+
+  const channelName = 'moto-realtime-' + activeRiderId;
+
+  realtimeChannel = db.channel(channelName)
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
       table: 'teles'
     }, (payload) => {
-      const isMyTele = (row) => {
-        return Boolean(
-          row &&
-          currentRider &&
-          row.motoboy_id === currentRider.id
-        );
+      console.log('[REALTIME MOTOBOY TELES EVENT]', payload.eventType, {
+        id: payload.new?.id || payload.old?.id,
+        status: payload.new?.status,
+        motoboy_id: payload.new?.motoboy_id
+      });
+
+      const isMyTeleRow = (row) => {
+        if (!row || !row.motoboy_id || !activeRiderId) return false;
+        return String(row.motoboy_id).toLowerCase() === String(activeRiderId).toLowerCase();
       };
 
-
-
+      const isMine = isMyTeleRow(payload.new);
+      const isOldMine = isMyTeleRow(payload.old);
+      const isAlreadyKnown = Boolean(
+        knownActiveTeleIds &&
+        (knownActiveTeleIds.includes(payload.new?.id) || knownActiveTeleIds.includes(payload.old?.id))
+      );
+      const wasMine = isOldMine || isAlreadyKnown;
 
       if (payload.eventType === 'INSERT') {
-        if (isMyTele(payload.new)) {
+        if (isMine) {
           showHighPriorityNewTeleModal(payload.new);
-          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.id} foi atribuída a você.`);
+          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.tele_code || payload.new.id} foi atribuída a você.`);
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
       } else if (payload.eventType === 'DELETE') {
-        const wasMine = isMyTele(payload.old) || (knownActiveTeleIds && knownActiveTeleIds.includes(payload.old?.id));
         if (wasMine) {
-          sendWebNotification("Tele Removida! ❌", `A tele ${payload.old?.id} foi removida.`);
+          sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
           AudioController.playMessageAlert();
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
       } else if (payload.eventType === 'UPDATE') {
-        const isMine = isMyTele(payload.new);
-        const isAlreadyKnown = knownActiveTeleIds && knownActiveTeleIds.includes(payload.new?.id);
         const isNewAssignment = isMine && !isAlreadyKnown;
-        const isRemoval = !isMine && isAlreadyKnown;
+        const isRemoval = !isMine && wasMine;
 
         if (isNewAssignment) {
           showHighPriorityNewTeleModal(payload.new);
-          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.id} foi atribuída a você.`);
+          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.tele_code || payload.new.id} foi atribuída a você.`);
           loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         } else if (isRemoval) {
-          sendWebNotification("Tele Removida! ❌", `A tele ${payload.new.id} foi removida.`);
+          sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
           AudioController.playMessageAlert();
           loadMyDeliveries();
           loadReportsData();
@@ -1777,20 +1993,33 @@ function subscribeRealtime() {
         loadConsumablesData();
         loadWeeklyClosures();
       }
-    })
-    .subscribe();
+    });
+
+  realtimeChannel.subscribe((status, err) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('[REALTIME MOTOBOY] Inscrito no canal com sucesso:', channelName);
+    } else if (err || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+      console.warn('[REALTIME MOTOBOY] Erro/Status no canal:', status, err);
+    }
+  });
 }
 
 // ─── MAP (SINGLETON LOADER & REUSABLE INSTANCE) ──────────────────────────────
 
 let googleMapsLoaderPromise = null;
 
-function ensureGoogleMapsLoaded() {
-  if (window.google && window.google.maps && window.google.maps.Map) {
-    return Promise.resolve(true);
+async function ensureGoogleMapsLoaded() {
+  if (window.google?.maps?.Map) {
+    return true;
   }
   if (window._googleMapsLoaderPromise) {
-    return window._googleMapsLoaderPromise;
+    await window._googleMapsLoaderPromise;
+    if (window.google?.maps?.importLibrary && !window.google?.maps?.Map) {
+      try {
+        await window.google.maps.importLibrary('maps');
+      } catch (e) {}
+    }
+    return Boolean(window.google?.maps?.Map);
   }
 
   const apiKey = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.googleMapsApiKey) ||
@@ -1798,33 +2027,50 @@ function ensureGoogleMapsLoaded() {
 
   if (!apiKey) {
     console.warn("⚠️ Google Maps API Key não configurada.");
-    return Promise.resolve(false);
+    return false;
   }
 
   const existingScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
   if (existingScript) {
     window._googleMapsLoaderPromise = new Promise((resolve) => {
       let checks = 0;
-      const interval = setInterval(() => {
+      const interval = setInterval(async () => {
         checks++;
-        if (window.google && window.google.maps && window.google.maps.Map) {
+        if (window.google?.maps?.Map) {
           clearInterval(interval);
           resolve(true);
-        } else if (checks > 100) {
+        } else if (window.google?.maps?.importLibrary) {
+          try {
+            await window.google.maps.importLibrary('maps');
+            if (window.google?.maps?.Map) {
+              clearInterval(interval);
+              resolve(true);
+              return;
+            }
+          } catch (e) {}
+        }
+        if (checks > 100) {
           clearInterval(interval);
           resolve(false);
         }
       }, 100);
     });
-    return window._googleMapsLoaderPromise;
+    return await window._googleMapsLoaderPromise;
   }
 
   window._googleMapsLoaderPromise = new Promise((resolve) => {
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker`;
     script.async = true;
     script.defer = true;
-    script.onload = () => resolve(true);
+    script.onload = async () => {
+      if (window.google?.maps?.importLibrary && !window.google?.maps?.Map) {
+        try {
+          await window.google.maps.importLibrary('maps');
+        } catch (e) {}
+      }
+      resolve(Boolean(window.google?.maps?.Map));
+    };
     script.onerror = (err) => {
       console.error("Erro ao carregar script do Google Maps:", err);
       resolve(false);
@@ -1832,7 +2078,7 @@ function ensureGoogleMapsLoaded() {
     document.head.appendChild(script);
   });
 
-  return window._googleMapsLoaderPromise;
+  return await window._googleMapsLoaderPromise;
 }
 
 async function initRiderMap() {
@@ -3648,11 +3894,6 @@ function clearCustomReportsDateFilter() {
   if (startInput) startInput.value = '';
   if (endInput) endInput.value = '';
   setReportsFilterPeriod('week');
-}
-
-function loadReportsData() {
-  loadPWAFinancialReports();
-  initPWAFinancialRealtime();
 }
 
 async function loadPWAFinancialReports(isManualRefresh = false) {

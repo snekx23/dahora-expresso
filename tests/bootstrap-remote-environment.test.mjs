@@ -125,12 +125,13 @@ test('7. Nenhuma chave sb_secret_ ou service_role está hardcoded na pasta publi
   }
 });
 
-test('8. Dry-run executa simulação sem falhas contra o Supabase Local ativo', async () => {
+test('8. Dry-run executa simulação sem falhas contra o ambiente remoto e cobre exatamente as 2 contas de Owner', async () => {
   setupLocalEnv();
   const res = await runBootstrap({ dryRun: true, isTest: true });
   assert.equal(res.success, true, 'Dry-run concluído com sucesso.');
   assert.equal(res.isDryRun, true, 'Modo dry-run confirmado.');
-  assert.equal(res.reportSummary.length, 4, 'Bootstrap de produção cobre exatamente as 4 contas padrão.');
+  assert.equal(res.reportSummary.length, 2, 'Bootstrap de produção cobre estritamente as 2 contas de Owner.');
+  assert.ok(res.reportSummary.every(item => item.role === 'owner'), 'Todas as contas provisionadas no ambiente remoto possuem role owner.');
 });
 
 test('11. config.local.js possui carregamento condicional seguro restrito ao localhost em index.html e motoboy.html', async () => {
