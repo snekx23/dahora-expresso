@@ -6,18 +6,20 @@ export default {
     const defaultUrl = "https://tskivauszmhhtqtegvwb.supabase.co";
     const defaultAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw";
     const defaultVapidKey = "BEo-ivrbMWP4mK2syicv0ic_Wr2arC2LZBmtbtn2zHPzTbykpyJ22ETL2DX9t6bHFL5CGkMnTtAaq-2bcQ_sxYw";
+    const defaultGoogleMapsKey = "AIzaSyBkwbG65d17USn4PLxNzyPN7QODNaWWZ0k";
 
     // 1. Interceptação direta para /runtime-config.js (Garante JS válido sempre)
     if (path === '/runtime-config.js') {
       const supabaseUrl = (env.SUPABASE_URL || defaultUrl).trim();
       const supabaseKey = (env.SUPABASE_ANON_KEY || defaultAnonKey).trim();
       const vapidKey = (env.VAPID_PUBLIC_KEY || defaultVapidKey).trim();
+      const googleMapsApiKey = (env.GOOGLE_MAPS_API_KEY || defaultGoogleMapsKey).trim();
 
       const js = `(function() {
   if (typeof window === 'undefined') return;
   window.__ENV_SUPABASE_URL = ${JSON.stringify(supabaseUrl)};
   window.__ENV_SUPABASE_KEY = ${JSON.stringify(supabaseKey)};
-  window.__ENV_GOOGLE_MAPS_API_KEY = ${JSON.stringify(env.GOOGLE_MAPS_API_KEY || '')};
+  window.__ENV_GOOGLE_MAPS_API_KEY = ${JSON.stringify(googleMapsApiKey)};
   window.__ENV_GOOGLE_MAPS_MAP_ID = ${JSON.stringify(env.GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID')};
   window.__ENV_VAPID_PUBLIC_KEY = ${JSON.stringify(vapidKey)};
   window.__ENV_NAME = "production";
@@ -43,14 +45,17 @@ export default {
       
       const supabaseUrl = (env.SUPABASE_URL || defaultUrl).trim();
       const supabaseKey = (env.SUPABASE_ANON_KEY || defaultAnonKey).trim();
+      const googleMapsApiKey = (env.GOOGLE_MAPS_API_KEY || defaultGoogleMapsKey).trim();
 
       const configScript = `
   <script>
     window.__ENV_SUPABASE_URL = ${JSON.stringify(supabaseUrl)};
     window.__ENV_SUPABASE_KEY = ${JSON.stringify(supabaseKey)};
+    window.__ENV_GOOGLE_MAPS_API_KEY = ${JSON.stringify(googleMapsApiKey)};
     window.SUPABASE_CONFIG = {
       url: ${JSON.stringify(supabaseUrl)},
-      key: ${JSON.stringify(supabaseKey)}
+      key: ${JSON.stringify(supabaseKey)},
+      googleMapsApiKey: ${JSON.stringify(googleMapsApiKey)}
     };
     window.MAPBOX_ACCESS_TOKEN = "${env.MAPBOX_ACCESS_TOKEN || ''}";
   </script>

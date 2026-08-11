@@ -5973,7 +5973,7 @@ function subscribeDashboardRealtime() {
 function loadGoogleMapsAPI(callback) {
   const apiKey = getGoogleMapsApiKey();
   if (!apiKey) {
-    if (callback) callback(new Error("Chave do Google Maps não configurada em public/config.local.js"));
+    if (callback) callback(new Error("Chave do Google Maps não configurada no ambiente."));
     return;
   }
   loadGoogleMapsApi().then(() => {
@@ -9751,7 +9751,7 @@ async function loadGoogleMapsApi() {
 
   const apiKey = getGoogleMapsApiKey();
   if (!apiKey) {
-    throw new Error("Chave do Google Maps não configurada em public/config.local.js");
+    throw new Error("Chave do Google Maps não configurada no ambiente.");
   }
 
   googleMapsLoaderPromise = new Promise((resolve, reject) => {
