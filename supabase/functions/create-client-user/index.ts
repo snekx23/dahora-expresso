@@ -77,9 +77,16 @@ serve(async (req) => {
       complement,
       neighborhood,
       city,
+      postal_code,
       document,
       map_color,
-      notes
+      notes,
+      pickup_latitude,
+      pickup_longitude,
+      pickup_place_id,
+      street_number,
+      route,
+      state
     } = payload;
 
     if (!establishment_name || !responsible_name || !phone || !email || !password || !address) {
@@ -149,8 +156,15 @@ serve(async (req) => {
           email: emailNorm,
           document: docNorm || emailNorm,
           address,
-          neighborhood,
-          city,
+          neighborhood: neighborhood || null,
+          city: city || null,
+          postal_code: postal_code || null,
+          pickup_latitude: pickup_latitude !== undefined && pickup_latitude !== null ? Number(pickup_latitude) : null,
+          pickup_longitude: pickup_longitude !== undefined && pickup_longitude !== null ? Number(pickup_longitude) : null,
+          pickup_place_id: pickup_place_id || null,
+          street_number: street_number || null,
+          route: route || null,
+          state: state || null,
           lifecycle_status: 'ativo',
           financial_status: 'em_dia'
         }])

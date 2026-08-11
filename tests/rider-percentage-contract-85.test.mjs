@@ -14,7 +14,6 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
 import dotenv from 'dotenv';
-import path from 'path';
 
 dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
 

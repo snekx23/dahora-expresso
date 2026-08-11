@@ -1176,7 +1176,7 @@
           <div id="pwa-settlement-status-badge" style="margin-bottom: 8px;"></div>
           <span style="font-size: 0.7rem; color: #fbbf24; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; display: block; margin-bottom: 4px;">Saldo da Semana Atual (Líquido)</span>
           <strong id="pwa-hero-net-balance" style="font-size: 1.85rem; color: #10b981; font-weight: 900; font-family: var(--font-display); display: block; margin-bottom: 4px;">R$ 0,00</strong>
-          <span id="pwa-hero-reset-info" style="font-size: 0.72rem; color: var(--muted); display: block;">Ciclo semanal encerra na próxima quarta-feira</span>
+          <span id="pwa-hero-reset-info" style="font-size: 0.72rem; color: var(--muted); display: block;">Ciclo semanal encerra no domingo às 23:59 (Pagamento na Quarta)</span>
         </div>
 
         <!-- Filter Pills (Hoje, Semana, Mês, Personalizado) -->
@@ -1240,6 +1240,16 @@
         <button id="pwa-reports-load-more-btn" class="hidden" onclick="loadMorePWAFinancialStatement()" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); border-radius: 10px; font-weight: 700; font-size: 0.82rem; cursor: pointer; text-align: center; margin-bottom: 20px;">
           Carregar Mais Lançamentos
         </button>
+
+        <!-- Seção: Repasses Semanais (Semanas Anteriores) -->
+        <div style="margin-top: 24px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text);">Repasses Semanais</h3>
+          <span style="font-size: 0.72rem; color: var(--muted); font-weight: 600;">Semanas Anteriores</span>
+        </div>
+
+        <div id="pwa-weekly-settlements-container" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px;">
+          <!-- Weekly settlements history rendered dynamically -->
+        </div>
       </div>
 
       <!-- Consumables Tab -->
@@ -1535,6 +1545,8 @@
         <button class="pwa-btn pwa-btn-primary" id="pending-tele-accept-btn" onclick="acceptSelectedPendingTele()" style="flex: 1; background: var(--primary); color: #fff;">Aceitar</button>
       </div>
     </div>
+  </div>
+
   <!-- Modal: Nova Tele Atribuída (Alta Prioridade) -->
   <div id="modal-high-priority-tele" class="modal-overlay hidden">
     <div class="modal-card" style="max-width: 380px; padding: 24px; text-align: center; border: 2px solid var(--primary); box-shadow: 0 0 32px rgba(255, 183, 0, 0.3);">
@@ -1699,7 +1711,7 @@
     })();
   </script>
   <script src="config.js"></script>
-  <script src="motoboy.js?v=20260806_v15"></script>
+  <script src="motoboy.js?v=20260811_prod1"></script>
 
 </body>
 </html>

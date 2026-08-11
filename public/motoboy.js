@@ -51,6 +51,14 @@ let lastActiveTeleId = null;
 let currentPWATab = 'map';
 let activeOpenTeleId = null;
 
+function formatMoneyBR(value) {
+  const amount = Number(value) || 0;
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(amount);
+}
+
 // ─── SAFARI PRIVATE BROWSING SAFE STORAGE HELPER ─────────────────────────────
 const memoryStorageMap = new Map();
 
@@ -1084,7 +1092,7 @@ async function loadMyDeliveries() {
 
     const { data: telesData, error } = await db
       .from('teles')
-      .select('id, tele_code, client_id, motoboy_id, status, version, pickup_address, pickup_latitude, pickup_longitude, delivery_address, delivery_reference, delivery_latitude, delivery_longitude, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_postal_code, recipient_name, recipient_phone, notes, total_order_amount, delivery_charge, payment_method, created_at, updated_at, completed_at')
+      .select('id, tele_code, client_id, motoboy_id, status, version, pickup_address, pickup_latitude, pickup_longitude, pickup_place_id, pickup_establishment_name, delivery_address, delivery_reference, delivery_latitude, delivery_longitude, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_postal_code, recipient_name, recipient_phone, notes, total_order_amount, delivery_charge, payment_method, created_at, updated_at, completed_at')
       .eq('motoboy_id', riderId)
       .in('status', ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega'])
       .order('created_at', { ascending: true });
@@ -1126,7 +1134,7 @@ async function loadMyDeliveries() {
 
       const formattedTele = {
         ...item,
-        establishment_name: clientInfo?.establishment_name || 'Cliente Comercial',
+        establishment_name: item.pickup_establishment_name || clientInfo?.establishment_name || 'Cliente Comercial',
         client_phone: clientInfo?.phone || null,
         rider_earning: riderEarning,
         rider_earning_display: (riderEarning !== null && !isNaN(riderEarning))
@@ -1268,14 +1276,12 @@ function openPWARoute(teleId, targetType = 'delivery') {
   if (!tele) return;
 
   if (targetType === 'pickup') {
-    let routeUrl = '';
-    if (tele.pickup_latitude !== null && tele.pickup_longitude !== null && !isNaN(tele.pickup_latitude) && !isNaN(tele.pickup_longitude)) {
-      routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.pickup_latitude},${tele.pickup_longitude}&travelmode=driving`;
+    if (tele.pickup_latitude !== null && tele.pickup_longitude !== null && !isNaN(parseFloat(tele.pickup_latitude)) && !isNaN(parseFloat(tele.pickup_longitude))) {
+      const routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.pickup_latitude},${tele.pickup_longitude}&travelmode=driving`;
+      window.open(routeUrl, '_blank');
     } else {
-      const pickupAddress = tele.pickup_address || tele.establishment_name || 'Endereço de Coleta';
-      routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupAddress)}&travelmode=driving`;
+      showPWAToast('Coordenadas de coleta não cadastradas para esta Tele antiga.');
     }
-    window.open(routeUrl, '_blank');
   } else {
     let routeUrl = '';
     const fullDeliveryAddress = [
@@ -1285,7 +1291,7 @@ function openPWARoute(teleId, targetType = 'delivery') {
       tele.delivery_city ? `/ ${tele.delivery_city}` : ''
     ].filter(Boolean).join(' ');
 
-    if (tele.delivery_latitude !== null && tele.delivery_longitude !== null && !isNaN(tele.delivery_latitude) && !isNaN(tele.delivery_longitude)) {
+    if (tele.delivery_latitude !== null && tele.delivery_longitude !== null && !isNaN(parseFloat(tele.delivery_latitude)) && !isNaN(parseFloat(tele.delivery_longitude))) {
       routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.delivery_latitude},${tele.delivery_longitude}&travelmode=driving`;
     } else {
       routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullDeliveryAddress || 'Endereço de Entrega')}&travelmode=driving`;
@@ -1295,6 +1301,7 @@ function openPWARoute(teleId, targetType = 'delivery') {
 }
 
 function renderTeleCards(deliveries) {
+  initTelesContainerDelegation();
   const container = document.getElementById('pwa-teles-container');
   if (!container) return;
 
@@ -1390,7 +1397,7 @@ function createSingleTeleCard(order, isMain) {
   }
 
   const orderCode = order.tele_code || 'TELE';
-  const pickupAddress = order.pickup_address || order.establishment_name || 'Endereço de Coleta';
+  const pickupAddress = order.pickup_address || 'Endereço de Coleta';
   const recipientName = order.recipient_name || 'Destinatário informado';
   const orderAmount = parseFloat(order.total_order_amount) || 0;
   const deliveryCharge = parseFloat(order.delivery_charge) || 0;
@@ -1451,7 +1458,7 @@ function createSingleTeleCard(order, isMain) {
     if (isAssigned) {
       actionButtonsHtml = `
         <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-          <button class="pwa-btn pwa-btn-primary" onclick="event.stopPropagation(); requestActionConfirmation('${order.id}', 'collect', this)" style="width: 100%; padding: 11px; font-weight: 700; font-size: 0.9rem; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
+          <button class="pwa-btn pwa-btn-primary" data-tele-action="collect" data-tele-id="${order.id}" style="width: 100%; padding: 11px; font-weight: 700; font-size: 0.9rem; background: var(--primary); color: #000; border: none; border-radius: 8px; cursor: pointer;">
             Marcar como coletada
           </button>
           <button class="pwa-btn" onclick="event.stopPropagation(); openPWARoute('${order.id}', 'pickup')" style="width: 100%; padding: 10px; font-weight: 600; font-size: 0.85rem; background: #272732; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 8px; cursor: pointer;">
@@ -1657,9 +1664,175 @@ function closeTeleDetailsModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-// ─── ACTION CONFIRMATION MODAL & EXECUTION ─────────────────────────────────────
+// ─── ACTION CONFIRMATION MODAL & DELEGATION ────────────────────────────────────
+
+let isTelesContainerDelegationAttached = false;
+
+function resetActionConfirmButton() {
+  const submitBtn = document.getElementById('pwa-confirm-submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.removeAttribute('aria-busy');
+    submitBtn.innerText = 'Confirmar';
+    submitBtn.onclick = null;
+  }
+}
+
+function initTelesContainerDelegation() {
+  if (isTelesContainerDelegationAttached) return;
+  const container = document.getElementById('pwa-teles-container') || document.body;
+  if (!container) return;
+
+  container.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-tele-action="collect"]');
+    if (!button) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    console.log('[COLLECT] CLICK RECEIVED', { target: event.target, button });
+
+    const teleId = button.dataset.teleId;
+    if (!teleId) {
+      console.error('[COLLECT] error: dataset.teleId missing on button', button);
+      showPWAToast('Erro ao identificar ID da Tele.');
+      return;
+    }
+
+    const tele = activeTeleDetailsMap.get(String(teleId));
+    if (!tele) {
+      console.error('[COLLECT] error: Tele not found in activeTeleDetailsMap for teleId:', teleId);
+      showPWAToast('Tele não encontrada nos dados ativos.');
+      return;
+    }
+
+    console.log('[COLLECT] TELE FOUND', { teleId: tele.id, version: tele.version, status: tele.status });
+
+    if (tele.version === null || tele.version === undefined || isNaN(Number(tele.version))) {
+      console.error('[COLLECT] error: tele.version missing/invalid', tele);
+      showPWAToast('Não foi possível obter a versão atual desta Tele.');
+      return;
+    }
+
+    currentModalActionTele = tele;
+    currentModalActionType = 'collect';
+
+    resetActionConfirmButton();
+
+    const modal = document.getElementById('pwa-action-confirm-modal');
+    const titleEl = document.getElementById('pwa-confirm-title');
+    const msgEl = document.getElementById('pwa-confirm-message');
+    const submitBtn = document.getElementById('pwa-confirm-submit-btn');
+
+    if (!modal || !submitBtn) {
+      console.error('[COLLECT] error: #pwa-action-confirm-modal or submitBtn missing in DOM');
+      showPWAToast('Não foi possível abrir a confirmação da coleta.');
+      return;
+    }
+
+    titleEl.innerText = 'Confirmar Coleta';
+    msgEl.innerText = 'Confirma que o pedido foi coletado?';
+    submitBtn.style.background = 'var(--primary)';
+    submitBtn.style.color = '#000';
+    submitBtn.innerText = 'Confirmar';
+    submitBtn.disabled = false;
+
+    console.log('[COLLECT] CONFIRMED', { teleId: tele.id, version: tele.version });
+
+    submitBtn.onclick = async () => {
+      await processCollectRpc(tele, button, submitBtn);
+    };
+
+    modal.classList.remove('hidden');
+  });
+
+  isTelesContainerDelegationAttached = true;
+}
+
+async function processCollectRpc(tele, button, modalSubmitBtn) {
+  if (!tele || !db) {
+    console.error('[COLLECT] error: tele or db missing');
+    showPWAToast('Dados da entrega indisponíveis.');
+    return;
+  }
+
+  const originalBtnText = button ? button.innerText : '';
+  if (button) {
+    button.disabled = true;
+    button.innerText = 'Marcando como coletada...';
+  }
+
+  if (modalSubmitBtn) {
+    modalSubmitBtn.disabled = true;
+    modalSubmitBtn.innerText = 'Marcando como coletada...';
+  }
+
+  try {
+    const expectedVersion = parseInt(tele.version, 10);
+    const riderLat = lastPosition?.lat ?? currentRider?.lat ?? null;
+    const riderLng = lastPosition?.lng ?? currentRider?.lng ?? null;
+
+    const rpcParams = {
+      p_tele_id: tele.id,
+      p_expected_version: expectedVersion,
+      p_rider_lat: riderLat,
+      p_rider_lng: riderLng
+    };
+
+    console.log('[COLLECT] CALLING RPC', { rpcName: 'mark_my_tele_collected', rpcParams });
+
+    const { data: res, error: rpcErr } = await db.rpc('mark_my_tele_collected', rpcParams);
+
+    console.log('[COLLECT] RPC RESPONSE', { data: res, error: rpcErr });
+
+    if (rpcErr) {
+      console.error('[COLLECT] rpc error:', rpcErr);
+      showPWAToast(rpcErr.message || 'Erro ao processar ação no banco.');
+      if (button) {
+        button.disabled = false;
+        button.innerText = originalBtnText;
+      }
+      return;
+    }
+
+    if (res && res.success === false) {
+      console.error('[COLLECT] rpc business rejection:', res);
+      if (res.error_code === 'TELE_VERSION_CONFLICT') {
+        showPWAToast('Esta Tele foi alterada em outro dispositivo. Atualizando...');
+        closeActionConfirmModal();
+        closeTeleDetailsModal();
+        loadMyDeliveries();
+      } else {
+        showPWAToast(res.message || 'Erro operacional na transição.');
+        if (button) {
+          button.disabled = false;
+          button.innerText = originalBtnText;
+        }
+      }
+      return;
+    }
+
+    closeActionConfirmModal();
+    closeTeleDetailsModal();
+
+    if (res && res.success === true) {
+      showPWAToast('Pedido marcado como coletado.');
+      await loadMyDeliveries();
+    }
+  } catch (e) {
+    console.error('[COLLECT] exception in processCollectRpc:', e);
+    showPWAToast(e.message || 'Falha de comunicação com o servidor.');
+    if (button) {
+      button.disabled = false;
+      button.innerText = originalBtnText;
+    }
+  } finally {
+    resetActionConfirmButton();
+  }
+}
 
 function requestActionConfirmation(teleId, actionType, btnEl) {
+  resetActionConfirmButton();
   console.log(`[ACTION:${actionType}] click`, { teleId, actionType });
 
   const tele = activeTeleDetailsMap.get(String(teleId));
@@ -1700,6 +1873,9 @@ function requestActionConfirmation(teleId, actionType, btnEl) {
     submitBtn.style.color = '#fff';
   }
 
+  submitBtn.disabled = false;
+  submitBtn.innerText = 'Confirmar';
+
   console.log(`[ACTION:${actionType}] confirmation opened`, { teleId, version: tele.version });
 
   submitBtn.onclick = () => {
@@ -1714,6 +1890,7 @@ function closeActionConfirmModal() {
   if (modal) modal.classList.add('hidden');
   currentModalActionTele = null;
   currentModalActionType = null;
+  resetActionConfirmButton();
 }
 
 async function executeTeleAction(teleId, actionType, btnEl) {
@@ -1738,7 +1915,7 @@ async function executeTeleAction(teleId, actionType, btnEl) {
   const modalSubmitBtn = document.getElementById('pwa-confirm-submit-btn');
   if (modalSubmitBtn) {
     modalSubmitBtn.disabled = true;
-    modalSubmitBtn.innerText = targetAction === 'collect' ? 'Marcando como coletada...' : (targetAction === 'complete' ? 'Finalizando entrega...' : 'Processando...');
+    modalSubmitBtn.innerText = targetAction === 'collect' ? 'Marcando como coletada...' : (targetAction === 'start' ? 'Iniciando entrega...' : 'Finalizando entrega...');
   }
 
   try {
@@ -1777,10 +1954,6 @@ async function executeTeleAction(teleId, actionType, btnEl) {
         btnEl.disabled = false;
         btnEl.innerText = originalText;
       }
-      if (modalSubmitBtn) {
-        modalSubmitBtn.disabled = false;
-        modalSubmitBtn.innerText = 'Confirmar';
-      }
       return;
     }
 
@@ -1796,10 +1969,6 @@ async function executeTeleAction(teleId, actionType, btnEl) {
         if (btnEl) {
           btnEl.disabled = false;
           btnEl.innerText = originalText;
-        }
-        if (modalSubmitBtn) {
-          modalSubmitBtn.disabled = false;
-          modalSubmitBtn.innerText = 'Confirmar';
         }
       }
       return;
@@ -1820,16 +1989,14 @@ async function executeTeleAction(teleId, actionType, btnEl) {
       await loadMyDeliveries();
     }
   } catch (e) {
-    console.error(`[RPC Exception] executeTeleAction:`, e);
+    console.error(`[ACTION:${targetAction}] exception:`, e);
     showPWAToast(e.message || 'Falha de comunicação com o servidor.');
     if (btnEl) {
       btnEl.disabled = false;
       btnEl.innerText = originalText;
     }
-    if (modalSubmitBtn) {
-      modalSubmitBtn.disabled = false;
-      modalSubmitBtn.innerText = 'Confirmar';
-    }
+  } finally {
+    resetActionConfirmButton();
   }
 }
 
@@ -3896,6 +4063,23 @@ function clearCustomReportsDateFilter() {
   setReportsFilterPeriod('week');
 }
 
+function getOperationalWeekStartAndEnd(nowDate = new Date()) {
+  const d = new Date(nowDate);
+  const day = d.getDay(); // 0: Sun, 1: Mon, ..., 6: Sat
+  const diffToMonday = (day === 0 ? -6 : 1 - day);
+
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  return {
+    startDate: formatISOShortDate(monday),
+    endDate: formatISOShortDate(sunday)
+  };
+}
+
 async function loadPWAFinancialReports(isManualRefresh = false) {
   if (!supabaseClient) return;
 
@@ -3922,8 +4106,9 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
     endDate = customReportsEndDate;
     labelText = 'Período Personalizado';
   } else {
-    startDate = null;
-    endDate = null;
+    const weekDates = getOperationalWeekStartAndEnd();
+    startDate = weekDates.startDate;
+    endDate = weekDates.endDate;
     labelText = 'Semana Operacional';
   }
 
@@ -3937,18 +4122,16 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
     `;
   }
 
+  initPWAFinancialRealtime();
+
+  // 1. Carregar resumo (saldo hero + contadores) de forma isolada
   try {
-    // Fonte Única e Autoritativa Sanitizada: public.get_my_rider_financial_statement_v2
-    const { data: res, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement_v2', {
-      p_period_start: null,
-      p_history_limit: 12
+    const { data: summary, error: sumErr } = await supabaseClient.rpc('get_my_rider_financial_summary', {
+      p_start_date: startDate,
+      p_end_date: endDate
     });
 
-    if (currentToken !== reportsFetchToken) return;
-
-    if (stmtErr) throw stmtErr;
-
-    if (res && res.success) {
+    if (currentToken === reportsFetchToken && summary && summary.success) {
       const heroNetEl = document.getElementById('pwa-hero-net-balance');
       const settlementBadgeEl = document.getElementById('pwa-settlement-status-badge');
       
@@ -3957,55 +4140,42 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
       const credEl = document.getElementById('reports-credits-total');
       const dedEl = document.getElementById('reports-deductions-total');
       const netEl = document.getElementById('reports-period-net-total');
+      const periodLabelEl = document.getElementById('pwa-statement-period-label');
 
-      if (res.has_settlement && res.settlement) {
-        const s = res.settlement;
-        
-        if (heroNetEl) heroNetEl.textContent = formatMoneyBR(s.net_amount);
+      if (periodLabelEl) periodLabelEl.textContent = summary.period_label || labelText;
+      if (heroNetEl) heroNetEl.textContent = formatMoneyBR(summary.net_total);
 
-        if (settlementBadgeEl) {
-          const st = s.status;
-          const statusMap = {
-            'open': { text: s.status_label || 'Ciclo em Andamento', bg: 'rgba(156,163,175,0.15)', color: '#9ca3af', border: 'rgba(156,163,175,0.3)' },
-            'calculated': { text: s.status_label || 'Apurado', bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: 'rgba(59,130,246,0.3)' },
-            'pending': { text: s.status_label || 'Pendente de Pagamento', bg: 'rgba(234,179,8,0.15)', color: '#eab308', border: 'rgba(234,179,8,0.3)' },
-            'partially_blocked': { text: s.status_label || 'Parcialmente Bloqueado', bg: 'rgba(249,115,22,0.15)', color: '#f97316', border: 'rgba(249,115,22,0.3)' },
-            'paid': { text: s.status_label || 'Pago (Concluído)', bg: 'rgba(16,185,129,0.15)', color: '#10b981', border: 'rgba(16,185,129,0.3)' },
-            'reopened': { text: s.status_label || 'Reaberto para Revisão', bg: 'rgba(168,85,247,0.15)', color: '#a855f7', border: 'rgba(168,85,247,0.3)' },
-            'reversed': { text: s.status_label || 'Estornado', bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
-            'cancelled': { text: s.status_label || 'Cancelado', bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' }
-          };
-          const info = statusMap[st] || { text: 'Status Indisponível', bg: 'rgba(255,255,255,0.1)', color: 'var(--text)', border: 'var(--border)' };
-          settlementBadgeEl.innerHTML = `<span style="background: ${info.bg}; color: ${info.color}; border: 1px solid ${info.border}; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block;">${info.text}</span>`;
-        }
-
-        if (countEl) countEl.textContent = (res.items || []).filter(i => i.source_type === 'rider_earning' || i.source_type === 'tele').length;
-        if (earnEl) earnEl.textContent = formatMoneyBR(s.base_rider_amount);
-        if (credEl) credEl.textContent = formatMoneyBR(s.credits_amount);
-        if (dedEl) dedEl.textContent = `- ${formatMoneyBR(s.consumables_amount)}`;
-        if (netEl) netEl.textContent = formatMoneyBR(s.net_amount);
-
-        renderPWAFinancialStatementItems(res.items || [], false);
-      } else {
-        if (heroNetEl) heroNetEl.textContent = 'R$ 0,00';
-        if (settlementBadgeEl) {
-          settlementBadgeEl.innerHTML = `<span style="background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block;">Ciclo em Andamento</span>`;
-        }
-        if (countEl) countEl.textContent = '0';
-        if (earnEl) earnEl.textContent = 'R$ 0,00';
-        if (credEl) credEl.textContent = 'R$ 0,00';
-        if (dedEl) dedEl.textContent = '- R$ 0,00';
-        if (netEl) netEl.textContent = 'R$ 0,00';
-
-        renderPWAFinancialStatementItems([], false);
+      if (settlementBadgeEl) {
+        settlementBadgeEl.innerHTML = `<span style="background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block;">Ciclo em Andamento</span>`;
       }
-    }
 
-    if (isManualRefresh) {
-      showPWAToast('Dados financeiros atualizados.');
+      if (countEl) countEl.textContent = summary.completed_deliveries_count || 0;
+      if (earnEl) earnEl.textContent = formatMoneyBR(summary.delivery_earnings);
+      if (credEl) credEl.textContent = formatMoneyBR(summary.credits_display_total ?? summary.credits_total);
+      if (dedEl) dedEl.textContent = `- ${formatMoneyBR(summary.deductions_display_total ?? summary.deductions_total)}`;
+      if (netEl) netEl.textContent = formatMoneyBR(summary.net_total);
     }
   } catch (err) {
-    console.error('Erro ao carregar extrato sanitizado:', err);
+    console.error('Erro ao carregar resumo financeiro:', err);
+  }
+
+  // 2. Carregar extrato de lançamentos de forma isolada
+  try {
+    const { data: stmt, error: stmtErr } = await supabaseClient.rpc('get_my_rider_financial_statement', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+      p_limit: REPORTS_STATEMENT_LIMIT,
+      p_offset: 0
+    });
+
+    if (currentToken === reportsFetchToken) {
+      if (stmtErr) throw stmtErr;
+      if (stmt && stmt.success) {
+        renderPWAFinancialStatementItems(stmt.items || [], false);
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao carregar extrato financeiro:', err);
     if (currentToken === reportsFetchToken && listContainer) {
       listContainer.innerHTML = `
         <div style="text-align: center; padding: 20px; color: #ef4444; font-size: 0.82rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px;">
@@ -4014,6 +4184,17 @@ async function loadPWAFinancialReports(isManualRefresh = false) {
         </div>
       `;
     }
+  }
+
+  // 3. Carregar histórico de repasses semanais de forma isolada
+  try {
+    await loadPWAWeeklySettlementsHistory();
+  } catch (err) {
+    console.error('Erro ao carregar histórico de repasses:', err);
+  }
+
+  if (isManualRefresh) {
+    showPWAToast('Dados financeiros atualizados.');
   }
 }
 
@@ -4045,15 +4226,27 @@ function renderPWAFinancialStatementItems(items, isAppend) {
     const id = item.id || item.transaction_id;
     pwaStatementCachedItems.set(id, item);
 
-    const isCredit = item.direction === 'credit';
+    const isCredit = (item.direction || '').toLowerCase() === 'credit';
     const amountSign = isCredit ? '+' : '-';
     const amountColor = isCredit ? '#10b981' : '#ef4444';
     const iconBg = isCredit ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
-    const iconSymbol = (item.source_type === 'rider_earning' || item.source_type === 'tele') ? '🛵' : (isCredit ? '💵' : '🎒');
+    const isDelivery = item.transaction_category === 'delivery_earning' || (item.type || '').toLowerCase().includes('entrega') || item.source_type === 'rider_earning' || item.source_type === 'tele';
+    const iconSymbol = isDelivery ? '🛵' : (isCredit ? '💵' : '🎒');
 
-    let titleText = item.description || 'Lançamento Financeiro';
+    let titleText = item.tele_code || item.title;
+    if (!titleText || /^[0-9a-fA-F-]{36}$/.test(titleText)) {
+      titleText = isDelivery ? 'Entrega' : 'Lançamento Financeiro';
+    }
 
-    const txDate = new Date(item.occurred_at || item.transaction_at || item.created_at);
+    let subTitleText = item.sanitized_description;
+    if (!subTitleText || subTitleText === 'undefined' || /^[0-9a-fA-F-]{36}$/.test(subTitleText)) {
+      subTitleText = isDelivery ? 'Entrega concluída' : (item.description || '');
+      if (/^[0-9a-fA-F-]{36}$/.test(subTitleText) || subTitleText === 'undefined') {
+        subTitleText = '';
+      }
+    }
+
+    const txDate = new Date(item.occurred_at || item.created_at);
     const dateFmt = txDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
     const cardHtml = `
@@ -4064,7 +4257,7 @@ function renderPWAFinancialStatementItems(items, isAppend) {
           </div>
           <div style="display: flex; flex-direction: column; gap: 2px;">
             <strong style="font-size: 0.85rem; color: var(--text); font-weight: 700;">${escapeHtml(titleText)}</strong>
-            <span style="font-size: 0.7rem; color: var(--muted);">${dateFmt}</span>
+            <span style="font-size: 0.7rem; color: var(--muted);">${subTitleText ? escapeHtml(subTitleText) + ' • ' : ''}${dateFmt}</span>
           </div>
         </div>
         <div style="text-align: right; flex-shrink: 0;">
@@ -4093,9 +4286,15 @@ function openPWATransactionDetailModal(transactionId) {
   const addrRow = document.getElementById('pwa-tx-detail-address-row');
   const descEl = document.getElementById('pwa-tx-detail-description');
 
-  const isCredit = item.direction === 'credit';
+  const isCredit = (item.direction || '').toLowerCase() === 'credit';
+  const isDelivery = item.transaction_category === 'delivery_earning' || (item.type || '').toLowerCase().includes('entrega') || item.source_type === 'rider_earning' || item.source_type === 'tele';
 
-  if (categoryEl) categoryEl.textContent = item.description || 'Lançamento Financeiro';
+  let titleText = item.tele_code || item.title;
+  if (!titleText || /^[0-9a-fA-F-]{36}$/.test(titleText)) {
+    titleText = isDelivery ? 'Entrega' : 'Lançamento Financeiro';
+  }
+  if (categoryEl) categoryEl.textContent = titleText;
+
   if (amountEl) {
     amountEl.textContent = `${isCredit ? '+' : '-'} ${formatMoneyBR(item.amount)}`;
     amountEl.style.color = isCredit ? '#10b981' : '#ef4444';
@@ -4105,15 +4304,26 @@ function openPWATransactionDetailModal(transactionId) {
   if (dateEl) dateEl.textContent = txDate.toLocaleString('pt-BR');
   if (typeEl) typeEl.textContent = isCredit ? 'Crédito (Entrada)' : 'Débito (Saída / Desconto)';
 
-  if (item.tele_id) {
+  if (item.tele_code) {
     if (teleRow) teleRow.classList.remove('hidden');
-    if (teleCodeEl) teleCodeEl.textContent = item.tele_id.slice(0, 8);
+    if (teleCodeEl) teleCodeEl.textContent = item.tele_code;
+  } else if (isDelivery) {
+    if (teleRow) teleRow.classList.remove('hidden');
+    if (teleCodeEl) teleCodeEl.textContent = 'Entrega';
   } else {
     if (teleRow) teleRow.classList.add('hidden');
   }
 
   if (addrRow) addrRow.classList.add('hidden');
-  if (descEl) descEl.textContent = item.description || 'Nenhuma observação registrada.';
+
+  let descText = item.sanitized_description;
+  if (!descText || descText === 'undefined' || /^[0-9a-fA-F-]{36}$/.test(descText)) {
+    descText = isDelivery ? 'Entrega concluída' : (item.description || 'Nenhuma observação registrada.');
+    if (/^[0-9a-fA-F-]{36}$/.test(descText) || descText === 'undefined') {
+      descText = 'Nenhuma observação registrada.';
+    }
+  }
+  if (descEl) descEl.textContent = descText;
 
   modal.classList.remove('hidden');
 }
@@ -4121,6 +4331,72 @@ function openPWATransactionDetailModal(transactionId) {
 function closePWATransactionDetailModal() {
   const modal = document.getElementById('pwa-transaction-detail-modal');
   if (modal) modal.classList.add('hidden');
+}
+
+async function loadPWAWeeklySettlementsHistory() {
+  const container = document.getElementById('pwa-weekly-settlements-container');
+  if (!container || !supabaseClient) return;
+
+  try {
+    const { data: res, error } = await supabaseClient.rpc('get_my_rider_weekly_settlements_history');
+    if (error || !res || !res.success) {
+      console.warn('Erro ao carregar histórico de repasses semanais:', error);
+      return;
+    }
+
+    const items = res.history || [];
+    if (items.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 18px 12px; color: var(--muted); font-size: 0.8rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;">
+          Nenhum repasse de semana anterior registrado.
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = '';
+    items.forEach(item => {
+      const isPaid = item.status === 'paid';
+      const statusText = item.status_label || (isPaid ? 'Pago' : 'Pendente');
+
+      const badgeBg = isPaid ? 'rgba(16,185,129,0.15)' : 'rgba(234,179,8,0.15)';
+      const badgeColor = isPaid ? '#10b981' : '#eab308';
+      const badgeBorder = isPaid ? 'rgba(16,185,129,0.3)' : 'rgba(234,179,8,0.3)';
+
+      let paidAtFormatted = '';
+      if (isPaid && item.paid_at) {
+        const d = new Date(item.paid_at);
+        paidAtFormatted = `Pago em ${d.toLocaleDateString('pt-BR')}`;
+      } else if (!isPaid) {
+        paidAtFormatted = 'Aguardando pagamento';
+      }
+
+      let periodStr = item.period_label;
+      if (!periodStr && item.period_start && item.period_end) {
+        const sD = new Date(item.period_start + 'T00:00:00');
+        const eD = new Date(item.period_end + 'T00:00:00');
+        const sFmt = sD.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        const eFmt = eD.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        periodStr = `${sFmt} – ${eFmt}`;
+      }
+
+      const cardHtml = `
+        <div class="pwa-settlement-history-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <strong style="font-size: 0.9rem; color: var(--text); font-weight: 700;">${escapeHtml(periodStr || 'Semana Encerrada')}</strong>
+            <span style="font-size: 0.72rem; color: var(--muted); font-weight: 500;">${paidAtFormatted ? escapeHtml(paidAtFormatted) : ''}</span>
+          </div>
+          <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+            <strong style="font-size: 1.05rem; color: var(--text); font-weight: 800; font-family: var(--font-display);">${formatMoneyBR(item.net_amount)}</strong>
+            <span style="background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; padding: 3px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 700; display: inline-block;">${escapeHtml(statusText)}</span>
+          </div>
+        </div>
+      `;
+      container.insertAdjacentHTML('beforeend', cardHtml);
+    });
+  } catch (e) {
+    console.error('Erro ao renderizar histórico de repasses:', e);
+  }
 }
 
 function initPWAFinancialRealtime() {

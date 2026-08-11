@@ -47,9 +47,9 @@ const mockData = {
   fleet: [],
   clientHistory: [],
   credentials: {
-    owner: { email: 'admin@dahoraexpresso.com.br', pass: 'admin123', name: 'Gustavo Souza', role: 'Dono & CEO', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=256&auto=format&fit=crop' },
-    client: { email: 'gerente@lanchonetedahora.com.br', pass: 'teste123', name: 'Gerente Lanchonete Dahora', role: 'Área do parceiro', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
-    order: { email: 'pedido@lanchonetedahora.com.br', pass: 'teste123', name: 'Pedido Lanchonete Dahora', role: 'Solicitação de entrega', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' }
+    owner: { name: 'Gustavo Souza', role: 'Dono & CEO', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=256&auto=format&fit=crop' },
+    client: { name: 'Gerente Lanchonete Dahora', role: 'Área do parceiro', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
+    order: { name: 'Pedido Lanchonete Dahora', role: 'Solicitação de entrega', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' }
   },
   pendingDeliveries: [],
   riderConsumables: [],
@@ -83,7 +83,7 @@ async function checkAdminSession() {
     if (!currentAdminProfile) {
       const { data: profile, error: profileErr } = await supabaseClient
         .from('user_profiles')
-        .select('id, user_id, name, email, role, is_active')
+        .select('id, user_id, name, email, role, is_active, admin_code')
         .or(`user_id.eq.${currentActiveSession.user.id},id.eq.${currentActiveSession.user.id}`)
         .maybeSingle();
 
@@ -143,7 +143,7 @@ async function fetchCommerces() {
   try {
     const { data, error } = await supabaseClient
       .from('commercial_clients')
-      .select('id, client_code, establishment_name, responsible_name, lifecycle_status, is_internal, address, neighborhood, city, postal_code')
+      .select('id, client_code, establishment_name, responsible_name, lifecycle_status, is_internal, address, neighborhood, city, postal_code, pickup_latitude, pickup_longitude, pickup_place_id')
       .order('is_internal', { ascending: false })
       .order('establishment_name', { ascending: true });
 
@@ -829,7 +829,7 @@ function switchLoginTab(profile) {
     usernameLabel.innerText = 'Login do Administrador';
     usernameInput.type = 'text';
     usernameInput.value = '';
-    usernameInput.placeholder = 'admin@dahora.local';
+    usernameInput.placeholder = 'admin / admin2 / e-mail';
     passwordInput.value = '';
     passwordGroup.style.display = 'flex';
   }
@@ -845,16 +845,13 @@ async function handleLogin(event) {
   if (loader) loader.classList.remove('hidden');
 
   let emailToAuth = loginInput;
-  if (loginInput === 'adm' || loginInput === 'admin') {
-    emailToAuth = 'admin@dahora.local';
-  } else if (loginInput === 'lanchonetedahora' || loginInput === 'parceiro') {
-    emailToAuth = 'parceiro@mercadocentral.local';
+  if (loginInput === 'adm' || loginInput === 'admin' || loginInput === 'admin1') {
+    emailToAuth = 'admin1@dahoraexpresso.com.br';
+  } else if (loginInput === 'admin2') {
+    emailToAuth = 'admin2@dahoraexpresso.com.br';
   }
 
-  let authPassword = passwordInput;
-  if (passwordInput === 'admin123' || passwordInput === 'teste123') {
-    authPassword = 'senha123456';
-  }
+  const authPassword = passwordInput;
 
   try {
     const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -864,10 +861,11 @@ async function handleLogin(event) {
 
     if (error || !data.session) {
       if (loader) loader.classList.add('hidden');
-      alert(`Falha no login: ${error ? error.message : 'Credenciais inválidas.'}`);
+      alert('Usuário ou senha incorretos.');
       return;
     }
 
+    currentAdminProfile = null;
     const authState = await checkAdminSession();
     if (!authState) {
       if (loader) loader.classList.add('hidden');
@@ -908,7 +906,9 @@ async function loginSuccess() {
 
   document.getElementById('user-avatar').src = creds.avatar;
   document.getElementById('user-display-name').innerText = currentAdminProfile ? currentAdminProfile.name : creds.name;
-  document.getElementById('user-display-sub').innerText = currentAdminProfile ? currentAdminProfile.role : creds.role;
+  document.getElementById('user-display-sub').innerText = (currentAdminProfile && currentAdminProfile.admin_code)
+    ? `${currentAdminProfile.admin_code} • ${currentAdminProfile.role === 'owner' ? 'Dono & CEO' : currentAdminProfile.role}`
+    : (currentAdminProfile ? currentAdminProfile.role : creds.role);
 
   const clientInfoPanels = document.getElementById('client-info-panels');
   if (clientInfoPanels) {
@@ -6715,86 +6715,76 @@ async function trackActiveOrder(orderId) {
   switchDashboardTab('order-tracking');
 }
 
-// Owner Financials dynamic date range filters & rendering
-function renderOwnerFinancials() {
-  const startDateVal = document.getElementById('finance-start-date').value;
-  const endDateVal = document.getElementById('finance-end-date').value;
-  
-  let start = startDateVal ? parseLocalDate(startDateVal) : null;
-  let end = endDateVal ? parseLocalDate(endDateVal) : null;
-  
-  // Set start of day and end of day
-  if (start) start.setHours(0, 0, 0, 0);
-  if (end) end.setHours(23, 59, 59, 999);
-  
-  // Filter mockData.clientHistory for completed orders within range
-  const filteredOrders = mockData.clientHistory.filter(order => {
-    const isCompleted = order.status === 'Entregue' || order.status === 'Concluído';
-    if (!isCompleted) return false;
-    
-    if (!start && !end) return true;
-    
-    const orderDate = parseOrderDate(order.date, order.created_at);
-    if (start && orderDate < start) return false;
-    if (end && orderDate > end) return false;
-    return true;
-  });
-  
-  // Calculate metrics
-  let grossTotal = 0;
-  filteredOrders.forEach(order => {
-    grossTotal += parseMoneyBR(order.price);
-  });
-  
-  const netTotal = grossTotal * 0.90; // 90% goes to riders
-  const platformFee = grossTotal * 0.10; // 10% platform fee
-  
-  // Update UI cards
-  const grossEl = document.getElementById('finance-gross-total');
-  const netEl = document.getElementById('finance-net-total');
-  const platformEl = document.getElementById('finance-platform-fee');
-  
-  if (grossEl) grossEl.innerText = formatMoneyBR(grossTotal);
-  if (netEl) netEl.innerText = formatMoneyBR(netTotal);
-  if (platformEl) platformEl.innerText = formatMoneyBR(platformFee);
-  
-  // Update Doughnut Chart (Chart 2) if initialized
-  if (ownerFinancialChart) {
-    ownerFinancialChart.data.datasets[0].data = [netTotal, platformFee, 0];
-    ownerFinancialChart.update();
-  }
-  
-  // Update completed teles list in index.html
-  const tbody = document.getElementById('finance-history-table-body');
-  if (tbody) {
-    if (filteredOrders.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="5" style="text-align: center; color: var(--color-text-muted); padding: 24px;">
-            Nenhuma tele concluída encontrada para o período selecionado.
-          </td>
-        </tr>
-      `;
-    } else {
-      tbody.innerHTML = filteredOrders.map(order => `
-        <tr>
-          <td><strong>${order.id}</strong></td>
-          <td>${order.date}</td>
-          <td>
-            <strong>${order.destName}</strong>
-            <p class="text-muted" style="margin: 2px 0 0 0; font-size: 0.78rem;">${order.address}</p>
-          </td>
-          <td>${order.rider || '—'}</td>
-          <td><strong class="text-yellow">${order.price}</strong></td>
-        </tr>
-      `).join('');
+// Owner Financials dynamic date range filters & rendering via authoritative backend RPC
+async function renderOwnerFinancials() {
+  if (!supabaseClient || !currentActiveSession) return;
+
+  const startDateVal = document.getElementById('finance-start-date')?.value || null;
+  const endDateVal = document.getElementById('finance-end-date')?.value || null;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('get_admin_company_financial_summary', {
+      p_start_date: startDateVal,
+      p_end_date: endDateVal,
+      p_period_shortcut: (!startDateVal && !endDateVal) ? 'current_week' : null
+    });
+
+    if (error || !data || data.success === false) {
+      console.error("[RPC get_admin_company_financial_summary] Erro:", error || data);
+      return;
     }
+
+    const grossEl = document.getElementById('finance-gross-total');
+    const netEl = document.getElementById('finance-net-total');
+    const platformEl = document.getElementById('finance-platform-fee');
+
+    if (grossEl) grossEl.textContent = formatRiderSettlementCurrency(data.gross_revenue);
+    if (netEl) netEl.textContent = formatRiderSettlementCurrency(data.rider_payout_total);
+    if (platformEl) platformEl.textContent = formatRiderSettlementCurrency(data.platform_revenue);
+
+    // Update Doughnut Chart (Chart 2) if initialized
+    if (window.ownerFinancialChart) {
+      window.ownerFinancialChart.data.datasets[0].data = [
+        Number(data.rider_payout_total) || 0,
+        Number(data.platform_revenue) || 0
+      ];
+      window.ownerFinancialChart.update();
+    }
+
+    // Update completed teles list in index.html
+    const tbody = document.getElementById('finance-history-table-body');
+    if (tbody) {
+      const teles = data.completed_teles || [];
+      if (teles.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align: center; color: var(--color-text-muted); padding: 24px;">
+              Nenhuma tele concluída encontrada para o período selecionado.
+            </td>
+          </tr>
+        `;
+      } else {
+        tbody.innerHTML = teles.map(t => `
+          <tr>
+            <td><code>${escapeHtml(t.tele_code || '—')}</code></td>
+            <td>${t.date ? new Date(t.date).toLocaleDateString('pt-BR') : '—'}</td>
+            <td><strong>${escapeHtml(t.establishment_dest || '—')}</strong></td>
+            <td>${escapeHtml(t.motoboy_name || '—')}</td>
+            <td><strong class="text-yellow">${formatRiderSettlementCurrency(t.delivery_charge)}</strong></td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error("[RPC get_admin_company_financial_summary] Exceção:", err);
   }
 }
 
 function clearFinanceFilters() {
-  document.getElementById('finance-start-date').value = '';
-  document.getElementById('finance-end-date').value = '';
+  const startEl = document.getElementById('finance-start-date');
+  const endEl = document.getElementById('finance-end-date');
+  if (startEl) startEl.value = '';
+  if (endEl) endEl.value = '';
   renderOwnerFinancials();
 }
 
@@ -9178,6 +9168,7 @@ function renderCommercialClientsTable() {
         <td>
           <div style="font-weight: 600;">${escapeHtml(c.establishment_name)}</div>
           <span style="font-size: 0.75rem; color: var(--color-text-muted);">${escapeHtml(c.address || '')}</span>
+          ${(!c.pickup_latitude || !c.pickup_longitude || isNaN(Number(c.pickup_latitude)) || isNaN(Number(c.pickup_longitude))) ? `<div style="margin-top: 4px;"><span class="badge badge-warning" style="font-size: 0.7rem; padding: 2px 6px;">Localização de coleta ainda não definida</span></div>` : ''}
         </td>
         <td>${escapeHtml(c.responsible_name)}</td>
         <td>
@@ -9224,12 +9215,168 @@ function updateCommercialMetrics() {
   if (elTotal) elTotal.innerText = totalTeles;
 }
 
-// 4. Modal de Novo Cliente Comercial
+// 4. Modal de Novo Cliente Comercial & Controle de Localização
+let commClientLocationState = {
+  formatted_address: '',
+  place_id: '',
+  latitude: null,
+  longitude: null,
+  street_number: '',
+  route: '',
+  neighborhood: '',
+  city: '',
+  state: '',
+  postal_code: '',
+  isManualPin: false
+};
+
+let commMiniMap = null;
+let commMiniMarker = null;
+
+function resetCommClientLocationState() {
+  commClientLocationState = {
+    formatted_address: '',
+    place_id: '',
+    latitude: null,
+    longitude: null,
+    street_number: '',
+    route: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    isManualPin: false
+  };
+  if (commMiniMarker) {
+    commMiniMarker.setMap(null);
+    commMiniMarker = null;
+  }
+}
+
+async function initCommClientLocationControls() {
+  const addressInput = document.getElementById('comm-address');
+  const mapContainer = document.getElementById('comm-mini-map');
+  if (!addressInput || !mapContainer) return;
+
+  try {
+    await loadGoogleMapsApi();
+    if (!window.google?.maps) return;
+
+    const defaultCenter = new window.google.maps.LatLng(-29.8333, -51.1444);
+
+    if (!commMiniMap) {
+      commMiniMap = new window.google.maps.Map(mapContainer, {
+        center: defaultCenter,
+        zoom: 14,
+        mapTypeId: window.google.maps.MapTypeId.ROADMAP,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+        zoomControl: true
+      });
+    } else {
+      window.google.maps.event.trigger(commMiniMap, 'resize');
+    }
+
+    if (!addressInput.dataset.autocompleteAttached) {
+      addressInput.dataset.autocompleteAttached = 'true';
+      const options = {
+        componentRestrictions: { country: "br" },
+        fields: ["address_components", "geometry", "formatted_address", "place_id"],
+        types: ["address"]
+      };
+
+      const autocomplete = new window.google.maps.places.Autocomplete(addressInput, options);
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        if (!place || !place.geometry || !place.geometry.location) {
+          alert("Endereço não encontrado ou inválido. Por favor, escolha um endereço válido sugerido pela lista.");
+          return;
+        }
+
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+
+        commClientLocationState.formatted_address = place.formatted_address || addressInput.value.trim();
+        commClientLocationState.place_id = place.place_id || '';
+        commClientLocationState.latitude = lat;
+        commClientLocationState.longitude = lng;
+        commClientLocationState.isManualPin = false;
+
+        commClientLocationState.street_number = '';
+        commClientLocationState.route = '';
+        commClientLocationState.neighborhood = '';
+        commClientLocationState.city = '';
+        commClientLocationState.state = '';
+        commClientLocationState.postal_code = '';
+
+        if (place.address_components) {
+          for (const comp of place.address_components) {
+            const types = comp.types || [];
+            if (types.includes('street_number')) commClientLocationState.street_number = comp.long_name;
+            if (types.includes('route')) commClientLocationState.route = comp.long_name;
+            if (types.includes('sublocality_level_1') || types.includes('sublocality') || types.includes('neighborhood')) {
+              if (!commClientLocationState.neighborhood) commClientLocationState.neighborhood = comp.long_name;
+            }
+            if (types.includes('locality') || types.includes('administrative_area_level_2')) {
+              if (!commClientLocationState.city) commClientLocationState.city = comp.long_name;
+            }
+            if (types.includes('administrative_area_level_1')) commClientLocationState.state = comp.short_name || comp.long_name;
+            if (types.includes('postal_code')) commClientLocationState.postal_code = comp.long_name;
+          }
+        }
+
+        addressInput.value = commClientLocationState.formatted_address;
+        updateCommMiniMapMarker(lat, lng, true);
+      });
+    }
+  } catch (err) {
+    console.warn("Aviso ao inicializar Google Places / Mapa no cadastro de cliente:", err.message || err);
+  }
+}
+
+function updateCommMiniMapMarker(lat, lng, panTo = true) {
+  if (!commMiniMap || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') return;
+
+  const latLng = new window.google.maps.LatLng(lat, lng);
+  if (panTo) {
+    commMiniMap.setCenter(latLng);
+    commMiniMap.setZoom(17);
+  }
+
+  if (commMiniMarker) {
+    commMiniMarker.setPosition(latLng);
+    commMiniMarker.setMap(commMiniMap);
+  } else {
+    commMiniMarker = new window.google.maps.Marker({
+      position: latLng,
+      map: commMiniMap,
+      title: 'Ponto Exato da Coleta',
+      draggable: true
+    });
+
+    commMiniMarker.addListener('dragend', () => {
+      const newPos = commMiniMarker.getPosition();
+      commClientLocationState.latitude = newPos.lat();
+      commClientLocationState.longitude = newPos.lng();
+      commClientLocationState.isManualPin = true;
+      if (typeof showToastNotification === 'function') {
+        showToastNotification('Ponto de coleta ajustado manualmente no mapa.');
+      }
+    });
+  }
+}
+
 function openAddCommercialClientModal() {
   const modal = document.getElementById('modal-add-commercial-client');
   if (modal) {
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
+    resetCommClientLocationState();
+    setTimeout(() => {
+      initCommClientLocationControls();
+    }, 150);
   }
 }
 window.openAddCommercialClientModal = openAddCommercialClientModal;
@@ -9260,17 +9407,25 @@ async function submitAddCommercialClient(event) {
   const phone = document.getElementById('comm-phone')?.value.trim();
   const email = document.getElementById('comm-email')?.value.trim();
   const password = document.getElementById('comm-password')?.value.trim();
-  const address = document.getElementById('comm-address')?.value.trim();
+  const rawAddressInput = document.getElementById('comm-address')?.value.trim();
   const complement = document.getElementById('comm-complement')?.value.trim() || '';
-  const neighborhood = document.getElementById('comm-neighborhood')?.value.trim() || '';
-  const city = document.getElementById('comm-city')?.value.trim() || '';
   const documentNum = document.getElementById('comm-document')?.value.trim() || '';
   const map_color = document.getElementById('comm-map-color')?.value || '#ffb700';
   const lifecycle_status = document.getElementById('comm-lifecycle-status')?.value || 'ativo';
   const notes = document.getElementById('comm-notes')?.value.trim() || '';
 
-  if (!establishment_name || !responsible_name || !phone || !email || !password || !address) {
+  const address = commClientLocationState.formatted_address || rawAddressInput;
+  const lat = commClientLocationState.latitude;
+  const lng = commClientLocationState.longitude;
+
+  if (!establishment_name || !responsible_name || !phone || !email || !password || !rawAddressInput) {
     alert('Preencha todos os campos obrigatórios (estabelecimento, responsável, telefone, e-mail, senha e endereço).');
+    return;
+  }
+
+  // Validação estrita de localização e coordenadas
+  if (!address || lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
+    alert('Endereço e localização exata no mapa são obrigatórios. Selecione um endereço sugerido pela lista do Google e confirme o ponto no mapa.');
     return;
   }
 
@@ -9281,7 +9436,7 @@ async function submitAddCommercialClient(event) {
     submitBtn.innerHTML = '<span>Cadastrando...</span>';
   }
 
-  showToastNotification('Criando cliente comercial e configurando acesso seguro...');
+  showToastNotification('Criando cliente comercial e salvando ponto autoritativo de coleta...');
 
   try {
     const payload = {
@@ -9292,12 +9447,19 @@ async function submitAddCommercialClient(event) {
       password,
       address,
       complement,
-      neighborhood,
-      city,
+      neighborhood: commClientLocationState.neighborhood || '',
+      city: commClientLocationState.city || '',
+      postal_code: commClientLocationState.postal_code || '',
       document: documentNum,
       map_color,
       lifecycle_status,
-      notes
+      notes,
+      pickup_latitude: lat,
+      pickup_longitude: lng,
+      pickup_place_id: commClientLocationState.place_id || '',
+      street_number: commClientLocationState.street_number || '',
+      route: commClientLocationState.route || '',
+      state: commClientLocationState.state || ''
     };
 
     let data = null;
@@ -9333,11 +9495,12 @@ async function submitAddCommercialClient(event) {
     }
 
     const createdClient = data?.client;
-    showToastNotification(`Cliente "${establishment_name}" (${createdClient?.public_code || 'CLI'}) cadastrado com sucesso!`);
+    showToastNotification(`Cliente "${establishment_name}" (${createdClient?.public_code || 'CLI'}) cadastrado com localização de coleta precisa!`);
 
     // Reset form
     const form = document.querySelector('#modal-add-commercial-client form');
     if (form) form.reset();
+    resetCommClientLocationState();
 
     closeAddCommercialClientModal();
     await fetchCommercialClients();
@@ -9447,6 +9610,23 @@ function renderCommercialClientsDropdown(clientsList) {
   dropdownEl.innerHTML = html || '<div style="padding: 12px; color: var(--color-text-muted); text-align: center;">Nenhum cliente encontrado.</div>';
 }
 
+let manualTelePickupState = {
+  clientId: null,
+  isCustom: false,
+  customAddress: '',
+  customLat: null,
+  customLng: null,
+  customPlaceId: ''
+};
+
+function invalidateManualTeleCustomPickup(newAddress = '') {
+  manualTelePickupState.isCustom = true;
+  manualTelePickupState.customAddress = newAddress;
+  manualTelePickupState.customLat = null;
+  manualTelePickupState.customLng = null;
+  manualTelePickupState.customPlaceId = '';
+}
+
 function selectCommercialClientForTele(id, name) {
   const selectedInput = document.getElementById('selectedClientId');
   const searchInput = document.getElementById('admin-client-search');
@@ -9457,8 +9637,21 @@ function selectCommercialClientForTele(id, name) {
   if (dropdownEl) dropdownEl.classList.add('hidden');
 
   const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(id));
-  if (clientObj && clientObj.address) {
-    showToastNotification(`Endereço de coleta do cliente carregado: ${clientObj.address}`);
+  manualTelePickupState = {
+    clientId: id,
+    isCustom: false,
+    customAddress: '',
+    customLat: null,
+    customLng: null,
+    customPlaceId: ''
+  };
+
+  if (clientObj) {
+    if (!clientObj.pickup_latitude || !clientObj.pickup_longitude || isNaN(Number(clientObj.pickup_latitude)) || isNaN(Number(clientObj.pickup_longitude))) {
+      showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um ponto de coleta configurado.`);
+    } else {
+      showToastNotification(`Coleta padrão do cliente carregada: ${clientObj.address}`);
+    }
   }
 }
 
@@ -10169,6 +10362,32 @@ function showModalSubmitError(msg) {
   const precision = document.getElementById('manual-geocoding-precision')?.value || 'unconfirmed';
   const isManual = document.getElementById('manual-location-adjusted-manually')?.value === 'true';
 
+  const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(selectedClientId));
+  let p_pickup_address = null;
+  let p_pickup_latitude = null;
+  let p_pickup_longitude = null;
+  let p_pickup_place_id = null;
+
+  if (manualTelePickupState.isCustom) {
+    if (!manualTelePickupState.customAddress || manualTelePickupState.customLat == null || manualTelePickupState.customLng == null || isNaN(manualTelePickupState.customLat) || isNaN(manualTelePickupState.customLng)) {
+      showModalSubmitError('O endereço de coleta alterado precisa ser confirmado via busca ou mapa antes de prosseguir. Não é permitido enviar endereço novo com coordenadas antigas.');
+      return;
+    }
+    p_pickup_address = manualTelePickupState.customAddress;
+    p_pickup_latitude = manualTelePickupState.customLat;
+    p_pickup_longitude = manualTelePickupState.customLng;
+    p_pickup_place_id = manualTelePickupState.customPlaceId || null;
+  } else {
+    if (!clientObj || !clientObj.pickup_latitude || !clientObj.pickup_longitude || isNaN(Number(clientObj.pickup_latitude)) || isNaN(Number(clientObj.pickup_longitude))) {
+      showModalSubmitError('Este cliente ainda não possui um ponto de coleta configurado.');
+      return;
+    }
+    p_pickup_address = clientObj.address;
+    p_pickup_latitude = Number(clientObj.pickup_latitude);
+    p_pickup_longitude = Number(clientObj.pickup_longitude);
+    p_pickup_place_id = clientObj.pickup_place_id || null;
+  }
+
   const btnSubmit = document.querySelector('#request-delivery-form button[type="submit"]');
   const originalBtnText = btnSubmit ? btnSubmit.innerText : 'Chamar Tele';
   if (btnSubmit) {
@@ -10182,7 +10401,7 @@ function showModalSubmitError(msg) {
     if (supabaseClient) {
       const { data, error } = await supabaseClient.rpc('create_admin_tele', {
         p_client_id: selectedClientId,
-        p_pickup_address: '',
+        p_pickup_address: p_pickup_address,
         p_delivery_address: address,
         p_recipient_name: destName,
         p_recipient_phone: destPhone,
@@ -10195,11 +10414,17 @@ function showModalSubmitError(msg) {
         p_delivery_complement: complement,
         p_delivery_neighborhood: neighborhood,
         p_delivery_city: city,
+        p_delivery_postal_code: postalCode,
         p_delivery_latitude: lat,
         p_delivery_longitude: lng,
         p_geocoding_precision: precision,
         p_location_adjusted_manually: isManual,
-        p_delivery_charge: deliveryCharge
+        p_pickup_latitude: p_pickup_latitude,
+        p_pickup_longitude: p_pickup_longitude,
+        p_place_id: placeId,
+        p_delivery_state: stateVal,
+        p_delivery_charge: deliveryCharge,
+        p_pickup_place_id: p_pickup_place_id
       });
 
       if (error) {
@@ -10378,7 +10603,8 @@ async function submitClientDeliveryRequest(event) {
     p_pickup_latitude: null,
     p_pickup_longitude: null,
     p_place_id: null,
-    p_delivery_state: 'RS'
+    p_delivery_state: 'RS',
+    p_pickup_place_id: null
   };
 
   const userId = currentActiveSession?.user?.id || 'anon_client';
@@ -10526,6 +10752,10 @@ function normalizeTeleStatus(rawStatus) {
 // Resolução Oficial do Nome Visual do Cliente (sem fallback de nomes fictícios)
 function resolveClientDisplayName(tele) {
   if (!tele) return 'Cliente não vinculado';
+
+  if (tele.pickup_establishment_name && String(tele.pickup_establishment_name).trim() !== '') {
+    return tele.pickup_establishment_name;
+  }
   
   if (tele.client_id) {
     const client = opClientsStoreMap.get(String(tele.client_id));
@@ -12787,14 +13017,7 @@ function handleRiderPaymentPeriodShortcutChange(shortcut) {
     }
   } else {
     if (customContainer) customContainer.style.display = 'none';
-    const now = new Date();
-    if (shortcut === 'previous_week') {
-      now.setDate(now.getDate() - 7);
-    }
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    riderSettlementState.startDate = `${year}-${month}-${day}`;
+    riderSettlementState.startDate = null;
   }
 
   fetchAdminRiderWeeklySettlements(true);
@@ -12905,6 +13128,7 @@ function selectRiderFilter(riderId, riderName) {
 function clearRiderPaymentFilters() {
   riderSettlementState.page = 1;
   riderSettlementState.periodShortcut = 'current_week';
+  riderSettlementState.startDate = null;
   riderSettlementState.selectedRiderId = null;
   riderSettlementState.statusFilter = '';
 
@@ -12921,12 +13145,6 @@ function clearRiderPaymentFilters() {
   if (searchInput) searchInput.value = '';
   if (hiddenId) hiddenId.value = '';
   if (statusSelect) statusSelect.value = '';
-
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  riderSettlementState.startDate = `${year}-${month}-${day}`;
 
   fetchAdminRiderWeeklySettlements(true);
 }
@@ -12949,14 +13167,6 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
     riderSettlementState.page = 1;
   }
 
-  if (!riderSettlementState.startDate) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    riderSettlementState.startDate = `${year}-${month}-${day}`;
-  }
-
   const statusFilterEl = document.getElementById('rider-settlement-status-filter');
   if (statusFilterEl) {
     riderSettlementState.statusFilter = statusFilterEl.value || null;
@@ -12975,13 +13185,15 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
   }
 
   try {
+    const isCustom = riderSettlementState.periodShortcut === 'custom_week';
     const { data, error } = await supabaseClient.rpc('list_admin_rider_weekly_settlements', {
-      p_period_start: riderSettlementState.startDate,
+      p_period_start: isCustom ? riderSettlementState.startDate : null,
       p_workspace_id: null,
       p_status: riderSettlementState.statusFilter,
       p_rider_id: riderSettlementState.selectedRiderId,
       p_limit: riderSettlementState.limit,
-      p_offset: offset
+      p_offset: offset,
+      p_period_shortcut: isCustom ? null : (riderSettlementState.periodShortcut || 'current_week')
     });
 
     riderSettlementState.isLoading = false;
