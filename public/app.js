@@ -2196,13 +2196,27 @@ function buildOwnerWeeklyDeliverySeries() {
   return totals;
 }
 
+function destroyOwnerFinancialChart() {
+  if (ownerFinancialChart) {
+    try { ownerFinancialChart.destroy(); } catch (e) {}
+    ownerFinancialChart = null;
+  }
+  if (window.ownerFinancialChart) {
+    try { if (window.ownerFinancialChart !== ownerFinancialChart) window.ownerFinancialChart.destroy(); } catch (e) {}
+    window.ownerFinancialChart = null;
+  }
+}
+
 // Chart 2: Owner Financials doughnut
 function initOwnerFinancialChart() {
   const ctx = document.getElementById('ownerFinancialChart');
   if (!ctx) return;
 
-  if (ownerFinancialChart) {
-    ownerFinancialChart.destroy();
+  destroyOwnerFinancialChart();
+
+  const existingChart = typeof Chart !== 'undefined' && Chart.getChart ? Chart.getChart(ctx) : null;
+  if (existingChart) {
+    try { existingChart.destroy(); } catch (e) {}
   }
 
   ownerFinancialChart = new Chart(ctx, {
@@ -2226,6 +2240,8 @@ function initOwnerFinancialChart() {
       }
     }
   });
+
+  window.ownerFinancialChart = ownerFinancialChart;
 }
 
 // Chart 3: Client Snack Bar performance comparison
@@ -6742,13 +6758,24 @@ async function renderOwnerFinancials() {
     if (netEl) netEl.textContent = formatRiderSettlementCurrency(data.rider_payout_total);
     if (platformEl) platformEl.textContent = formatRiderSettlementCurrency(data.platform_revenue);
 
-    // Update Doughnut Chart (Chart 2) if initialized
-    if (window.ownerFinancialChart) {
-      window.ownerFinancialChart.data.datasets[0].data = [
-        Number(data.rider_payout_total) || 0,
-        Number(data.platform_revenue) || 0
-      ];
-      window.ownerFinancialChart.update();
+    // Update Doughnut Chart (Chart 2) if canvas exists and is connected
+    const ownerCanvas = document.getElementById('ownerFinancialChart');
+    if (ownerCanvas && ownerCanvas.isConnected) {
+      const activeChart = ownerFinancialChart || window.ownerFinancialChart;
+      const isChartValid = activeChart && activeChart.data && Array.isArray(activeChart.data.datasets) && activeChart.data.datasets[0];
+
+      if (!isChartValid) {
+        initOwnerFinancialChart();
+      }
+
+      const validChart = ownerFinancialChart || window.ownerFinancialChart;
+      if (validChart && validChart.data && Array.isArray(validChart.data.datasets) && validChart.data.datasets[0]) {
+        validChart.data.datasets[0].data = [
+          Number(data.rider_payout_total) || 0,
+          Number(data.platform_revenue) || 0
+        ];
+        validChart.update();
+      }
     }
 
     // Update completed teles list in index.html
