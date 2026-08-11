@@ -45,8 +45,8 @@
     }
   } else {
     // Domínio remoto (Staging / Production / Pages)
-    const remoteUrl = window.__ENV_SUPABASE_URL;
-    const remoteKey = window.__ENV_SUPABASE_KEY;
+    const remoteUrl = window.__ENV_SUPABASE_URL || (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url);
+    const remoteKey = window.__ENV_SUPABASE_KEY || (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.key);
 
     if (!remoteUrl || !remoteKey || !remoteUrl.startsWith('https://')) {
       window.SUPABASE_CONFIG = null;
@@ -60,9 +60,9 @@
 
     config.url = remoteUrl;
     config.key = remoteKey;
-    config.googleMapsApiKey = window.__ENV_GOOGLE_MAPS_API_KEY || '';
-    config.googleMapsMapId = window.__ENV_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
-    config.vapidPublicKey = window.__ENV_VAPID_PUBLIC_KEY || '';
+    config.googleMapsApiKey = window.__ENV_GOOGLE_MAPS_API_KEY || (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.googleMapsApiKey) || '';
+    config.googleMapsMapId = window.__ENV_GOOGLE_MAPS_MAP_ID || (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.googleMapsMapId) || 'DEMO_MAP_ID';
+    config.vapidPublicKey = window.__ENV_VAPID_PUBLIC_KEY || (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.vapidPublicKey) || '';
     config.env = window.__ENV_APP_ENV || 'production';
     config.environmentKind = window.__ENV_ENVIRONMENT_KIND || 'production';
     config.demoResetEnabled = window.__ENV_DEMO_RESET_ENABLED === 'true';

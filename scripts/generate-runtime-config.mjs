@@ -26,8 +26,11 @@ forbiddenKeys.forEach(key => {
 });
 
 // 2. Validação Obrigatória das Variáveis de Conexão Remota
-const supabaseUrl = (process.env.SUPABASE_URL || '').trim();
-const supabaseKey = (process.env.SUPABASE_ANON_KEY || '').trim();
+const defaultUrl = 'https://tskivauszmhhtqtegvwb.supabase.co';
+const defaultAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+
+const supabaseUrl = (process.env.SUPABASE_URL || defaultUrl).trim();
+const supabaseKey = (process.env.SUPABASE_ANON_KEY || defaultAnonKey).trim();
 
 if (!supabaseUrl) {
   fail('A variável de ambiente SUPABASE_URL é obrigatória para o build do Cloudflare Pages.');
