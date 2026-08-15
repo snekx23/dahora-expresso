@@ -873,7 +873,15 @@ async function handleLogin(event) {
   if (loader) loader.classList.remove('hidden');
 
   let emailToAuth = loginInput;
-  if (loginInput === 'adm' || loginInput === 'admin' || loginInput === 'admin1') {
+  const adminAliases = new Set([
+    'adm',
+    'admin',
+    'admin1',
+    'admin@dahoraexpresso.com.br',
+    'admin@dahora.local'
+  ]);
+
+  if (adminAliases.has(loginInput)) {
     emailToAuth = 'admin1@dahoraexpresso.com.br';
   } else if (loginInput === 'admin2') {
     emailToAuth = 'admin2@dahoraexpresso.com.br';
