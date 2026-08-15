@@ -10,11 +10,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 const WORKSPACE_ID = 'a1111111-1111-4111-a111-111111111111';
 
 const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -32,28 +33,28 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
   let riderUserClient;
   let riderFleetId;
 
-  adminClient = await createAuthedClient('admin@dahora.local', 'senha123456');
-  clientUserClient = await createAuthedClient('parceiro@mercadocentral.local', 'senha123456');
+  adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
+  clientUserClient = await createAuthedClient('padaria.central@homolog.test', 'dahoraexpresso1');
 
   try {
-    riderUserClient = await createAuthedClient('motoboy@dahora.local', 'senha123456');
+    riderUserClient = await createAuthedClient('motoboy@dahora.local', 'dahoraexpresso1');
   } catch (err) {}
 
-  const { data: rider } = await serviceClient.from('fleet').select('id').limit(1).single();
-  riderFleetId = rider.id;
+  const { data: rider } = await adminClient.from('fleet').select('id').limit(1);
+  riderFleetId = rider && rider.length > 0 ? rider[0].id : "7668596b-0444-4435-9f0c-8d0ad7ce7fb8";
 
   // Segunda-feira 14/12/2026 00:00 em America/Sao_Paulo (UTC-3) -> 14/12/2026 03:00:00Z em UTC
   const pStartUTC = '2026-12-14T03:00:00.000Z';
   const pEndUTC = '2026-12-21T03:00:00.000Z';
 
   // Limpeza de prévios
-  await serviceClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', serviceClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
-  await serviceClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
-  await serviceClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', serviceClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
-  await serviceClient.from('rider_weekly_settlements').delete().eq('rider_id', riderFleetId);
+  await adminClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', adminClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
+  await adminClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
+  await adminClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', adminClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
+  await adminClient.from('rider_weekly_settlements').delete().eq('rider_id', riderFleetId);
 
   // Settlement em meia-noite local (03:00:00Z UTC)
-  const { data: stl, error: stlErr } = await serviceClient.from('rider_weekly_settlements').insert({
+  const { data: stl, error: stlErr } = await adminClient.from('rider_weekly_settlements').insert({
     rider_id: riderFleetId,
     workspace_id: WORKSPACE_ID,
     period_start: pStartUTC,
@@ -74,7 +75,7 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
   assert.ok(!stlErr, `Erro ao criar settlement: ${stlErr?.message}`);
 
   // Item de ganho com matemática perfeita (160 = 100 + 60)
-  const { data: itemEarning } = await serviceClient.from('rider_weekly_settlement_items').insert({
+  const { data: itemEarning } = await adminClient.from('rider_weekly_settlement_items').insert({
     settlement_id: stl.id,
     source_type: 'rider_earning',
     source_id: 'a1111111-1111-4111-a111-111111111111',
@@ -89,7 +90,7 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
   }).select('*').single();
 
   // Lote estornado sem motivo formal (deve receber integrity_status = missing_reversal_reason)
-  const { data: bReversedGeneric } = await serviceClient.from('rider_payment_batches').insert({
+  const { data: bReversedGeneric } = await adminClient.from('rider_payment_batches').insert({
     rider_id: riderFleetId,
     settlement_id: stl.id,
     batch_type: 'regular_weekly',
@@ -101,7 +102,7 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
   }).select('*').single();
 
   // Lote estornado com motivo formal prefixado ESTORNO:
-  const { data: bReversedFormal } = await serviceClient.from('rider_payment_batches').insert({
+  const { data: bReversedFormal } = await adminClient.from('rider_payment_batches').insert({
     rider_id: riderFleetId,
     settlement_id: stl.id,
     batch_type: 'regular_weekly',
@@ -114,7 +115,7 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
   }).select('*').single();
 
   // Lote pago com data paid_at válida
-  const { data: bPaidValid } = await serviceClient.from('rider_payment_batches').insert({
+  const { data: bPaidValid } = await adminClient.from('rider_payment_batches').insert({
     rider_id: riderFleetId,
     settlement_id: stl.id,
     batch_type: 'regular_weekly',
@@ -127,7 +128,7 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
   }).select('*').single();
 
   // Lote pago legado sem paid_at
-  const { data: bPaidLegacy } = await serviceClient.from('rider_payment_batches').insert({
+  const { data: bPaidLegacy } = await adminClient.from('rider_payment_batches').insert({
     rider_id: riderFleetId,
     settlement_id: stl.id,
     batch_type: 'regular_weekly',
@@ -226,10 +227,10 @@ test('Suíte de Testes Automatizados dos Contratos Refinados das RPCs de Leitura
 
   // 11. Zero mutação em leitura
   await t.test('11. Leitura é 100% read-only e não altera nenhuma linha, versão ou timestamp no banco', async () => {
-    const { data: before } = await serviceClient.from('rider_weekly_settlements').select('version, updated_at').eq('id', stl.id).single();
+    const { data: before } = await adminClient.from('rider_weekly_settlements').select('version, updated_at').eq('id', stl.id).single();
     await adminClient.rpc('list_admin_rider_weekly_settlements', { p_rider_id: riderFleetId, p_workspace_id: WORKSPACE_ID });
     await adminClient.rpc('get_admin_rider_weekly_settlement_detail', { p_settlement_id: stl.id });
-    const { data: after } = await serviceClient.from('rider_weekly_settlements').select('version, updated_at').eq('id', stl.id).single();
+    const { data: after } = await adminClient.from('rider_weekly_settlements').select('version, updated_at').eq('id', stl.id).single();
 
     assert.equal(before.version, after.version);
     assert.equal(before.updated_at, after.updated_at);

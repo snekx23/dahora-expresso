@@ -10,11 +10,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 
 const CLIENT_ID_1 = 'c1111111-1111-4111-a111-111111111111';
 
@@ -36,48 +37,47 @@ test('Suíte de Testes da Fase 3A (Fundação Financeira Canônica e Fechamento 
   let activeSettlementId;
 
   // 1. Auth setup
-  adminClient = await createAuthedClient('admin@dahora.local', 'senha123456');
-  clientUserClient = await createAuthedClient('parceiro@mercadocentral.local', 'senha123456');
+  adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
+  clientUserClient = await createAuthedClient('padaria.central@homolog.test', 'dahoraexpresso1');
 
   // Obter um motoboy válido da frota
-  const { data: rider } = await serviceClient.from('fleet').select('id, user_id, name').limit(1).single();
-  riderFleetId = rider.id;
+  const { data: rider } = await adminClient.from('fleet').select('id, name').limit(1);
+  riderFleetId = rider && rider.length > 0 ? rider[0].id : "7668596b-0444-4435-9f0c-8d0ad7ce7fb8";
 
   // Garantir que a porcentagem do cliente seja 85%
-  await serviceClient.from('commercial_clients').update({ rider_percentage: 85.00 }).eq('id', CLIENT_ID_1);
+  await adminClient.from('commercial_clients').update({ establishment_name: 'Padaria Central' }).eq('id', CLIENT_ID_1);
 
   // Janela semanal isolada para o teste
   const pStart = '2026-08-10T00:00:00.000Z';
   const pEnd = '2026-08-17T00:00:00.000Z';
 
   // Limpar lotes e settlements prévios do mesmo período de teste
-  await serviceClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', serviceClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
-  await serviceClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
-  await serviceClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', serviceClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
-  await serviceClient.from('rider_weekly_settlements').delete().eq('rider_id', riderFleetId);
+  await adminClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', adminClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
+  await adminClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
+  await adminClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', adminClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
+  await adminClient.from('rider_weekly_settlements').delete().eq('rider_id', riderFleetId);
 
   t.after(async () => {
     for (const teleId of createdTeleIds) {
       try {
-        await serviceClient.from('rider_weekly_settlement_items').delete().eq('tele_id', teleId);
-        await serviceClient.from('rider_financial_transactions').delete().eq('tele_id', teleId);
-        await serviceClient.from('company_financial_transactions').delete().eq('tele_id', teleId);
-        await serviceClient.from('client_payment_allocations').delete().eq('tele_id', teleId);
-        await serviceClient.from('teles').delete().eq('id', teleId);
+        await adminClient.from('rider_weekly_settlement_items').delete().eq('tele_id', teleId);
+        await adminClient.from('rider_financial_transactions').delete().eq('tele_id', teleId);
+        await adminClient.from('company_financial_transactions').delete().eq('tele_id', teleId);
+        await adminClient.from('client_payment_allocations').delete().eq('tele_id', teleId);
+        await adminClient.from('teles').delete().eq('id', teleId);
       } catch (err) {}
     }
   });
 
-  const { data: tele1, error: teleErr } = await serviceClient.from('teles').insert({
-    tele_code: `TEL-FIN-1-${Date.now()}`,
+  const { data: tele1, error: teleErr } = await adminClient.from('teles').insert({
+    codigo: Math.floor(Date.now() / 1000), // tele_code: `TEL-FIN-1-${Date.now()}`,
     client_id: CLIENT_ID_1,
     motoboy_id: riderFleetId,
-    status: 'em_entrega',
+    status: 'em_rota',
     delivery_charge: 20.00,
+    total_order_amount: 20.00,
     version: 1,
-    rider_percentage: 85.00,
-    pickup_address: 'Rua A',
-    delivery_address: 'Rua B',
+        endereco: 'Rua B',
     created_at: '2026-08-12T10:00:00.000Z'
   }).select('*').single();
 
@@ -96,18 +96,18 @@ test('Suíte de Testes da Fase 3A (Fundação Financeira Canônica e Fechamento 
     assert.equal(compRes.status, 'concluida');
 
     // Forçar completed_at na janela do teste
-    await serviceClient.from('teles').update({ completed_at: '2026-08-12T10:05:00.000Z' }).eq('id', tele1.id);
+    await adminClient.from('teles').update({ completed_at: '2026-08-12T10:05:00.000Z' }).eq('id', tele1.id);
 
-    const { data: rtx } = await serviceClient.from('rider_financial_transactions').select('*').eq('tele_id', tele1.id).single();
+    const { data: rtx } = await adminClient.from('rider_financial_transactions').select('*').eq('tele_id', tele1.id).single();
     assert.equal(Number(rtx.amount), 17.00, 'Motoboy recebe 85% (17,00 de 20,00)');
 
-    const { data: ctx } = await serviceClient.from('company_financial_transactions').select('*').eq('tele_id', tele1.id).single();
+    const { data: ctx } = await adminClient.from('company_financial_transactions').select('*').eq('tele_id', tele1.id).single();
     assert.equal(Number(ctx.amount), 3.00, 'Plataforma recebe 15% (3,00 de 20,00)');
   });
 
   // 2. Alocação de Pagamento do Cliente
   await t.test('2. Alocação de pagamento do cliente marca a Tele como fully_covered e funding_status = eligible', async () => {
-    const { data: clientPayment, error: clientPayErr } = await serviceClient.from('client_financial_transactions').insert({
+    const { data: clientPayment, error: clientPayErr } = await adminClient.from('client_financial_transactions').insert({
       client_id: CLIENT_ID_1,
       type: 'pagamento_recebido',
       direction: 'credit',

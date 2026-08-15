@@ -586,6 +586,10 @@
                     <i data-lucide="list" style="width: 14px; height: 14px;"></i> Lista Compacta
                   </button>
                 </div>
+                <button id="btn-sort-order" class="btn btn-sm" onclick="window.toggleTeleSortOrder()" style="padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(255, 185, 0, 0.3); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(255, 185, 0, 0.1); color: var(--primary);" title="Clique para alternar ordenação por Data/Hora">
+                  <i data-lucide="arrow-down-up" style="width: 14px; height: 14px;"></i>
+                  <span id="sort-order-label">Recentes ↓</span>
+                </button>
               </div>
             </div>
 
@@ -833,6 +837,16 @@
             <!-- Filter Bar -->
             <div class="card" style="margin-bottom: 20px; overflow: visible;">
               <div class="card-body" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 16px; overflow: visible;">
+                <!-- 1. Motoboy Select (Primary Action) -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 600;">Motoboy <span style="color: #ef4444;">*</span></label>
+                  <select id="rider-extract-rider-select" onchange="handleRiderExtractRiderChange()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 220px; cursor: pointer; font-weight: 500;">
+                    <option value="">Selecione um motoboy</option>
+                    <!-- Populated dynamically -->
+                  </select>
+                </div>
+
+                <!-- 2. Período -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                   <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Período</label>
                   <select id="rider-extract-period-preset" onchange="handleRiderExtractPeriodPresetChange()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 140px; cursor: pointer;">
@@ -853,17 +867,10 @@
                   </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 6px;">
-                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Motoboy</label>
-                  <select id="rider-extract-rider-select" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 200px; cursor: pointer;">
-                    <option value="">Todos os Motoboys</option>
-                    <!-- Populated dynamically -->
-                  </select>
-                </div>
-
+                <!-- 3. Status da Tele -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                   <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Status da Tele</label>
-                  <select id="rider-extract-status-select" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 140px; cursor: pointer;">
+                  <select id="rider-extract-status-select" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 150px; cursor: pointer;">
                     <option value="">Todos os Status</option>
                     <option value="Entregue">Concluído / Entregue</option>
                     <option value="Em Rota">Em Rota</option>
@@ -872,126 +879,145 @@
                   </select>
                 </div>
 
+                <!-- 4. Botão Filtrar -->
                 <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-primary" onclick="loadRiderExtract()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
+                  <button class="btn btn-primary" onclick="loadRiderExtract()" style="display: flex; align-items: center; gap: 8px; padding: 11px 18px; font-weight: 600; cursor: pointer;">
                     <i data-lucide="filter" style="width: 16px; height: 16px;"></i> <span>Filtrar</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- Resumo Superior (7 Cards) -->
-            <div class="metrics-grid-7" style="margin-bottom: 20px;">
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Qtd. Teles</span>
-                  <i data-lucide="list-ordered" class="text-blue"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-count">—</h3>
-                  <p class="growth-text neutral">No período</p>
-                </div>
+            <!-- Estado Inicial: Nenhum Motoboy Selecionado (Empty State) -->
+            <div id="rider-extract-empty-state" class="card" style="padding: 56px 24px; text-align: center; margin-top: 20px; border: 1px dashed var(--border-color); background: rgba(255, 255, 255, 0.01);">
+              <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px;">
+                <i data-lucide="user-check" style="width: 30px; height: 30px;"></i>
               </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Valor Bruto</span>
-                  <i data-lucide="dollar-sign" class="text-yellow"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-gross">R$ 0,00</h3>
-                  <p class="growth-text neutral">Total de corridas</p>
-                </div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Comissão Empresa</span>
-                  <i data-lucide="percent" class="text-purple"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-commission">R$ 0,00</h3>
-                  <p class="growth-text neutral">Taxa da plataforma</p>
-                </div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Consumíveis</span>
-                  <i data-lucide="shopping-bag" class="text-red"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-consumables" style="color: #ef4444;">R$ 0,00</h3>
-                  <p class="growth-text neutral">Vales e itens</p>
-                </div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Créditos</span>
-                  <i data-lucide="plus-circle" class="text-green"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-credits" style="color: #10b981;">R$ 0,00</h3>
-                  <p class="growth-text neutral">Adicionais</p>
-                </div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Ajustes</span>
-                  <i data-lucide="sliders" class="text-orange"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-adjustments">R$ 0,00</h3>
-                  <p class="growth-text neutral">Bônus / Descontos</p>
-                </div>
-              </div>
-              <div class="metric-card" style="background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.3);">
-                <div class="metric-card-header">
-                  <span style="color: #10b981; font-weight: 700;">Valor Líquido</span>
-                  <i data-lucide="wallet" style="color: #10b981;"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="rider-extract-net" style="color: #10b981; font-size: 1.4rem;">R$ 0,00</h3>
-                  <p class="growth-text neutral">A pagar ao profissional</p>
-                </div>
-              </div>
+              <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; color: var(--color-text);">Selecione um motoboy para visualizar o extrato.</h3>
+              <p class="text-muted" style="max-width: 500px; margin: 0 auto; font-size: 0.9rem; line-height: 1.5;">Consulte corridas, ganhos, descontos, créditos e saldo do profissional.</p>
             </div>
 
-            <!-- Tabela Principal -->
-            <div class="card">
-              <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
-                <div>
-                  <h3>Detalhamento de Corridas do Motoboy</h3>
-                  <p class="text-muted">Histórico completo de entregas e remuneração no período.</p>
-                </div>
-              </div>
-              <div class="card-body no-padding">
-                <div class="table-responsive">
-                  <table class="table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Data</th>
-                        <th>Hora</th>
-                        <th>Cliente</th>
-                        <th>Origem</th>
-                        <th>Destino</th>
-                        <th>Valor Tele</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody id="rider-extract-table-body">
-                      <!-- Rendered by JS -->
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <!-- Estado de Carregamento (Loading State) -->
+            <div id="rider-extract-loading-state" class="card" style="padding: 56px 24px; text-align: center; margin-top: 20px; display: none;">
+              <div class="spinner" style="margin: 0 auto 18px; width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--color-primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+              <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--color-text);">Carregando extrato do motoboy...</h3>
+              <p class="text-muted" style="font-size: 0.85rem; margin-top: 6px;">Buscando lançamentos e demonstrativo financeiro.</p>
             </div>
 
-            <!-- Demonstrativo Consolidado de Fechamento -->
-            <div class="card" style="margin-top: 20px; background: var(--bg-card); border: 1px solid var(--border-color);">
-              <div class="card-header">
-                <h3>Demonstrativo Consolidado do Período</h3>
+            <!-- Conteúdo do Extrato (Resumo, Detalhamento e Demonstrativo) - Exibido APENAS após selecionar motoboy -->
+            <div id="rider-extract-content" style="display: none;">
+              <!-- Resumo Superior (7 Cards) -->
+              <div class="metrics-grid-7" style="margin-bottom: 20px;">
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Qtd. Teles</span>
+                    <i data-lucide="list-ordered" class="text-blue"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-count">—</h3>
+                    <p class="growth-text neutral">No período</p>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Valor Bruto</span>
+                    <i data-lucide="dollar-sign" class="text-yellow"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-gross">R$ 0,00</h3>
+                    <p class="growth-text neutral">Total de corridas</p>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Comissão Empresa</span>
+                    <i data-lucide="percent" class="text-purple"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-commission">R$ 0,00</h3>
+                    <p class="growth-text neutral">Taxa da plataforma</p>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Consumíveis</span>
+                    <i data-lucide="shopping-bag" class="text-red"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-consumables" style="color: #ef4444;">R$ 0,00</h3>
+                    <p class="growth-text neutral">Vales e itens</p>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Créditos</span>
+                    <i data-lucide="plus-circle" class="text-green"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-credits" style="color: #10b981;">R$ 0,00</h3>
+                    <p class="growth-text neutral">Adicionais</p>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Ajustes</span>
+                    <i data-lucide="sliders" class="text-orange"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-adjustments">R$ 0,00</h3>
+                    <p class="growth-text neutral">Bônus / Descontos</p>
+                  </div>
+                </div>
+                <div class="metric-card" style="background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.3);">
+                  <div class="metric-card-header">
+                    <span style="color: #10b981; font-weight: 700;">Valor Líquido</span>
+                    <i data-lucide="wallet" style="color: #10b981;"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="rider-extract-net" style="color: #10b981; font-size: 1.4rem;">R$ 0,00</h3>
+                    <p class="growth-text neutral">A pagar ao profissional</p>
+                  </div>
+                </div>
               </div>
-              <div class="card-body" id="rider-extract-summary-box">
-                <!-- Rendered dynamically -->
+
+              <!-- Tabela Principal de Detalhamento Financeiro -->
+              <div class="card">
+                <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
+                  <div>
+                    <h3>Detalhamento de Movimentações Financeiras</h3>
+                    <p class="text-muted">Histórico detalhado de repasses de entregas, vales, créditos e ajustes do profissional.</p>
+                  </div>
+                </div>
+                <div class="card-body no-padding">
+                  <div class="table-responsive">
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th>Ref / Tele</th>
+                          <th>Data & Hora</th>
+                          <th>Tipo</th>
+                          <th>Descrição</th>
+                          <th>Valor</th>
+                          <th>Movimentação</th>
+                        </tr>
+                      </thead>
+                      <tbody id="rider-extract-table-body">
+                        <!-- Rendered dynamically by JS -->
+                      </tbody>
+                    </table>
+                  </div>
+                  <div id="rider-extract-pagination" class="pagination-wrapper" style="padding: 12px 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;"></div>
+                </div>
+              </div>
+
+              <!-- Demonstrativo Consolidado de Fechamento -->
+              <div class="card" style="margin-top: 20px; background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-header">
+                  <h3>Demonstrativo Consolidado do Período</h3>
+                </div>
+                <div class="card-body" id="rider-extract-summary-box">
+                  <!-- Rendered dynamically by JS -->
+                </div>
               </div>
             </div>
           </div>
@@ -1100,14 +1126,16 @@
             <!-- Filter Bar -->
             <div class="card" style="margin-bottom: 20px; overflow: visible;">
               <div class="card-body" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 16px; overflow: visible;">
+                <!-- 1. Cliente / Estabelecimento Select (Ação Principal) -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
-                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Estabelecimento / Cliente</label>
-                  <select id="client-extract-client-select" onchange="loadClientExtract()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 220px; cursor: pointer;">
-                    <option value="">Todos os Estabelecimentos</option>
-                    <!-- Populated dynamically -->
+                  <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 600;">Cliente / Estabelecimento <span style="color: #ef4444;">*</span></label>
+                  <select id="client-extract-client-select" onchange="handleClientExtractClientChange()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 240px; cursor: pointer; font-weight: 500;">
+                    <option value="">Selecione um cliente</option>
+                    <!-- Populated dynamically from commercial_clients -->
                   </select>
                 </div>
 
+                <!-- 2. Período -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                   <label style="font-size: 0.82rem; color: var(--color-text-muted); font-weight: 500;">Período</label>
                   <select id="client-extract-period-preset" onchange="handleClientExtractPeriodPresetChange()" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; min-width: 140px; cursor: pointer;">
@@ -1128,96 +1156,115 @@
                   </div>
                 </div>
 
+                <!-- 3. Botões de Ação -->
                 <div style="display: flex; gap: 8px;">
                   <button class="btn btn-primary" onclick="loadClientExtract()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer;">
                     <i data-lucide="filter" style="width: 16px; height: 16px;"></i> <span>Filtrar</span>
                   </button>
-                  <button class="btn btn-secondary" onclick="openRegisterReceiptModal()" style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: pointer; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">
+                  <button id="btn-open-register-receipt" class="btn btn-secondary" onclick="openRegisterReceiptModal()" disabled style="display: flex; align-items: center; gap: 8px; padding: 11px 16px; font-weight: 600; cursor: not-allowed; background: rgba(16, 185, 129, 0.1); color: var(--color-text-muted); border: 1px solid var(--border-color); opacity: 0.6;">
                     <i data-lucide="dollar-sign" style="width: 16px; height: 16px;"></i> <span>Registrar Recebimento</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- Resumo Superior (4 Cards + Status Financeiro) -->
-            <div class="metrics-grid" style="margin-bottom: 20px;">
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Qtd. Teles</span>
-                  <i data-lucide="list-checks" class="text-blue"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="client-extract-count">—</h3>
-                  <p class="growth-text neutral">Teles faturadas</p>
-                </div>
+            <!-- Estado Inicial: Nenhum Cliente Selecionado (Empty State) -->
+            <div id="client-extract-empty-state" class="card" style="padding: 56px 24px; text-align: center; margin-top: 20px; border: 1px dashed var(--border-color); background: rgba(255, 255, 255, 0.01);">
+              <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px;">
+                <i data-lucide="building-2" style="width: 30px; height: 30px;"></i>
               </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Valor Faturado</span>
-                  <i data-lucide="file-text" class="text-yellow"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="client-extract-billed">R$ 0,00</h3>
-                  <p class="growth-text neutral">Total em serviços</p>
-                </div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-card-header">
-                  <span>Valor Pago</span>
-                  <i data-lucide="check-circle" class="text-green"></i>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="client-extract-paid" style="color: #10b981;">R$ 0,00</h3>
-                  <p class="growth-text neutral">Créditos quitados</p>
-                </div>
-              </div>
-              <div class="metric-card" id="client-extract-balance-card">
-                <div class="metric-card-header flex-row" style="justify-content: space-between;">
-                  <span>Saldo em Aberto</span>
-                  <span class="badge badge-status-ok" id="client-extract-status-badge">Em dia</span>
-                </div>
-                <div class="metric-card-body">
-                  <h3 id="client-extract-balance" style="font-size: 1.4rem;">R$ 0,00</h3>
-                  <p class="growth-text neutral" id="client-extract-status-desc">Conta sem pendências</p>
-                </div>
-              </div>
+              <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; color: var(--color-text);">Selecione um cliente para visualizar o extrato.</h3>
+              <p class="text-muted" style="max-width: 520px; margin: 0 auto; font-size: 0.9rem; line-height: 1.5;">Consulte cobranças, pagamentos, créditos, ajustes e saldo em aberto.</p>
             </div>
 
-            <!-- Tabela Conta Corrente (Razão) -->
-            <div class="card">
-              <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
-                <div>
-                  <h3>Extrato de Conta Corrente do Cliente</h3>
-                  <p class="text-muted">Lançamentos de débito (teles realizadas) e crédito (pagamentos e ajustes). Clique na linha para detalhes.</p>
+            <!-- Estado de Carregamento (Loading State) -->
+            <div id="client-extract-loading-state" class="card" style="padding: 56px 24px; text-align: center; margin-top: 20px; display: none;">
+              <div class="spinner" style="margin: 0 auto 18px; width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #10b981; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+              <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--color-text);">Carregando extrato do cliente...</h3>
+              <p class="text-muted" style="font-size: 0.85rem; margin-top: 6px;">Buscando lançamentos e saldo da conta corrente.</p>
+            </div>
+
+            <!-- Conteúdo do Extrato do Cliente (Resumo 4 Cards & Tabela) - Exibido APENAS após selecionar cliente -->
+            <div id="client-extract-content" style="display: none;">
+              <!-- Resumo Superior (4 Cards + Status Financeiro) -->
+              <div class="metrics-grid" style="margin-bottom: 20px;">
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Qtd. Teles</span>
+                    <i data-lucide="list-checks" class="text-blue"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="client-extract-count">—</h3>
+                    <p class="growth-text neutral">Teles faturadas no período</p>
+                  </div>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-secondary btn-sm" onclick="exportClientExtractPDF()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="file-down" style="width: 14px; height: 14px;"></i> PDF</button>
-                  <button class="btn btn-secondary btn-sm" onclick="exportClientExtractExcel()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="sheet" style="width: 14px; height: 14px;"></i> Excel</button>
-                  <button class="btn btn-secondary btn-sm" onclick="exportClientExtractCSV()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i> CSV</button>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Valor Faturado</span>
+                    <i data-lucide="file-text" class="text-yellow"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="client-extract-billed">R$ 0,00</h3>
+                    <p class="growth-text neutral">Total de débitos do período</p>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-header">
+                    <span>Valor Pago</span>
+                    <i data-lucide="check-circle" class="text-green"></i>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="client-extract-paid" style="color: #10b981;">R$ 0,00</h3>
+                    <p class="growth-text neutral">Total de créditos do período</p>
+                  </div>
+                </div>
+                <div class="metric-card" id="client-extract-balance-card">
+                  <div class="metric-card-header flex-row" style="justify-content: space-between;">
+                    <span style="font-weight: 600;">Saldo atual em aberto</span>
+                    <span class="badge badge-status-ok" id="client-extract-status-badge">Em dia</span>
+                  </div>
+                  <div class="metric-card-body">
+                    <h3 id="client-extract-balance" style="font-size: 1.4rem;">R$ 0,00</h3>
+                    <p class="growth-text neutral" id="client-extract-status-desc">Saldo total acumulado da conta</p>
+                  </div>
                 </div>
               </div>
-              <div class="card-body no-padding">
-                <div class="table-responsive">
-                  <table class="table">
-                    <thead>
-                      <tr>
-                        <th>Data / Hora</th>
-                        <th>Documento</th>
-                        <th>Tipo Lançamento</th>
-                        <th>Descrição</th>
-                        <th>Referência</th>
-                        <th>Origem</th>
-                        <th>Débito (R$)</th>
-                        <th>Crédito (R$)</th>
-                        <th>Saldo (R$)</th>
-                      </tr>
-                    </thead>
-                    <tbody id="client-extract-table-body">
-                      <!-- Rendered by JS -->
-                    </tbody>
-                  </table>
+
+              <!-- Tabela Conta Corrente (Razão) -->
+              <div class="card">
+                <div class="card-header flex-row" style="justify-content: space-between; align-items: center;">
+                  <div>
+                    <h3>Extrato de Conta Corrente do Cliente</h3>
+                    <p class="text-muted">Lançamentos de débito (teles realizadas) e crédito (pagamentos e ajustes). Clique na linha para detalhes.</p>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="exportClientExtractPDF()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="file-down" style="width: 14px; height: 14px;"></i> PDF</button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportClientExtractExcel()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="sheet" style="width: 14px; height: 14px;"></i> Excel</button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportClientExtractCSV()" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i> CSV</button>
+                  </div>
                 </div>
-                <div id="client-extract-pagination" class="pagination-container"></div>
+                <div class="card-body no-padding">
+                  <div class="table-responsive">
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th>Data / Hora</th>
+                          <th>Ref / Tele</th>
+                          <th>Tipo Lançamento</th>
+                          <th>Descrição</th>
+                          <th>Origem</th>
+                          <th>Débito (R$)</th>
+                          <th>Crédito (R$)</th>
+                          <th>Saldo (R$)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="client-extract-table-body">
+                        <!-- Rendered by JS -->
+                      </tbody>
+                    </table>
+                  </div>
+                  <div id="client-extract-pagination" class="pagination-container" style="padding: 12px 16px; border-top: 1px solid var(--border-color);"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -1525,7 +1572,7 @@
           </div>
 
           <!-- 8c. Owner Rider Extract -->
-          <div id="tab-owner-rider-extract" class="dashboard-tab-content">
+          <div id="tab-owner-rider-extract-legacy" class="dashboard-tab-content">
             <!-- Date Range Filter Card -->
             <div class="card" style="margin-bottom: 20px;">
               <div class="card-header">
@@ -1910,7 +1957,12 @@
                         <i data-lucide="map" style="width: 14px; height: 14px;"></i> Marcar no Mapa (Arraste o marcador ou clique para ajustar)
                       </label>
                       <div id="client-request-delivery-map" style="height: 250px; width: 100%; border-radius: var(--border-radius-md); border: 1px solid var(--border-color); z-index: 1;"></div>
+                      <div id="client-precision-indicator" class="precision-badge hidden" style="margin-top: 6px; font-size: 0.78rem; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px;"></div>
                     </div>
+                    <input type="hidden" id="client-delivery-lat" value="">
+                    <input type="hidden" id="client-delivery-lng" value="">
+                    <input type="hidden" id="client-geocoding-precision" value="unconfirmed">
+                    <input type="hidden" id="client-location-adjusted-manually" value="false">
 
                     <div class="form-row mt-3" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                       <div class="form-group flex-1">
@@ -2866,7 +2918,7 @@
   </div>
 
   <!-- Modal: Solicitar/Criar Tele Manualmente -->
-  <div id="modal-request-delivery" class="modal-overlay hidden" onclick="closeRequestDeliveryModal(event)">
+  <div id="modal-request-delivery" class="modal-overlay hidden">
     <div class="modal-card" style="max-width: 540px; width: 100%; max-height: calc(100vh - 32px); display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: var(--border-radius-lg);" onclick="event.stopPropagation()">
       <div class="modal-header" style="flex-shrink: 0; padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-card);">
         <h3>Nova Tele Manual</h3>
@@ -2969,6 +3021,7 @@
               Localização no Mapa <span style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 400;">(Arraste o pin se necessário)</span>
             </label>
             <div id="manual-request-delivery-map" style="height: 180px; width: 100%; border-radius: var(--border-radius-sm); border: 1px solid var(--border-color); z-index: 1;"></div>
+            <div id="manual-precision-indicator" class="precision-badge hidden" style="margin-top: 6px; font-size: 0.78rem; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px;"></div>
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -3012,33 +3065,25 @@
             <textarea id="manual-order-notes" placeholder="Ex: Apto 302, bloco B..." style="padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%; min-height: 60px; resize: vertical;"></textarea>
           </div>
 
-          <!-- Estimate summary box -->
-          <div id="manual-estimate-box" class="estimate-box hidden" style="background: rgba(255, 183, 0, 0.05); border: 1px dashed var(--primary); border-radius: var(--border-radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <h4 style="font-size: 0.85rem; color: var(--primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;">
-              <i data-lucide="calculator" style="width: 14px; height: 14px;"></i> Estimativa de Custos
-            </h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center; margin-top: 4px;">
-              <div>
-                <span style="font-size: 0.7rem; color: var(--color-text-muted); display: block;">Distância</span>
-                <strong id="manual-est-distance" style="font-size: 0.95rem; color: var(--color-text);">-</strong>
-              </div>
-              <div>
-                <span style="font-size: 0.7rem; color: var(--color-text-muted); display: block;">Tempo Est.</span>
-                <strong id="manual-est-time" style="font-size: 0.95rem; color: var(--color-text);">-</strong>
-              </div>
-              <div>
-                <span style="font-size: 0.7rem; color: var(--color-text-muted); display: block;">Taxa Motoboy</span>
-                <strong id="manual-est-price" style="font-size: 1.1rem; color: var(--primary);">-</strong>
-              </div>
-            </div>
-          </div>
-
         </div>
         <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; border-top: 1px solid var(--border-color); padding: 14px 20px; background: var(--bg-card); position: sticky; bottom: 0; z-index: 10;">
           <button type="button" class="btn btn-secondary" onclick="closeRequestDeliveryModal()" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Cancelar</button>
           <button type="submit" class="btn btn-primary" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Chamar Tele</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmação de Descarte de Tele Manual -->
+  <div id="modal-confirm-discard-request" class="modal-overlay hidden" style="z-index: 12000;">
+    <div class="modal-card" style="max-width: 420px; width: 90%; text-align: center; padding: 24px; border-radius: var(--border-radius-md); background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 12px 32px rgba(0,0,0,0.6);" onclick="event.stopPropagation()">
+      <div style="font-size: 2.2rem; margin-bottom: 12px;">⚠️</div>
+      <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--color-text); margin-bottom: 10px;">Descartar os dados preenchidos desta Tele?</h3>
+      <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 20px;">Você possui informações digitadas que serão perdidas ao fechar o formulário.</p>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button type="button" class="btn btn-secondary" onclick="hideDiscardConfirmationModal()" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer;">Continuar preenchendo</button>
+        <button type="button" class="btn btn-primary" onclick="forceCloseRequestDeliveryModal()" style="padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer; background: #ef4444; border-color: #ef4444; color: #ffffff;">Descartar</button>
+      </div>
     </div>
   </div>
 
@@ -3132,6 +3177,41 @@
       </form>
     </div>
   </div>
+  <!-- Modal: Configurar Ponto de Coleta do Cliente Comercial -->
+  <div id="modal-configure-client-pickup" class="modal-overlay hidden" onclick="closeConfigureClientPickupModal(event)">
+    <div class="modal-card" style="max-width: 580px; width: 90%; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="map-pin" class="inline-icon text-yellow"></i>
+          <span id="configure-pickup-modal-title">Configurar Ponto de Coleta</span>
+        </h3>
+        <button class="modal-close-btn" onclick="closeConfigureClientPickupModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form onsubmit="submitConfigureClientPickup(event)">
+        <input type="hidden" id="configure-pickup-client-id" value="">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <p style="font-size: 0.82rem; color: var(--color-text-muted); margin: 0;">
+            Defina a localização física real deste cliente. As coordenadas e o endereço abaixo serão salvos no banco de dados e usados como ponto de partida das Teles.
+          </p>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Endereço de Coleta *</label>
+            <input type="text" id="configure-pickup-address" required placeholder="Digite a rua, número e cidade para buscar no Google..." style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          </div>
+          <div id="configure-pickup-map-wrapper" style="display: flex; flex-direction: column; gap: 6px;">
+            <div id="configure-pickup-map" style="width: 100%; height: 240px; border-radius: var(--border-radius-sm, 6px); border: 1px solid var(--border-color, #334155); background: #1e293b; position: relative; overflow: hidden;"></div>
+            <div style="font-size: 0.78rem; color: var(--color-text-muted); display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="info" style="width: 14px; height: 14px; color: var(--cyan-text, #38bdf8);"></i>
+              <span>Arraste o marcador no ponto exato ou escolha uma sugestão do Google.</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary" onclick="closeConfigureClientPickupModal()" style="padding: 8px 16px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">Cancelar</button>
+          <button type="submit" class="btn btn-primary" style="padding: 8px 16px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">Salvar Ponto de Coleta</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Modal: Adicionar Novo Comércio -->
   <div id="modal-add-commerce" class="modal-overlay hidden" onclick="closeAddCommerceModal(event)">
@@ -3150,6 +3230,66 @@
         <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
           <button type="button" class="btn btn-secondary" onclick="closeAddCommerceModal()" style="padding: 8px 16px; font-weight: 600; font-size: 0.8rem; cursor: pointer;">Cancelar</button>
           <button type="submit" class="btn btn-primary" style="padding: 8px 16px; font-weight: 600; font-size: 0.8rem; cursor: pointer;">Adicionar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Recuperar Acesso do Cliente Comercial -->
+  <div id="modal-recover-client-access" class="modal-overlay hidden" onclick="closeRecoverClientAccessModal(event)">
+    <div class="modal-card" style="max-width: 480px; width: 90%;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="key" style="width: 18px; height: 18px; color: var(--cyan-text);"></i>
+          Recuperar Acesso do Cliente
+        </h3>
+        <button type="button" class="modal-close-btn" onclick="closeRecoverClientAccessModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 14px;">
+          <div style="margin-bottom: 6px;"><span style="color: var(--color-text-muted);">Cliente:</span> <strong id="recover-modal-client-name">—</strong></div>
+          <div><span style="color: var(--color-text-muted);">E-mail cadastrado:</span> <strong id="recover-modal-client-email" style="color: var(--cyan-text);">—</strong></div>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.4; margin-bottom: 12px;">
+          Será enviado um e-mail oficial com instruções para redefinir a senha. Nenhuma senha será alterada até que o cliente conclua o processo pelo link recebido.
+        </p>
+        <div id="recover-modal-notice" class="modal-notice warning hidden" style="margin-top: 10px; font-size: 0.8rem; padding: 10px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #f87171;"></div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+        <button type="button" class="btn btn-secondary" onclick="closeRecoverClientAccessModal()">Cancelar</button>
+        <button type="button" id="btn-confirm-recover-client-access" class="btn btn-primary" onclick="submitRecoverClientAccess()">Enviar Recuperação</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Redefinir Nova Senha (PASSWORD_RECOVERY) -->
+  <div id="modal-update-password" class="modal-overlay hidden" onclick="closeUpdatePasswordModal(event)">
+    <div class="modal-card" style="max-width: 440px; width: 90%;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="shield-check" style="width: 18px; height: 18px; color: var(--cyan-text);"></i>
+          Redefinir Sua Nova Senha
+        </h3>
+        <button type="button" class="modal-close-btn" onclick="closeUpdatePasswordModal()">&times;</button>
+      </div>
+      <form onsubmit="submitUpdatePassword(event)">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <p style="font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.4; margin: 0;">
+            Digite e confirme sua nova senha de acesso abaixo.
+          </p>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Nova Senha *</label>
+            <input type="password" id="update-new-password" required minlength="6" placeholder="Mínimo 6 caracteres" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem;">Confirmar Nova Senha *</label>
+            <input type="password" id="update-confirm-password" required minlength="6" placeholder="Repita a nova senha" style="padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.85rem; outline: none; width: 100%;">
+          </div>
+          <div id="update-password-notice" class="modal-notice warning hidden" style="font-size: 0.8rem; padding: 10px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #f87171;"></div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-secondary" onclick="closeUpdatePasswordModal()">Cancelar</button>
+          <button type="submit" id="btn-submit-update-password" class="btn btn-primary">Salvar Nova Senha</button>
         </div>
       </form>
     </div>
@@ -3196,7 +3336,7 @@
   </div>
 
   <!-- Floating Button to request tele manual (Fixed Viewport Position) -->
-  <button id="owner-fab-btn" class="fab-btn-fixed hidden" onclick="showRequestDeliveryModal()" title="Chamar Tele Manual">
+  <button id="owner-fab-btn" class="fab-btn-fixed" onclick="showRequestDeliveryModal()" title="Chamar Tele Manual">
     <i data-lucide="plus" style="width: 24px; height: 24px; stroke-width: 2.5;"></i>
   </button>
 
@@ -3696,24 +3836,22 @@
         <div id="pay-settlement-step2-box" class="hidden" style="margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 14px;">
           <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 0.82rem; color: #10b981; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i>
-            <span>Lote criado com sucesso! Preencha as informações do comprovante para marcar como <strong>PAGO</strong>.</span>
+            <span>Lote criado com sucesso! Escolha a forma de pagamento para marcar o repasse como <strong>PAGO</strong>.</span>
           </div>
-          <div class="form-group" style="margin-bottom: 10px;">
+          <div class="form-group" style="margin-bottom: 12px;">
             <label for="pay-modal-method-select" class="form-label">Método de Pagamento *</label>
             <select id="pay-modal-method-select" class="form-select">
-              <option value="PIX" selected>PIX</option>
+              <option value="" disabled selected>Selecione a forma de pagamento...</option>
+              <option value="PIX">PIX</option>
+              <option value="DINHEIRO">Dinheiro / Espécie</option>
               <option value="TED">TED / DOC</option>
               <option value="TRANSFERENCIA_BANCARIA">Transferência Bancária</option>
-              <option value="DINHEIRO">Espécie / Dinheiro</option>
+              <option value="OUTRO">Outro</option>
             </select>
-          </div>
-          <div class="form-group" style="margin-bottom: 10px;">
-            <label for="pay-modal-reference-input" class="form-label">Referência / Código E2E do Comprovante *</label>
-            <input type="text" id="pay-modal-reference-input" class="form-input" placeholder="Ex: E1234567820260804..." />
           </div>
           <div class="form-group">
             <label for="pay-modal-notes-input" class="form-label">Observações Opcionais</label>
-            <input type="text" id="pay-modal-notes-input" class="form-input" placeholder="Ex: Comprovante enviado via WhatsApp" />
+            <input type="text" id="pay-modal-notes-input" class="form-input" placeholder="Ex: Pago via chave PIX telefone, entregue em mãos, etc." />
           </div>
         </div>
       </div>
@@ -3754,6 +3892,61 @@
           <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i> Confirmar Estorno Auditado
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: Registrar Recebimento de Cliente -->
+  <div id="modal-register-client-receipt" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-receipt-title">
+    <div class="modal-card" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 id="modal-receipt-title" style="display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="dollar-sign" style="color: #10b981; width: 20px; height: 20px;"></i>
+          <span>Registrar Recebimento de Cliente</span>
+        </h3>
+        <button type="button" class="modal-close-btn" onclick="closeRegisterReceiptModal()">&times;</button>
+      </div>
+      <form id="form-register-client-receipt" onsubmit="handleRegisterClientReceipt(event)">
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="form-group">
+            <label class="form-label">Cliente / Estabelecimento</label>
+            <input type="text" id="receipt-modal-client-name" class="form-input" readonly style="background: rgba(255,255,255,0.03); color: var(--color-text); font-weight: 600;">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px;">
+            <div>
+              <span style="font-size: 0.78rem; color: var(--color-text-muted);">Saldo Atual em Aberto:</span>
+              <div id="receipt-modal-open-balance" style="font-size: 1.1rem; font-weight: 700; color: #f59e0b;">R$ 0,00</div>
+            </div>
+            <div>
+              <span style="font-size: 0.78rem; color: var(--color-text-muted);">Status da Conta:</span>
+              <div id="receipt-modal-status-label" style="font-size: 0.88rem; font-weight: 600; color: #10b981;">Pendente</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="receipt-modal-amount-input" class="form-label">Valor Recebido (R$) *</label>
+            <input type="number" id="receipt-modal-amount-input" step="0.01" min="0.01" required placeholder="0,00" class="form-input" style="font-size: 1.1rem; font-weight: 700; color: #10b981;">
+          </div>
+          <div class="form-group">
+            <label for="receipt-modal-method-select" class="form-label">Forma de Pagamento *</label>
+            <select id="receipt-modal-method-select" required class="form-select">
+              <option value="PIX" selected>PIX</option>
+              <option value="Transferência Bancária">Transferência Bancária (TED/DOC)</option>
+              <option value="Dinheiro">Dinheiro em Espécie</option>
+              <option value="Boleto">Boleto Bancário</option>
+              <option value="Cartão">Cartão de Crédito/Débito</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="receipt-modal-notes-input" class="form-label">Observações / Comprovante (Opcional)</label>
+            <textarea id="receipt-modal-notes-input" rows="2" class="form-textarea" placeholder="Informações adicionais do recebimento (ex: nº da transação, comprovante)..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeRegisterReceiptModal()">Cancelar</button>
+          <button type="submit" id="btn-submit-client-receipt" class="btn btn-success" style="font-weight: 600;">
+            <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Confirmar Recebimento
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

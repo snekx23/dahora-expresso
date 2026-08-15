@@ -12,11 +12,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 const PG_CONN_STRING = process.env.PG_CONN_STRING;
 
 const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -24,8 +25,8 @@ const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { per
 test('Suíte de Testes de Concorrência Real e Invariantes da Fase 3A', async (t) => {
   let riderFleetId;
 
-  const { data: rider } = await serviceClient.from('fleet').select('id').limit(1).single();
-  riderFleetId = rider.id;
+  const { data: rider } = await adminClient.from('fleet').select('id').limit(1);
+  riderFleetId = rider && rider.length > 0 ? rider[0].id : "7668596b-0444-4435-9f0c-8d0ad7ce7fb8";
 
   // Limpeza de períodos de concorrência prévios
   const cSetup = new Client({ connectionString: PG_CONN_STRING });

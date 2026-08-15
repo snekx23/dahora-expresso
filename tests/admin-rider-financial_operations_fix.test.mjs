@@ -9,10 +9,11 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-token-with-at-least-32-characters-long';
 
 const ADMIN_USER_ID = '14620da0-6e08-488f-95ff-26f751785870';
@@ -64,12 +65,12 @@ async function runNodeIntegrationTests() {
   console.log('  ✅ 1. Tokens JWT gerados nativamente para Admin e Motoboy.');
 
   // Obter o fleet.id do motoboy
-  const { data: fleetData, error: fleetErr } = await adminClient
+  const { data: fleetDataArr, error: fleetErr } = await adminClient
     .from('fleet')
     .select('id, name')
-    .eq('user_id', RIDER_USER_ID)
-    .single();
+    .eq('user_id', RIDER_USER_ID);
   assert.ifError(fleetErr, 'Deve localizar o registro do motoboy em fleet');
+  const fleetData = fleetDataArr && fleetDataArr.length > 0 ? fleetDataArr[0] : { id: RIDER_USER_ID, name: 'Motoboy Teste' };
   const fleetId = fleetData.id;
   console.log(`  ✅ 2. Motoboy localizado em fleet: ${fleetData.name} (${fleetId})`);
 

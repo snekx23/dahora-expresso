@@ -207,11 +207,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function registerSW() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => {
-        reg.update();
-      })
-      .catch(() => {});
+    const isLocalhost = Boolean(
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]'
+    );
+
+    if (isLocalhost) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+      }).catch(() => {});
+
+      if ('caches' in window) {
+        caches.keys().then(cacheNames => {
+          return Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
+        }).catch(() => {});
+      }
+    } else {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => {
+          reg.update();
+        })
+        .catch(() => {});
+    }
   }
 }
 

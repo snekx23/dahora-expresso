@@ -35,6 +35,7 @@ let maxSimultaneousDeliveries = 1;
         storageKey: 'dahora-owner-auth'
       }
     });
+    setupPasswordRecoveryListener();
   } else {
     console.error("Supabase SDK not loaded!");
   }
@@ -340,9 +341,9 @@ async function fetchClientHistory() {
 
 
     mockData.clientHistory = (data || []).map(item => ({
-      id: escapeHtml(String(item.tele_code || item.id)),
+      id: escapeHtml(String(item.id || '')),
       raw_id: item.id,
-      tele_code: item.tele_code || item.id,
+      tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
       client_id: item.client_id,
       client: escapeHtml(resolveClientDisplayName(item)),
       destName: escapeHtml(item.recipient_name || item.dest_name || 'Cliente'),
@@ -552,9 +553,9 @@ async function fetchPendingDeliveries() {
     }
 
     mockData.pendingDeliveries = (data || []).map(item => ({
-      id: escapeHtml(String(item.id || item.tele_code || '')),
+      id: escapeHtml(String(item.id || '')),
       raw_id: item.id,
-      tele_code: item.tele_code || item.id,
+      tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
       client_id: item.client_id,
       client: escapeHtml(resolveClientDisplayName(item)),
       destName: escapeHtml(item.recipient_name || item.dest_name || 'Destinatário'),
@@ -656,26 +657,53 @@ async function fetchRiderCredits() {
 
 
 const initAppHandler = async () => {
-  // Register Service Worker for PWA
+  // Register Service Worker for PWA (Disabilitado no localhost dev; Ativo em produção)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
-      .then(reg => {
-        reg.update();
-        reg.addEventListener('updatefound', () => {
-          const sw = reg.installing;
-          if (sw) sw.addEventListener('statechange', () => {
-            if (sw.state === 'installed' && navigator.serviceWorker.controller) sw.postMessage?.('skip-waiting');
-          });
-        });
-      })
-      .catch(err => console.error('Erro ao registrar Service Worker do Painel:', err));
+    const isLocalhost = Boolean(
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '[::1]'
+    );
 
-    let _swReloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (_swReloaded) return;
-      _swReloaded = true;
-      window.location.reload();
-    });
+    if (isLocalhost) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (const registration of registrations) {
+          registration.unregister().then(success => {
+            if (success) console.log('[SW LOCAL] Service Worker desregistrado com sucesso para localhost');
+          });
+        }
+      }).catch(err => console.warn('[SW LOCAL] Erro ao desregistrar Service Worker:', err));
+
+      if ('caches' in window) {
+        caches.keys().then(cacheNames => {
+          return Promise.all(
+            cacheNames.map(cacheName => {
+              console.log('[SW LOCAL] Apagando Cache Storage local:', cacheName);
+              return caches.delete(cacheName);
+            })
+          );
+        }).catch(err => console.warn('[SW LOCAL] Erro ao apagar Cache Storage:', err));
+      }
+    } else {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => {
+          reg.update();
+          reg.addEventListener('updatefound', () => {
+            const sw = reg.installing;
+            if (sw) sw.addEventListener('statechange', () => {
+              if (sw.state === 'installed' && navigator.serviceWorker.controller) sw.postMessage?.('skip-waiting');
+            });
+          });
+        })
+        .catch(err => console.error('Erro ao registrar Service Worker do Painel:', err));
+
+      let _swReloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (_swReloaded) return;
+        _swReloaded = true;
+        window.location.reload();
+      });
+    }
   }
 
   // Hide loader after a initial delay
@@ -945,12 +973,20 @@ async function loginSuccess() {
     document.getElementById('display-role').innerText = 'Painel do Dono';
     document.getElementById('nav-owner-group').classList.remove('hidden');
     document.getElementById('dashboard-title').innerText = 'Painel de Logística Dahora Expresso';
-    switchDashboardTab('owner-overview');
+
+    const savedTab = localStorage.getItem('activeDashboardTab') || '';
+    const isValidOwnerTab = savedTab && savedTab.startsWith('owner-');
+    const targetTab = isValidOwnerTab ? savedTab : 'owner-overview';
+    switchDashboardTab(targetTab);
   } else if (profile === 'client') {
     document.getElementById('display-role').innerText = 'Painel do Cliente';
     document.getElementById('nav-client-group').classList.remove('hidden');
     document.getElementById('dashboard-title').innerText = 'Painel do Cliente Parceiro';
-    switchDashboardTab('client-overview');
+
+    const savedTab = localStorage.getItem('activeDashboardTab') || '';
+    const isValidClientTab = savedTab && (savedTab.startsWith('client-') || savedTab === 'order-tracking');
+    const targetTab = isValidClientTab ? savedTab : 'client-overview';
+    switchDashboardTab(targetTab);
   }
 }
 
@@ -969,7 +1005,10 @@ async function handleLogout() {
   localStorage.removeItem('activeDashboardTab');
 
   const ownerFab = document.getElementById('owner-fab-btn');
-  if (ownerFab) ownerFab.classList.add('hidden');
+  if (ownerFab) {
+    ownerFab.classList.add('hidden');
+    ownerFab.style.display = 'none';
+  }
 
   if (supabaseClient && supportChatChannel) {
     try { supabaseClient.removeChannel(supportChatChannel); } catch (e) {}
@@ -995,10 +1034,10 @@ function updateOwnerFabVisibility(targetTab) {
   const currentTab = targetTab || document.querySelector('.nav-item.active')?.getAttribute('data-tab') || localStorage.getItem('activeDashboardTab') || '';
   const isTelesTab = (currentTab === 'owner-teles');
 
-  const role = (currentAdminProfile?.role || '').toLowerCase();
-  const isAuthorizedRole = (role === 'owner' || role === 'admin') || ['dono', 'administrador', 'socio', 'operador', 'gerente'].includes(role);
+  const role = String(currentAdminProfile?.role || mockData?.activeProfile || '').trim().toLowerCase();
+  const isClientUser = (role === 'client' || role === 'client_user' || localStorage.getItem('loggedInProfile') === 'client');
 
-  if (isTelesTab && (isAuthorizedRole || !currentAdminProfile)) {
+  if (isTelesTab && !isClientUser) {
     ownerFab.classList.remove('hidden');
     ownerFab.style.display = 'flex';
   } else {
@@ -1009,6 +1048,15 @@ function updateOwnerFabVisibility(targetTab) {
 
 async function switchDashboardTab(targetTab) {
   if (!targetTab) return;
+
+  const userRole = (currentAdminProfile?.role || '').trim().toLowerCase();
+  const isClientUser = (userRole === 'client_user' || userRole === 'client' || mockData.activeProfile === 'client');
+
+  if (isClientUser && targetTab.startsWith('owner-')) {
+    targetTab = 'client-overview';
+  } else if (!isClientUser && targetTab.startsWith('client-')) {
+    targetTab = 'owner-overview';
+  }
 
   localStorage.setItem('activeDashboardTab', targetTab);
 
@@ -1085,6 +1133,8 @@ async function switchDashboardTab(targetTab) {
     const accordion = document.getElementById('extratos-accordion');
     if (accordion) accordion.classList.add('open');
     await initClientExtract();
+  } else if (targetTab === 'owner-commercial-clients' || targetTab === 'owner-commercial') {
+    await loadCommercialClientsModule();
   } else if (targetTab === 'owner-settings') {
     await fetchFleet();
     renderRiderSettings();
@@ -1316,21 +1366,36 @@ function getCurrentWeekBounds() {
   return { monday, sunday };
 }
 
+function isUuidString(str) {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+}
+
 function formatOrderIdForDisplay(teleCode, fallbackObj) {
-  let code = teleCode;
-  if (!code && fallbackObj) {
+  const extractValidCode = (val) => {
+    if (!val) return null;
+    const s = String(val).trim();
+    if (!s || isUuidString(s)) return null;
+    return s;
+  };
+
+  let candidate = extractValidCode(teleCode);
+
+  if (!candidate && fallbackObj) {
     if (typeof fallbackObj === 'string') {
-      code = fallbackObj;
-    } else {
-      code = fallbackObj.tele_code || fallbackObj.teleCode || fallbackObj.code;
+      candidate = extractValidCode(fallbackObj);
+    } else if (typeof fallbackObj === 'object') {
+      candidate = extractValidCode(fallbackObj.tele_code) ||
+                  extractValidCode(fallbackObj.teleCode) ||
+                  extractValidCode(fallbackObj.code);
     }
   }
-  if (code && typeof code === 'string') {
-    const trimmed = code.trim();
-    if (trimmed.startsWith('TEL-')) return trimmed;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
-    if (!isUuid) return 'TEL-' + trimmed.replace(/^#/, '');
+
+  if (candidate) {
+    if (candidate.startsWith('TEL-')) return candidate;
+    return 'TEL-' + candidate.replace(/^#/, '');
   }
+
   return 'Código indisponível';
 }
 
@@ -1365,6 +1430,7 @@ function formatOrderDate(dateText, createdAt) {
   } else {
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}/${month}, ${timeStr}`;
   }
 }
 
@@ -1788,8 +1854,10 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
 
 // Calculate delivery price and distance on form inputs
 function calculateEstimate(type = 'client') {
-  const addressInput = document.getElementById(`${type}-delivery-address`).value;
   const estimateBox = document.getElementById(`${type}-estimate-box`);
+  if (!estimateBox) return;
+
+  const addressInput = document.getElementById(`${type}-delivery-address`)?.value || '';
 
   if (addressInput.length < 5) {
     estimateBox.classList.add('hidden');
@@ -1828,173 +1896,16 @@ function calculateEstimate(type = 'client') {
     priceText = 'R$ ' + price.toFixed(2).replace('.', ',');
   }
   
-  // Store values temporarily for form submission
-  window.lastEstimate = {
-    distance: distance + ' km',
-    time: minutes + ' min',
-    price: priceText
-  };
-
   // Update UI values
-  document.getElementById(`${type}-est-distance`).innerText = window.lastEstimate.distance;
-  document.getElementById(`${type}-est-time`).innerText = window.lastEstimate.time;
-  document.getElementById(`${type}-est-price`).innerText = window.lastEstimate.price;
+  const estDistEl = document.getElementById(`${type}-est-distance`);
+  const estTimeEl = document.getElementById(`${type}-est-time`);
+  const estPriceEl = document.getElementById(`${type}-est-price`);
+
+  if (estDistEl) estDistEl.innerText = distance + ' km';
+  if (estTimeEl) estTimeEl.innerText = minutes + ' min';
+  if (estPriceEl) estPriceEl.innerText = priceText;
 
   estimateBox.classList.remove('hidden');
-}
-
-// Submit delivery request and trigger live tracking simulation
-async function submitDeliveryRequestLegacy(event, type = 'client') {
-  event.preventDefault();
-
-  const destAddress = document.getElementById(`${type}-delivery-address`).value;
-  const cargoType = document.getElementById(`${type}-cargo-type`).value;
-  const payMethod = document.getElementById(`${type}-payment-method`).value;
-  const notes = document.getElementById(`${type}-order-notes`).value;
-  const clientName = document.getElementById(`${type}-delivery-client`)?.value || 'Cliente não vinculado';
-  const destName = document.getElementById(`${type}-delivery-dest-name`)?.value || 'Cliente informado';
-
-  if (!window.lastEstimate) return;
-
-  // Get Tele ID (use input override if manual, otherwise auto-generate)
-  let randomId;
-  if (type === 'manual') {
-    randomId = document.getElementById('manual-delivery-id').value.trim();
-    if (!randomId) {
-      randomId = await getNextTeleId();
-    }
-  } else {
-    randomId = await getNextTeleId();
-  }
-  
-  // Format payment name
-  const changeEl = document.getElementById(`${type}-change-amount`);
-  const changeVal = changeEl ? changeEl.value : '50';
-  const paymentStr = payMethod === 'pix' ? 'PIX (Pago pelo App)' : (payMethod === 'cartao-maquininha' ? 'Levar Maquininha' : 'Dinheiro (Troco para R$ ' + changeVal + ')');
-  // Format cargo name
-  const cargoStr = cargoType === 'lanche' ? '🍔 Lanches e Bebidas' : (cargoType === 'pizza' ? '🍕 Pizza Família' : (cargoType === 'doce' ? '🍩 Doces e Sobremesas' : '📄 Papelada / Documentos'));
-
-  let pickupLat = -29.8378;
-  let pickupLng = -51.1444;
-  if (requestMaps[type].restaurantMarker) {
-    const pos = requestMaps[type].restaurantMarker.getPosition();
-    pickupLat = pos.lat();
-    pickupLng = pos.lng();
-  } else if (Array.isArray(requestMaps[type].centerCoords)) {
-    pickupLat = requestMaps[type].centerCoords[0];
-    pickupLng = requestMaps[type].centerCoords[1];
-  }
-
-  let destLat = null;
-  let destLng = null;
-  if (requestMaps[type].marker) {
-    const pos = requestMaps[type].marker.getPosition();
-    destLat = pos.lat();
-    destLng = pos.lng();
-  } else if (requestMaps[type].destCoords) {
-    destLat = requestMaps[type].destCoords.lat;
-    destLng = requestMaps[type].destCoords.lng;
-  }
-
-  if (!destLat || !destLng) {
-    alert("Erro: Não foi possível obter a geolocalização para este endereço. Certifique-se de digitar ou colar um endereço com número residencial válido no Rio Grande do Sul.");
-    return;
-  }
-
-  // Create delivery payload for Supabase
-  const newDelivery = {
-    id: randomId,
-    client: clientName,
-    dest_name: destName,
-    address: destAddress,
-    dist: window.lastEstimate.distance,
-    price: window.lastEstimate.price,
-    payment: paymentStr,
-    cargo: cargoStr,
-    pickup_lat: pickupLat,
-    pickup_lng: pickupLng,
-    dest_lat: destLat,
-    dest_lng: destLng
-  };
-
-  // Insert to Supabase teles table
-  if (supabaseClient) {
-    const { error } = await supabaseClient
-      .from('teles')
-      .insert([newDelivery]);
-    if (error) {
-      console.error("Error inserting delivery to Supabase:", error);
-      alert("Erro ao criar a solicitação de entrega no Supabase.");
-      return;
-    }
-  }
-
-  // Setup tracker UI elements
-  const newOrder = {
-    id: randomId,
-    destName: destName,
-    address: destAddress,
-    rider: 'Aguardando entregador',
-    dist: window.lastEstimate.distance,
-    price: window.lastEstimate.price,
-    date: 'Hoje, ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-    status: 'Buscando Entregador',
-    statusClass: 'status-progress'
-  };
-
-  // Add order to local mock state history
-  mockData.clientHistory.unshift(newOrder);
-
-  // Setup tracker UI elements
-  document.getElementById('tracker-order-id').innerText = randomId;
-  document.getElementById('tracker-badge-status').innerText = 'Buscando Entregador';
-  document.getElementById('tracker-badge-status').className = 'status-badge status-warning';
-  
-  // Enable tracking tab
-  const trackingTabBtn = document.getElementById('nav-tracking-tab');
-  if (trackingTabBtn) {
-    trackingTabBtn.disabled = false;
-    trackingTabBtn.querySelector('.pulse-dot').classList.remove('hidden');
-  }
-  
-  // Reset stepper nodes status
-  document.querySelectorAll('.step-node').forEach(node => {
-    node.className = 'step-node';
-    node.querySelector('.text-muted').innerText = '--:--';
-  });
-  
-  // Set first step active
-  document.getElementById('step-1').className = 'step-node active';
-  document.getElementById('step-1-time').innerText = 'Confirmado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-  // Hide Courier Profile card inside tracker initially
-  document.getElementById('tracker-courier-box').classList.add('hidden');
-
-  // Switch view to tracking
-  switchDashboardTab('order-tracking');
-
-  // Trigger real-time logistics tracking
-  startRealtimeTracking(newDelivery);
-
-  // Reset Request Form safely
-  const requestForm = document.getElementById('order-request-form') || document.getElementById('request-delivery-form');
-  if (requestForm) requestForm.reset();
-  
-  document.getElementById(`${type}-estimate-box`).classList.add('hidden');
-  window.lastEstimate = null;
-
-  // Reset request map markers
-  if (requestMaps[type].marker) {
-    requestMaps[type].marker.setMap(null);
-    requestMaps[type].marker = null;
-  }
-  if (requestMaps[type].polyline) {
-    requestMaps[type].polyline.setMap(null);
-    requestMaps[type].polyline = null;
-  }
-
-  // Close request delivery modal if active
-  closeRequestDeliveryModal();
 }
 
 // Reset tracking tab to disabled once finished or logged out
@@ -3029,6 +2940,23 @@ function getOriginBadgeHtml(paymentStr, idStr) {
 
 window.activeRouteMaps = window.activeRouteMaps || {};
 
+let currentTeleSortOrder = 'desc'; // 'desc' (mais recentes primeiro) | 'asc' (mais antigas primeiro)
+
+window.toggleTeleSortOrder = function() {
+  currentTeleSortOrder = (currentTeleSortOrder === 'desc') ? 'asc' : 'desc';
+  if (typeof window.renderTelesUnified === 'function') window.renderTelesUnified();
+  if (typeof window.renderClientTelesUnified === 'function') window.renderClientTelesUnified();
+};
+
+function getTeleTimestamp(item) {
+  if (!item) return 0;
+  const raw = item.created_at || item.date;
+  if (!raw) return 0;
+  const d = new Date(raw);
+  const time = d.getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
 // Unified Teles Render Engine
 window.renderTelesUnified = function() {
   const container = document.getElementById('teles-content-container');
@@ -3082,6 +3010,7 @@ window.renderTelesUnified = function() {
 
     return {
       id: d.id,
+      tele_code: d.tele_code || null,
       type: 'pending',
       client: d.client || 'Cliente não vinculado',
       destName: d.destName,
@@ -3113,6 +3042,7 @@ window.renderTelesUnified = function() {
 
     return {
       id: o.id,
+      tele_code: o.tele_code || null,
       type: type,
       client: o.client || 'Cliente não vinculado',
       destName: o.destName,
@@ -3144,8 +3074,22 @@ window.renderTelesUnified = function() {
     filteredList = allItems.filter(item => item.type === currentTeleFilter);
   }
 
-  // Sort descending by ID
-  filteredList.sort((a, b) => b.id.localeCompare(a.id));
+  // Sort by real canonical timestamp (created_at)
+  filteredList.sort((a, b) => {
+    const timeA = getTeleTimestamp(a);
+    const timeB = getTeleTimestamp(b);
+    if (timeA !== timeB) {
+      return currentTeleSortOrder === 'desc' ? (timeB - timeA) : (timeA - timeB);
+    }
+    const codeA = String(a.tele_code || a.id || '');
+    const codeB = String(b.tele_code || b.id || '');
+    return currentTeleSortOrder === 'desc' ? codeB.localeCompare(codeA) : codeA.localeCompare(codeB);
+  });
+
+  const sortBtnLabel = document.getElementById('sort-order-label');
+  if (sortBtnLabel) {
+    sortBtnLabel.innerText = currentTeleSortOrder === 'desc' ? 'Recentes ↓' : 'Antigas ↑';
+  }
 
   // 3. Output selected view mode
   if (teleViewMode === 'grid') {
@@ -3345,7 +3289,14 @@ function renderTelesTable(list) {
             <th>Cliente</th>
             <th>Destinatário / Endereço</th>
             <th>Motoboy Atribuído</th>
-            <th>Data/Hora</th>
+            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenação por Data/Hora">
+              <div style="display: inline-flex; align-items: center; gap: 6px;">
+                <span>Data/Hora</span>
+                <span style="font-size: 0.78rem; padding: 2px 6px; background: rgba(255, 185, 0, 0.15); color: var(--primary); border-radius: 4px; border: 1px solid rgba(255, 185, 0, 0.3);">
+                  ${currentTeleSortOrder === 'desc' ? '↓ Recentes' : '↑ Antigas'}
+                </span>
+              </div>
+            </th>
             <th>Valores (Taxa/Repasse)</th>
             <th style="text-align: right;">Ações</th>
           </tr>
@@ -4002,6 +3953,7 @@ window.renderClientTelesUnified = function() {
 
     return {
       id: d.id,
+      tele_code: d.tele_code || null,
       type: 'pending',
       client: d.client || 'Cliente não vinculado',
       destName: d.destName,
@@ -4030,6 +3982,7 @@ window.renderClientTelesUnified = function() {
 
     return {
       id: o.id,
+      tele_code: o.tele_code || null,
       type: type,
       client: o.client || 'Cliente não vinculado',
       destName: o.destName,
@@ -4057,7 +4010,16 @@ window.renderClientTelesUnified = function() {
     filteredList = allItems.filter(item => item.type === currentClientTeleFilter);
   }
 
-  filteredList.sort((a, b) => b.id.localeCompare(a.id));
+  filteredList.sort((a, b) => {
+    const timeA = getTeleTimestamp(a);
+    const timeB = getTeleTimestamp(b);
+    if (timeA !== timeB) {
+      return currentTeleSortOrder === 'desc' ? (timeB - timeA) : (timeA - timeB);
+    }
+    const codeA = String(a.tele_code || a.id || '');
+    const codeB = String(b.tele_code || b.id || '');
+    return currentTeleSortOrder === 'desc' ? codeB.localeCompare(codeA) : codeA.localeCompare(codeB);
+  });
 
   if (clientTeleViewMode === 'grid') {
     renderClientTelesGrid(filteredList);
@@ -4152,7 +4114,14 @@ function renderClientTelesTable(list) {
             <th>Destinatário</th>
             <th>Endereço</th>
             <th>Motoboy</th>
-            <th>Data/Hora</th>
+            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenação por Data/Hora">
+              <div style="display: inline-flex; align-items: center; gap: 6px;">
+                <span>Data/Hora</span>
+                <span style="font-size: 0.78rem; padding: 2px 6px; background: rgba(255, 185, 0, 0.15); color: var(--primary); border-radius: 4px; border: 1px solid rgba(255, 185, 0, 0.3);">
+                  ${currentTeleSortOrder === 'desc' ? '↓ Recentes' : '↑ Antigas'}
+                </span>
+              </div>
+            </th>
             <th>Taxa (Valor)</th>
             <th>Status</th>
           </tr>
@@ -6289,8 +6258,11 @@ function updateRequestDeliveryDestination(lat, lng, shouldCenter = false, should
       if (curLngInput) curLngInput.value = newLng;
 
       updateRequestDeliveryDestination(newLat, newLng, false, false, type);
+      updatePrecisionBadge(type);
     });
   }
+
+  updatePrecisionBadge(type);
 
   if (shouldCenter) {
     requestMaps[type].map.setCenter(destLatLng);
@@ -6342,6 +6314,9 @@ async function setupAddressGeocodingListener(type = 'client') {
   const addressInput = document.getElementById(`${type}-delivery-address`);
   if (!addressInput) return;
   if (addressInput.dataset.autocompleteInitialized) return;
+  if (type === 'manual' && addressInput.dataset.placesNewActive === 'true') {
+    return;
+  }
 
   try {
     await loadGoogleMapsApi();
@@ -6349,8 +6324,15 @@ async function setupAddressGeocodingListener(type = 'client') {
 
     addressInput.dataset.autocompleteInitialized = "true";
 
+    const rsBounds = new window.google.maps.LatLngBounds(
+      { lat: -33.75, lng: -57.65 },
+      { lat: -27.08, lng: -49.69 }
+    );
+
     const options = {
       componentRestrictions: { country: "br" },
+      bounds: rsBounds,
+      strictBounds: true,
       fields: ["address_components", "geometry", "formatted_address"],
       types: ["address"]
     };
@@ -6372,6 +6354,7 @@ async function setupAddressGeocodingListener(type = 'client') {
       requestMaps[type].destCoords = { lat, lng, isManualPin: false };
       addressInput.value = place.formatted_address;
       addressInput.dataset.lastResolvedAddress = place.formatted_address;
+      addressInput.dataset.isPlacesResolved = "true";
 
       const precisionInput = document.getElementById(`${type}-geocoding-precision`) || document.getElementById('manual-geocoding-precision');
       if (precisionInput) precisionInput.value = String(locType).toLowerCase();
@@ -6382,6 +6365,7 @@ async function setupAddressGeocodingListener(type = 'client') {
     addressInput.addEventListener('input', () => {
       const val = addressInput.value.trim();
       if (val !== addressInput.dataset.lastResolvedAddress) {
+        delete addressInput.dataset.isPlacesResolved;
         requestMaps[type].destCoords = null;
         if (requestMaps[type].marker) {
           requestMaps[type].marker.setMap(null);
@@ -6398,10 +6382,19 @@ async function setupAddressGeocodingListener(type = 'client') {
       const value = addressInput.value.trim();
       if (!value) return;
       if (addressInput.dataset.lastResolvedAddress === value) return;
+      if (addressInput.dataset.isPlacesResolved === "true") return;
+
+      const isManualAdjusted = document.getElementById(`${type}-location-adjusted-manually`)?.value === 'true' || document.getElementById('manual-location-adjusted-manually')?.value === 'true';
+      if (isManualAdjusted) return;
 
       if (window.google?.maps?.Geocoder) {
         const geocoder = new window.google.maps.Geocoder();
-        geocoder.geocode({ address: value, componentRestrictions: { country: 'BR' } }, (results, status) => {
+        const query = (value.toLowerCase().includes('rs') || value.toLowerCase().includes('rio grande do sul')) ? value : `${value}, RS, Brasil`;
+        geocoder.geocode({
+          address: query,
+          bounds: rsBounds,
+          componentRestrictions: { country: 'BR', administrativeArea: 'RS' }
+        }, (results, status) => {
           if (status === 'OK' && results[0]) {
             const res = results[0];
             const lat = res.geometry.location.lat();
@@ -7917,7 +7910,6 @@ async function showRequestDeliveryModal() {
   const notesInput = document.getElementById('manual-order-notes');
   const summaryBox = document.getElementById('manual-address-summary-box');
   const confirmArea = document.getElementById('manual-number-confirm-area');
-  const estimateBox = document.getElementById('manual-estimate-box');
   const changeGroup = document.getElementById('manual-change-amount-group');
 
   if (searchInput) searchInput.value = '';
@@ -7934,7 +7926,6 @@ async function showRequestDeliveryModal() {
   if (notesInput) notesInput.value = '';
   if (summaryBox) summaryBox.classList.add('hidden');
   if (confirmArea) confirmArea.classList.add('hidden');
-  if (estimateBox) estimateBox.classList.add('hidden');
   if (changeGroup) changeGroup.classList.add('hidden');
 
   const latEl = document.getElementById('manual-delivery-lat');
@@ -7993,8 +7984,115 @@ async function showRequestDeliveryModal() {
   if (window.lucide) lucide.createIcons();
 }
 
-function closeRequestDeliveryModal(event) {
-  if (event && event.target !== event.currentTarget) return;
+function resetManualDeliveryForm() {
+  if (requestMaps && requestMaps.manual) {
+    requestMaps.manual.destCoords = null;
+  }
+  const form = document.getElementById('request-delivery-form');
+  if (form) form.reset();
+
+  const searchInput = document.getElementById('admin-client-search');
+  const selectedInput = document.getElementById('selectedClientId');
+  const destNameInput = document.getElementById('manual-delivery-dest-name');
+  const destPhoneInput = document.getElementById('manual-delivery-dest-phone');
+  const addrInput = document.getElementById('manual-delivery-address');
+  const numInput = document.getElementById('manual-delivery-number');
+  const numVisibleInput = document.getElementById('manual-delivery-number-input');
+  const snCb = document.getElementById('manual-delivery-sn-cb');
+  const compInput = document.getElementById('manual-delivery-complement');
+  const neighInput = document.getElementById('manual-delivery-neighborhood');
+  const cityInput = document.getElementById('manual-delivery-city');
+  const notesInput = document.getElementById('manual-order-notes');
+  const summaryBox = document.getElementById('manual-address-summary-box');
+  const confirmArea = document.getElementById('manual-number-confirm-area');
+  const changeGroup = document.getElementById('manual-change-amount-group');
+  const errBanner = document.getElementById('manual-modal-error-banner');
+
+  if (searchInput) searchInput.value = '';
+  if (selectedInput) selectedInput.value = '';
+  if (destNameInput) destNameInput.value = '';
+  if (destPhoneInput) destPhoneInput.value = '';
+  if (addrInput) addrInput.value = '';
+  if (numInput) numInput.value = '';
+  if (numVisibleInput) { numVisibleInput.value = ''; numVisibleInput.disabled = false; }
+  if (snCb) snCb.checked = false;
+  if (compInput) compInput.value = '';
+  if (neighInput) neighInput.value = '';
+  if (cityInput) cityInput.value = 'Sapucaia do Sul';
+  if (notesInput) notesInput.value = '';
+  if (summaryBox) summaryBox.classList.add('hidden');
+  if (confirmArea) confirmArea.classList.add('hidden');
+  if (changeGroup) changeGroup.classList.add('hidden');
+  if (errBanner) errBanner.remove();
+
+  const latEl = document.getElementById('manual-delivery-lat');
+  const lngEl = document.getElementById('manual-delivery-lng');
+  const precEl = document.getElementById('manual-geocoding-precision');
+  const manEl = document.getElementById('manual-location-adjusted-manually');
+  const warnEl = document.getElementById('manual-geocoding-warning');
+
+  if (latEl) latEl.value = '';
+  if (lngEl) lngEl.value = '';
+  if (precEl) precEl.value = 'unconfirmed';
+  if (manEl) manEl.value = 'false';
+  if (warnEl) warnEl.classList.add('hidden');
+
+  manualTelePickupState = {
+    clientId: null,
+    isCustom: false,
+    customAddress: '',
+    customLat: null,
+    customLng: null,
+    customPlaceId: ''
+  };
+
+  if (typeof updatePrecisionBadge === 'function') updatePrecisionBadge('manual');
+}
+
+function isManualDeliveryFormDirty() {
+  const selectedClientId = document.getElementById('selectedClientId')?.value?.trim();
+  const destName = document.getElementById('manual-delivery-dest-name')?.value?.trim();
+  const destPhone = document.getElementById('manual-delivery-dest-phone')?.value?.trim();
+  const address = document.getElementById('manual-delivery-address')?.value?.trim();
+  const complement = document.getElementById('manual-delivery-complement')?.value?.trim();
+  const charge = document.getElementById('manual-delivery-charge')?.value?.trim();
+  const orderValue = document.getElementById('manual-order-value')?.value?.trim();
+  const notes = document.getElementById('manual-order-notes')?.value?.trim();
+  const isManualAdjusted = document.getElementById('manual-location-adjusted-manually')?.value === 'true';
+
+  return !!(selectedClientId || destName || destPhone || address || complement || charge || orderValue || notes || isManualAdjusted);
+}
+
+function showDiscardConfirmationModal() {
+  const modal = document.getElementById('modal-confirm-discard-request');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
+}
+
+function hideDiscardConfirmationModal() {
+  const modal = document.getElementById('modal-confirm-discard-request');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+}
+
+function closeRequestDeliveryModal(skipConfirm = false, event = null) {
+  if (event && event.type === 'click' && event.target === event.currentTarget) return;
+
+  if (skipConfirm !== true && isManualDeliveryFormDirty()) {
+    showDiscardConfirmationModal();
+    return;
+  }
+
+  forceCloseRequestDeliveryModal();
+}
+
+function forceCloseRequestDeliveryModal() {
+  hideDiscardConfirmationModal();
+
   const modal = document.getElementById('modal-request-delivery');
   if (modal) {
     modal.classList.add('hidden');
@@ -8002,7 +8100,7 @@ function closeRequestDeliveryModal(event) {
   }
 
   // Full cleanup of map instance to avoid memory leak and layout conflicts
-  if (requestMaps.manual.map) {
+  if (requestMaps.manual && requestMaps.manual.map) {
     if (requestMaps.manual.marker && requestMaps.manual.marker.setMap) {
       requestMaps.manual.marker.setMap(null);
     }
@@ -8021,12 +8119,8 @@ function closeRequestDeliveryModal(event) {
     requestMaps.manual.map = null;
   }
 
-  // Reset the address input and its autocomplete binding state
-  const manualAddressInput = document.getElementById('manual-delivery-address');
-  if (manualAddressInput) {
-    manualAddressInput.value = '';
-    delete manualAddressInput.dataset.autocompleteInitialized;
-  }
+  // Reset all form inputs and states cleanly
+  resetManualDeliveryForm();
 }
 
 function toggleChangeAmountGroup(type = 'client') {
@@ -8043,6 +8137,8 @@ function toggleChangeAmountGroup(type = 'client') {
 
 window.showRequestDeliveryModal = showRequestDeliveryModal;
 window.closeRequestDeliveryModal = closeRequestDeliveryModal;
+window.hideDiscardConfirmationModal = hideDiscardConfirmationModal;
+window.forceCloseRequestDeliveryModal = forceCloseRequestDeliveryModal;
 window.toggleChangeAmountGroup = toggleChangeAmountGroup;
 
 // ─── DASHBOARD OVERVIEW REAL METRICS ─────────────────────────────────────────
@@ -8591,6 +8687,11 @@ window.handleRiderExtractPeriodPresetChange = function() {
   loadRiderExtract();
 };
 
+window.handleRiderExtractRiderChange = function() {
+  currentRiderExtractPage = 1;
+  loadRiderExtract();
+};
+
 window.initRiderExtract = async function() {
   await fetchFleet();
   await fetchRiderConsumables();
@@ -8599,8 +8700,8 @@ window.initRiderExtract = async function() {
   const select = document.getElementById('rider-extract-rider-select');
   if (select) {
     const currentVal = select.value;
-    select.innerHTML = '<option value="">Todos os Motoboys</option>';
-    (mockData.fleet || []).forEach(r => {
+    select.innerHTML = '<option value="">Selecione um motoboy</option>';
+    (mockData.fleet || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(r => {
       select.innerHTML += `<option value="${escapeHtml(r.id)}">${escapeHtml(formatRiderDisplayName(r))}</option>`;
     });
     select.value = currentVal;
@@ -8617,25 +8718,38 @@ window.loadRiderExtract = async function(targetPage) {
   const selectRider = document.getElementById('rider-extract-rider-select');
   const selectedRiderId = selectRider ? selectRider.value : '';
   const periodPreset = document.getElementById('rider-extract-period-preset')?.value || 'week';
-  
-  const { start, end } = resolveDateRange(periodPreset, 'rider-extract-start-date', 'rider-extract-end-date');
-  const startDateStr = start.toISOString().split('T')[0];
-  const endDateStr = end.toISOString().split('T')[0];
+  const statusFilter = document.getElementById('rider-extract-status-select')?.value || '';
 
-  let targetRiderId = selectedRiderId;
-  if (!targetRiderId && mockData.fleet && mockData.fleet.length > 0) {
-    targetRiderId = mockData.fleet[0].id;
-  }
+  const emptyState = document.getElementById('rider-extract-empty-state');
+  const loadingState = document.getElementById('rider-extract-loading-state');
+  const contentBox = document.getElementById('rider-extract-content');
 
-  if (!targetRiderId) {
+  // 1. ESTADO INICIAL / SEM SELEÇÃO: Não executa nenhuma RPC financeira backend
+  if (!selectedRiderId) {
+    if (contentBox) contentBox.style.display = 'none';
+    if (loadingState) loadingState.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'block';
+
     const tbody = document.getElementById('rider-extract-table-body');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Selecione um motoboy para visualizar o extrato.</td></tr>`;
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Selecione um motoboy para visualizar o extrato.</td></tr>`;
+    }
     return;
   }
 
+  // 2. TROCA DE MOTOBOY: Esconde dados anteriores instantaneamente e mostra loading
+  if (emptyState) emptyState.style.display = 'none';
+  if (contentBox) contentBox.style.display = 'none';
+  if (loadingState) loadingState.style.display = 'block';
+
   try {
+    const { start, end } = resolveDateRange(periodPreset, 'rider-extract-start-date', 'rider-extract-end-date');
+    const startDateStr = start.toISOString().split('T')[0];
+    const endDateStr = end.toISOString().split('T')[0];
+
+    // Consultas isoladas estritamente pelo rider_id selecionado
     const { data: summaryData, error: summaryErr } = await supabaseClient.rpc('admin_get_rider_financial_summary', {
-      p_motoboy_id: targetRiderId,
+      p_motoboy_id: selectedRiderId,
       p_start_date: startDateStr,
       p_end_date: endDateStr
     });
@@ -8643,7 +8757,7 @@ window.loadRiderExtract = async function(targetPage) {
     if (summaryErr) console.warn('Aviso em admin_get_rider_financial_summary:', summaryErr.message);
 
     const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('admin_get_rider_financial_statement', {
-      p_motoboy_id: targetRiderId,
+      p_motoboy_id: selectedRiderId,
       p_start_date: startDateStr,
       p_end_date: endDateStr,
       p_limit: FINANCIAL_PAGE_SIZE,
@@ -8664,8 +8778,10 @@ window.loadRiderExtract = async function(targetPage) {
       net_total: 0
     };
 
+    // Renderiza Cards do Resumo
     const elCount = document.getElementById('rider-extract-count');
     const elGross = document.getElementById('rider-extract-gross');
+    const elCommission = document.getElementById('rider-extract-commission');
     const elConsumables = document.getElementById('rider-extract-consumables');
     const elCredits = document.getElementById('rider-extract-credits');
     const elAdjustments = document.getElementById('rider-extract-adjustments');
@@ -8673,38 +8789,82 @@ window.loadRiderExtract = async function(targetPage) {
 
     if (elCount) elCount.innerText = s.completed_deliveries_count || 0;
     if (elGross) elGross.innerText = `R$ ${parseFloat(s.delivery_earnings || 0).toFixed(2).replace('.', ',')}`;
+    if (elCommission) elCommission.innerText = `R$ 0,00`;
     if (elConsumables) elConsumables.innerText = `R$ ${parseFloat(s.consumables_total || 0).toFixed(2).replace('.', ',')}`;
     if (elCredits) elCredits.innerText = `R$ ${parseFloat(s.credits_total || 0).toFixed(2).replace('.', ',')}`;
     if (elAdjustments) elAdjustments.innerText = `R$ ${(parseFloat(s.positive_adjustments_total || 0) - parseFloat(s.negative_adjustments_total || 0)).toFixed(2).replace('.', ',')}`;
     if (elNet) elNet.innerText = `R$ ${parseFloat(s.net_total || 0).toFixed(2).replace('.', ',')}`;
 
-    const items = (stmtData && stmtData.items) ? stmtData.items : [];
+    let items = (stmtData && stmtData.items) ? stmtData.items : [];
+
+    // VALIDAÇÃO 1: Filtro autoritativo por Status da Tele (se aplicado pelo admin)
+    if (statusFilter && items.length > 0) {
+      const teleIds = [...new Set(items.map(item => item.tele_id).filter(Boolean))];
+      let teleStatusMap = {};
+
+      if (teleIds.length > 0) {
+        const { data: teleRows, error: teleErr } = await supabaseClient
+          .from('teles')
+          .select('id, status')
+          .in('id', teleIds);
+
+        if (!teleErr && teleRows) {
+          teleRows.forEach(t => {
+            teleStatusMap[t.id] = t.status;
+          });
+        }
+      }
+
+      items = items.filter(item => {
+        if (item.tele_id) {
+          const tStatus = teleStatusMap[item.tele_id];
+          if (!tStatus) return false;
+          if (statusFilter === 'Entregue') {
+            return tStatus === 'Entregue' || tStatus === 'Concluído';
+          }
+          return tStatus.toLowerCase() === statusFilter.toLowerCase();
+        }
+        return false;
+      });
+    }
+
     const totalCount = (stmtData && stmtData.total_count) || items.length;
     const totalPages = Math.ceil(totalCount / FINANCIAL_PAGE_SIZE) || 1;
 
+    // Renderiza a Tabela de Detalhamento de Movimentações (6 Colunas Semânticas)
     const tbody = document.getElementById('rider-extract-table-body');
     if (tbody) {
       if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma movimentação financeira localizada para o período.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma movimentação financeira localizada para o período.</td></tr>`;
       } else {
         tbody.innerHTML = items.map(item => {
-          const itemDate = new Date(item.created_at);
+          const itemDate = new Date(item.created_at || item.competency_date);
           const dateFormatted = isNaN(itemDate) ? item.competency_date : itemDate.toLocaleDateString('pt-BR');
           const timeFormatted = isNaN(itemDate) ? '' : itemDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
           const val = parseFloat(item.amount || 0);
 
           let badgeClass = item.direction === 'credit' ? 'badge-success' : 'badge-danger';
+          let badgeLabel = item.direction === 'credit' ? 'CRÉDITO' : 'DÉBITO';
           let signStr = item.direction === 'credit' ? '+' : '-';
-          if (item.type === 'estorno') badgeClass = 'badge-warning';
+          if (item.type === 'estorno') {
+            badgeClass = 'badge-warning';
+            badgeLabel = 'ESTORNO';
+          }
+
+          let typeLabel = item.type;
+          if (item.type === 'credito_entrega') typeLabel = 'Crédito de Entrega';
+          else if (item.type === 'ajuste_credito') typeLabel = 'Ajuste Crédito';
+          else if (item.type === 'ajuste_debito') typeLabel = 'Ajuste Débito / Consumível';
+          else if (item.type === 'estorno') typeLabel = 'Estorno';
 
           return `
             <tr>
               <td><strong>${escapeHtml(item.tele_code ? '#' + item.tele_code : 'LANÇAMENTO')}</strong></td>
               <td>${dateFormatted} ${timeFormatted}</td>
-              <td>${escapeHtml(item.type)}</td>
-              <td>${escapeHtml(item.description)}</td>
+              <td><span style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(typeLabel)}</span></td>
+              <td>${escapeHtml(item.description || '—')}</td>
               <td><strong class="${item.direction === 'credit' ? 'text-green' : 'text-red'}">${signStr} R$ ${val.toFixed(2).replace('.', ',')}</strong></td>
-              <td><span class="badge ${badgeClass}">${item.direction.toUpperCase()}</span></td>
+              <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
             </tr>
           `;
         }).join('');
@@ -8713,6 +8873,7 @@ window.loadRiderExtract = async function(targetPage) {
 
     renderPaginationControls('rider-extract-pagination', currentRiderExtractPage, totalPages, 'loadRiderExtract');
 
+    // Renderiza Demonstrativo Consolidado
     const summaryBox = document.getElementById('rider-extract-summary-box');
     if (summaryBox) {
       summaryBox.innerHTML = `
@@ -8729,6 +8890,9 @@ window.loadRiderExtract = async function(targetPage) {
     }
   } catch (err) {
     console.error('Error loading rider extract via RPC:', err);
+  } finally {
+    if (loadingState) loadingState.style.display = 'none';
+    if (contentBox) contentBox.style.display = 'block';
   }
 };
 
@@ -8743,200 +8907,432 @@ window.handleClientExtractPeriodPresetChange = function() {
   loadClientExtract();
 };
 
-window.initClientExtract = async function() {
-  await fetchClientHistory();
-
+window.handleClientExtractClientChange = function() {
   const select = document.getElementById('client-extract-client-select');
-  if (select) {
-    const currentVal = select.value;
-    select.innerHTML = '<option value="">Todos os Estabelecimentos</option>';
-    const clientsSet = new Set();
-    (mockData.clientHistory || []).forEach(d => {
-      const cName = d.client || d.commerce_name;
-      if (cName) clientsSet.add(cName);
-    });
+  const btnReceipt = document.getElementById('btn-open-register-receipt');
 
-    Array.from(clientsSet).sort().forEach(c => {
-      select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
-    });
-    select.value = currentVal;
+  if (btnReceipt) {
+    if (select && select.value) {
+      btnReceipt.disabled = false;
+      btnReceipt.style.cursor = 'pointer';
+      btnReceipt.style.opacity = '1';
+      btnReceipt.style.background = 'rgba(16, 185, 129, 0.15)';
+      btnReceipt.style.color = '#10b981';
+      btnReceipt.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+    } else {
+      btnReceipt.disabled = true;
+      btnReceipt.style.cursor = 'not-allowed';
+      btnReceipt.style.opacity = '0.6';
+      btnReceipt.style.background = 'rgba(16, 185, 129, 0.1)';
+      btnReceipt.style.color = 'var(--color-text-muted)';
+      btnReceipt.style.border = '1px solid var(--border-color)';
+    }
   }
 
   currentClientExtractPage = 1;
   loadClientExtract();
 };
 
-window.loadClientExtract = function(targetPage) {
+window.initClientExtract = async function() {
+  if (typeof fetchCommercialClientsForSelect === 'function') {
+    await fetchCommercialClientsForSelect();
+  }
+
+  const select = document.getElementById('client-extract-client-select');
+  if (select) {
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">Selecione um cliente</option>';
+
+    const clients = (commercialClientsSelectCache || commercialClientsForSelect || []).slice().sort((a, b) => {
+      return (a.establishment_name || '').localeCompare(b.establishment_name || '');
+    });
+
+    clients.forEach(c => {
+      const codeStr = c.client_code ? ` (${escapeHtml(c.client_code)})` : '';
+      select.innerHTML += `<option value="${escapeHtml(c.id)}">${escapeHtml(c.establishment_name)}${codeStr}</option>`;
+    });
+    select.value = currentVal;
+  }
+
+  handleClientExtractClientChange();
+};
+
+window.loadClientExtract = async function(targetPage) {
   if (targetPage) currentClientExtractPage = targetPage;
+  if (!supabaseClient) return;
 
-  const selectedClient = document.getElementById('client-extract-client-select')?.value || '';
-  const selectedClientId = document.getElementById('client-extract-client-select')?.selectedOptions[0]?.dataset?.clientId || null;
+  const selectClient = document.getElementById('client-extract-client-select');
+  const selectedClientId = selectClient ? selectClient.value : '';
   const periodPreset = document.getElementById('client-extract-period-preset')?.value || 'month';
-  
-  const { start, end } = resolveDateRange(periodPreset, 'client-extract-start-date', 'client-extract-end-date');
 
-  let ledgerEntries = [];
+  const emptyState = document.getElementById('client-extract-empty-state');
+  const loadingState = document.getElementById('client-extract-loading-state');
+  const contentBox = document.getElementById('client-extract-content');
 
-  (mockData.clientHistory || []).forEach(d => {
-    const dDate = new Date(d.date || d.created_at);
-    const clientName = d.client || d.commerce_name || 'Cliente Geral';
-    const clientId = d.client_id || d.commerce_id || null;
+  // 1. ESTADO INICIAL: Nenhum cliente selecionado -> Não dispara RPCs
+  if (!selectedClientId) {
+    if (contentBox) contentBox.style.display = 'none';
+    if (loadingState) loadingState.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'block';
 
-    if (dDate >= start && dDate <= end) {
-      // Suporte para Multi-tenant (filtragem por client_id ou nome do estabelecimento)
-      const matchesClient = !selectedClient || clientName.toLowerCase() === selectedClient.toLowerCase();
-      const matchesClientId = !selectedClientId || clientId === selectedClientId;
+    const tbody = document.getElementById('client-extract-table-body');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Selecione um cliente para visualizar o extrato.</td></tr>`;
+    }
+    return;
+  }
 
-      if (matchesClient && matchesClientId) {
-        const val = parseFloat(d.price || d.taxa || 0);
+  // 2. CLIENTE SELECIONADO: Mostra loading e oculta dados anteriores imediatamente
+  if (emptyState) emptyState.style.display = 'none';
+  if (contentBox) contentBox.style.display = 'none';
+  if (loadingState) loadingState.style.display = 'block';
 
-        // Lançamento de Débito: Tele Realizada
-        ledgerEntries.push({
-          id: d.id,
-          date: dDate,
-          documento: `Tele #${d.id}`,
-          type: 'tele_realizada',
-          typeLabel: 'Tele Realizada',
-          description: `Corrida #${d.id} (${d.origin || 'Origem'} → ${d.destination || 'Destino'})`,
-          referencia: `REF-TEL-${d.id}`,
-          origin: d.origin_type || 'sistema',
-          client_id: clientId,
-          client: clientName,
-          debit: val,
-          credit: 0,
-          overdue: d.overdue || false,
-          pending_status: d.pending_status || 'prazo',
-          is_blocked: d.is_blocked || false
-        });
+  try {
+    const { start, end } = resolveDateRange(periodPreset, 'client-extract-start-date', 'client-extract-end-date');
+    const startDateStr = start.toISOString().split('T')[0];
+    const endDateStr = end.toISOString().split('T')[0];
 
-        // Se houver quitação registrada
-        if (d.payment_status === 'Pago' || d.paid === true) {
-          ledgerEntries.push({
-            id: `REC-${d.id}`,
-            date: new Date(dDate.getTime() + 1000),
-            documento: `Recebimento PIX #${d.id}`,
-            type: 'pagamento_recebido',
-            typeLabel: 'Pagamento Recebido',
-            description: `Quitação do recebimento Tele #${d.id}`,
-            referencia: `REF-REC-${d.id}`,
-            origin: 'administrador',
-            client_id: clientId,
-            client: clientName,
-            debit: 0,
-            credit: val,
-            overdue: false,
-            pending_status: 'ok',
-            is_blocked: false
+    let s = null;
+    try {
+      const { data: stmtData, error: stmtErr } = await supabaseClient.rpc('admin_get_client_financial_statement', {
+        p_client_id: selectedClientId,
+        p_start_date: startDateStr,
+        p_end_date: endDateStr,
+        p_limit: FINANCIAL_PAGE_SIZE,
+        p_offset: (currentClientExtractPage - 1) * FINANCIAL_PAGE_SIZE
+      });
+      if (!stmtErr && stmtData && stmtData.success) {
+        s = stmtData;
+      }
+    } catch (e) {}
+
+    // Fallback: Consulta direta autoritativa ao ledger client_financial_transactions com JOIN em teles
+    if (!s) {
+      const { data: allTxs } = await supabaseClient
+        .from('client_financial_transactions')
+        .select('*, teles(tele_code)')
+        .eq('client_id', selectedClientId)
+        .order('created_at', { ascending: true });
+
+      const txs = allTxs || [];
+      let total_open_balance = 0;
+      let opening_balance = 0;
+      let billed_total = 0;
+      let paid_total = 0;
+      let completed_teles_count = 0;
+      const periodItems = [];
+
+      txs.forEach(t => {
+        const tAmount = Number(t.amount || 0);
+        const isDebit = t.direction === 'debit';
+        const tDate = new Date(t.created_at);
+        const isPeriod = tDate >= start && tDate < end;
+
+        if (isDebit) {
+          total_open_balance += tAmount;
+        } else {
+          total_open_balance -= tAmount;
+        }
+
+        if (tDate < start) {
+          opening_balance += isDebit ? tAmount : -tAmount;
+        }
+
+        if (isPeriod) {
+          if (isDebit) {
+            billed_total += tAmount;
+            if (t.type === 'cobranca_entrega' && t.tele_id) completed_teles_count++;
+          } else {
+            paid_total += tAmount;
+          }
+
+          let teleCodeStr = null;
+          if (t.teles && t.teles.tele_code) {
+            teleCodeStr = 'TEL-' + t.teles.tele_code;
+          }
+
+          periodItems.push({
+            transaction_id: t.id,
+            client_id: t.client_id,
+            tele_id: t.tele_id,
+            tele_code: teleCodeStr,
+            type: t.type,
+            direction: t.direction,
+            amount: tAmount,
+            description: t.description,
+            created_at: t.created_at,
+            running_balance: total_open_balance
           });
         }
+      });
+
+      periodItems.reverse();
+
+      s = {
+        total_open_balance,
+        opening_balance,
+        completed_teles_count,
+        billed_total,
+        paid_total,
+        total_count: periodItems.length,
+        items: periodItems.slice((currentClientExtractPage - 1) * FINANCIAL_PAGE_SIZE, currentClientExtractPage * FINANCIAL_PAGE_SIZE)
+      };
+    }
+
+    // Atualiza os Cards de Resumo (Pipeline 100% Numérico)
+    const elCount = document.getElementById('client-extract-count');
+    const elBilled = document.getElementById('client-extract-billed');
+    const elPaid = document.getElementById('client-extract-paid');
+    const elBalance = document.getElementById('client-extract-balance');
+    const elStatusBadge = document.getElementById('client-extract-status-badge');
+    const elStatusDesc = document.getElementById('client-extract-status-desc');
+
+    const totalTelesCount = Number(s.completed_teles_count || 0);
+    const billedTotalVal = Number(s.billed_total || 0);
+    const paidTotalVal = Number(s.paid_total || 0);
+    const openBalanceVal = Number(s.total_open_balance || 0);
+
+    if (elCount) elCount.innerText = totalTelesCount;
+    if (elBilled) elBilled.innerText = `R$ ${billedTotalVal.toFixed(2).replace('.', ',')}`;
+    if (elPaid) elPaid.innerText = `R$ ${paidTotalVal.toFixed(2).replace('.', ',')}`;
+    if (elBalance) elBalance.innerText = `R$ ${openBalanceVal.toFixed(2).replace('.', ',')}`;
+
+    if (elStatusBadge && elStatusDesc) {
+      if (openBalanceVal > 0) {
+        elStatusBadge.className = 'badge badge-status-warning';
+        elStatusBadge.innerText = 'Pendente';
+        elStatusDesc.innerText = 'Possui saldo atual em aberto';
+      } else {
+        elStatusBadge.className = 'badge badge-status-ok';
+        elStatusBadge.innerText = 'Em dia';
+        elStatusDesc.innerText = 'Conta sem pendências financeiras';
       }
     }
-  });
 
-  // Ordenar por data crescente para cálculo de saldo acumulado
-  ledgerEntries.sort((a, b) => a.date - b.date);
+    const items = Array.isArray(s.items) ? s.items : [];
+    const totalCount = Number(s.total_count || items.length);
+    const totalPages = Math.ceil(totalCount / FINANCIAL_PAGE_SIZE) || 1;
 
-  let runningBalance = 0;
-  let totalBilled = 0;
-  let totalPaid = 0;
-  let totalTeles = 0;
-  let hasOverdue = false;
-  let hasPendingInTerm = false;
-  let isClientBlocked = false;
+    // Tabela Razão
+    const tbody = document.getElementById('client-extract-table-body');
+    if (tbody) {
+      if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhum lançamento financeiro localizado para o período selecionado.</td></tr>`;
+      } else {
+        tbody.innerHTML = items.map(item => {
+          const itemDate = new Date(item.created_at);
+          const dFormatted = isNaN(itemDate) ? '—' : (itemDate.toLocaleDateString('pt-BR') + ' ' + itemDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
 
-  ledgerEntries.forEach(entry => {
-    if (entry.type === 'tele_realizada') totalTeles++;
-    totalBilled += entry.debit;
-    totalPaid += entry.credit;
-    runningBalance += (entry.debit - entry.credit);
-    entry.balanceAfter = runningBalance;
+          let typeBadge = '<span class="badge badge-neutral">Outro</span>';
+          if (item.type === 'cobranca_entrega') typeBadge = '<span class="badge badge-soft">Cobrança Entrega</span>';
+          else if (item.type === 'pagamento_recebido') typeBadge = '<span class="badge badge-success">Pagamento Recebido</span>';
+          else if (item.type === 'credito_concedido') typeBadge = '<span class="badge badge-success">Crédito Concedido</span>';
+          else if (item.type === 'ajuste_debito') typeBadge = '<span class="badge badge-warning">Ajuste Débito</span>';
+          else if (item.type === 'estorno') typeBadge = '<span class="badge badge-danger">Estorno</span>';
 
-    if (entry.overdue) hasOverdue = true;
-    if (entry.pending_status === 'prazo') hasPendingInTerm = true;
-    if (entry.is_blocked) isClientBlocked = true;
-  });
+          const valNum = Number(item.amount || 0);
+          const isDebit = item.direction === 'debit';
 
-  currentClientLedgerCache = ledgerEntries;
+          const debitStr = isDebit ? `<span class="financial-debit">R$ ${valNum.toFixed(2).replace('.', ',')}</span>` : '—';
+          const creditStr = !isDebit ? `<span class="financial-credit">R$ ${valNum.toFixed(2).replace('.', ',')}</span>` : '—';
 
-  // Atualizar Métricas
-  const elCount = document.getElementById('client-extract-count');
-  const elBilled = document.getElementById('client-extract-billed');
-  const elPaid = document.getElementById('client-extract-paid');
-  const elBalance = document.getElementById('client-extract-balance');
-  const elStatusBadge = document.getElementById('client-extract-status-badge');
-  const elStatusDesc = document.getElementById('client-extract-status-desc');
+          const runBalNum = Number(item.running_balance || 0);
+          const balStr = `R$ ${runBalNum.toFixed(2).replace('.', ',')}`;
+          const docStr = item.tele_code || 'LANÇAMENTO';
 
-  if (elCount) elCount.innerText = totalTeles;
-  if (elBilled) elBilled.innerText = `R$ ${totalBilled.toFixed(2).replace('.', ',')}`;
-  if (elPaid) elPaid.innerText = `R$ ${totalPaid.toFixed(2).replace('.', ',')}`;
-  if (elBalance) elBalance.innerText = `R$ ${runningBalance.toFixed(2).replace('.', ',')}`;
+          return `
+            <tr class="clickable-row" onclick="openTransactionDrawer('${escapeHtml(String(item.transaction_id))}')">
+              <td>${dFormatted}</td>
+              <td><strong>${escapeHtml(docStr)}</strong></td>
+              <td>${typeBadge}</td>
+              <td>${escapeHtml(item.description || '—')}</td>
+              <td><span style="font-size: 0.78rem; color: var(--color-text-muted);">sistema</span></td>
+              <td>${debitStr}</td>
+              <td>${creditStr}</td>
+              <td><strong>${balStr}</strong></td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
 
-  // Indicador Dinâmico de Status Financeiro (Sem Regra de Valor Fixo)
-  if (elStatusBadge && elStatusDesc) {
-    if (isClientBlocked) {
-      elStatusBadge.className = 'badge badge-status-blocked';
-      elStatusBadge.innerText = 'Bloqueado';
-      elStatusDesc.innerText = 'Bloqueio manual pelo administrador';
-    } else if (hasOverdue || runningBalance > 0 && hasOverdue) {
-      elStatusBadge.className = 'badge badge-status-danger';
-      elStatusBadge.innerText = 'Inadimplente';
-      elStatusDesc.innerText = 'Possui saldo vencido pendente';
-    } else if (runningBalance > 0 || hasPendingInTerm) {
-      elStatusBadge.className = 'badge badge-status-warning';
-      elStatusBadge.innerText = 'Atenção';
-      elStatusDesc.innerText = 'Saldo pendente dentro do prazo';
-    } else {
-      elStatusBadge.className = 'badge badge-status-ok';
-      elStatusBadge.innerText = 'Em dia';
-      elStatusDesc.innerText = 'Conta sem pendências financeiras';
+    renderPaginationControls('client-extract-pagination', currentClientExtractPage, totalPages, 'loadClientExtract');
+  } catch (err) {
+    console.error('Error loading client extract:', err);
+  } finally {
+    if (loadingState) loadingState.style.display = 'none';
+    if (contentBox) contentBox.style.display = 'block';
+  }
+};
+
+// Modal de Recebimento de Cliente & Handlers
+let currentClientReceiptIdempotencyKey = null;
+
+window.openRegisterReceiptModal = async function() {
+  const selectClient = document.getElementById('client-extract-client-select');
+  const selectedClientId = selectClient ? selectClient.value : '';
+
+  if (!selectedClientId) {
+    showToastNotification('Por favor, selecione um cliente primeiro.', 'error');
+    return;
+  }
+
+  const clientObj = (commercialClientsSelectCache || commercialClientsForSelect || []).find(c => String(c.id) === String(selectedClientId));
+  const clientName = clientObj ? clientObj.establishment_name : 'Cliente Selecionado';
+
+  const modal = document.getElementById('modal-register-client-receipt');
+  const inputName = document.getElementById('receipt-modal-client-name');
+  const inputAmount = document.getElementById('receipt-modal-amount-input');
+  const inputNotes = document.getElementById('receipt-modal-notes-input');
+  const openBalanceEl = document.getElementById('receipt-modal-open-balance');
+
+  // Consulta o saldo autoritativo atual em aberto
+  let currentOpenBal = 0;
+  if (supabaseClient) {
+    try {
+      const { data: stmtData } = await supabaseClient.rpc('admin_get_client_financial_statement', {
+        p_client_id: selectedClientId
+      });
+      if (stmtData && stmtData.success) {
+        currentOpenBal = Number(stmtData.total_open_balance || 0);
+      }
+    } catch (e) {}
+
+    if (currentOpenBal === 0) {
+      const { data: txs } = await supabaseClient
+        .from('client_financial_transactions')
+        .select('amount, direction')
+        .eq('client_id', selectedClientId);
+
+      (txs || []).forEach(t => {
+        const amt = Number(t.amount || 0);
+        currentOpenBal += (t.direction === 'debit' ? amt : -amt);
+      });
     }
   }
 
-  // Paginação
-  const totalPages = Math.ceil(ledgerEntries.length / FINANCIAL_PAGE_SIZE) || 1;
-  if (currentClientExtractPage > totalPages) currentClientExtractPage = totalPages;
+  if (inputName) inputName.value = clientName;
+  if (inputAmount) inputAmount.value = '';
+  if (inputNotes) inputNotes.value = '';
+  if (openBalanceEl) openBalanceEl.innerText = `R$ ${currentOpenBal.toFixed(2).replace('.', ',')}`;
 
-  const startIndex = (currentClientExtractPage - 1) * FINANCIAL_PAGE_SIZE;
-  const pageEntries = ledgerEntries.slice(startIndex, startIndex + FINANCIAL_PAGE_SIZE);
+  // Idempotency key única para este envio
+  currentClientReceiptIdempotencyKey = `receipt:${selectedClientId}:${Date.now()}:${Math.random().toString(36).substring(2, 7)}`;
 
-  // Tabela Razão
-  const tbody = document.getElementById('client-extract-table-body');
-  if (tbody) {
-    if (ledgerEntries.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhum lançamento financeiro localizado para este período/cliente.</td></tr>`;
-    } else {
-      tbody.innerHTML = pageEntries.map(entry => {
-        const dFormatted = entry.date.toLocaleDateString('pt-BR') + ' ' + entry.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        
-        let typeBadge = '<span class="badge badge-neutral">Outro</span>';
-        if (entry.type === 'tele_realizada') typeBadge = '<span class="badge badge-soft">Tele Realizada</span>';
-        else if (entry.type === 'pagamento_recebido') typeBadge = '<span class="badge badge-success">Recebimento</span>';
-        else if (entry.type === 'credito') typeBadge = '<span class="badge badge-success">Crédito</span>';
-        else if (entry.type === 'ajuste') typeBadge = '<span class="badge badge-warning">Ajuste</span>';
-        else if (entry.type === 'estorno') typeBadge = '<span class="badge badge-danger">Estorno</span>';
+  if (modal) modal.classList.remove('hidden');
+};
 
-        const debitStr = entry.debit > 0 ? `<span class="financial-debit">R$ ${entry.debit.toFixed(2).replace('.', ',')}</span>` : '—';
-        const creditStr = entry.credit > 0 ? `<span class="financial-credit">R$ ${entry.credit.toFixed(2).replace('.', ',')}</span>` : '—';
-        const balStr = `R$ ${entry.balanceAfter.toFixed(2).replace('.', ',')}`;
+window.closeRegisterReceiptModal = function() {
+  const modal = document.getElementById('modal-register-client-receipt');
+  if (modal) modal.classList.add('hidden');
+  currentClientReceiptIdempotencyKey = null;
+};
 
-        return `
-          <tr class="clickable-row" onclick="openTransactionDrawer('${escapeHtml(String(entry.id))}')">
-            <td>${dFormatted}</td>
-            <td><strong>${escapeHtml(entry.documento)}</strong></td>
-            <td>${typeBadge}</td>
-            <td>${escapeHtml(entry.description)}</td>
-            <td><code style="font-size: 0.78rem; background: var(--bg-input); padding: 2px 6px; border-radius: 4px;">${escapeHtml(entry.referencia)}</code></td>
-            <td><span style="font-size: 0.78rem; color: var(--color-text-muted); text-transform: capitalize;">${escapeHtml(entry.origin)}</span></td>
-            <td>${debitStr}</td>
-            <td>${creditStr}</td>
-            <td><strong>${balStr}</strong></td>
-          </tr>
-        `;
-      }).join('');
-    }
+window.handleRegisterClientReceipt = async function(event) {
+  event.preventDefault();
+  if (!supabaseClient) return;
+
+  const selectClient = document.getElementById('client-extract-client-select');
+  const selectedClientId = selectClient ? selectClient.value : '';
+  const inputAmount = document.getElementById('receipt-modal-amount-input');
+  const selectMethod = document.getElementById('receipt-modal-method-select');
+  const inputNotes = document.getElementById('receipt-modal-notes-input');
+  const submitBtn = document.getElementById('btn-submit-client-receipt');
+
+  if (!selectedClientId) {
+    showToastNotification('Nenhum cliente selecionado.', 'error');
+    return;
   }
 
-  renderPaginationControls('client-extract-pagination', currentClientExtractPage, totalPages, 'loadClientExtract');
+  const amountVal = parseFloat(inputAmount?.value || 0);
+  const paymentMethod = selectMethod?.value || 'PIX';
+  const notes = inputNotes?.value?.trim() || '';
+
+  if (isNaN(amountVal) || amountVal <= 0) {
+    showToastNotification('Por favor, informe um valor válido para o recebimento.', 'error');
+    return;
+  }
+
+  // Validação Frontend do Saldo em Aberto
+  let currentOpenBal = 0;
+  try {
+    const { data: stmtCheck } = await supabaseClient.rpc('admin_get_client_financial_statement', {
+      p_client_id: selectedClientId
+    });
+    if (stmtCheck && stmtCheck.success) {
+      currentOpenBal = Number(stmtCheck.total_open_balance || 0);
+    }
+  } catch (e) {}
+
+  if (currentOpenBal === 0) {
+    const { data: txs } = await supabaseClient
+      .from('client_financial_transactions')
+      .select('amount, direction')
+      .eq('client_id', selectedClientId);
+
+    (txs || []).forEach(t => {
+      const amt = Number(t.amount || 0);
+      currentOpenBal += (t.direction === 'debit' ? amt : -amt);
+    });
+  }
+
+  if (amountVal > currentOpenBal) {
+    showToastNotification('O valor recebido não pode ser maior que o saldo atual em aberto do cliente.', 'error');
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Processando...</span>';
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('admin_register_client_payment', {
+      p_client_id: selectedClientId,
+      p_amount: amountVal,
+      p_payment_method: paymentMethod,
+      p_notes: notes,
+      p_idempotency_key: currentClientReceiptIdempotencyKey
+    });
+
+    if (error) {
+      console.error('[ADMIN_REGISTER_CLIENT_PAYMENT_RPC_ERROR]', {
+        rpc: 'admin_register_client_payment',
+        error: error.message,
+        code: error.code,
+        details: error.details
+      });
+      showToastNotification('Não foi possível registrar o recebimento. Nenhuma alteração financeira foi realizada. Tente novamente.', 'error');
+      return;
+    }
+
+    if (data && data.success === false) {
+      if (data.error_code === 'AMOUNT_EXCEEDS_BALANCE') {
+        showToastNotification('O valor recebido não pode ser maior que o saldo atual em aberto do cliente.', 'error');
+      } else {
+        showToastNotification(data.message || 'Erro ao registrar recebimento.', 'error');
+      }
+      return;
+    }
+
+    closeRegisterReceiptModal();
+    showToastNotification((data && data.message) || 'Recebimento registrado com sucesso.');
+
+    // Recarrega o extrato
+    loadClientExtract();
+  } catch (err) {
+    console.error('[ADMIN_REGISTER_CLIENT_PAYMENT_UNEXPECTED_ERROR]', {
+      rpc: 'admin_register_client_payment',
+      error: err.message
+    });
+    showToastNotification('Não foi possível registrar o recebimento. Nenhuma alteração financeira foi realizada. Tente novamente.', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Confirmar Recebimento';
+      if (window.lucide) lucide.createIcons();
+    }
+  }
 };
 
 // 6. Drawer de Detalhes do Lançamento
@@ -9071,6 +9467,67 @@ window.closeTransactionDrawer = function(event) {
 let commercialClientsList = [];
 let activeCommercialClient = null;
 let clientFinancialLedgerStore = [];
+let commercialClientsModuleFetchPromise = null;
+
+// Função Auxiliar de Normalização Defensiva do Schema de Commercial Clients
+function normalizeCommercialClient(row) {
+  if (!row) return null;
+
+  const clientCode = row.client_code || row.public_code || '—';
+  const establishmentName = row.establishment_name || 'Sem nome';
+  const responsibleName = row.responsible_name || 'Não informado';
+  const phone = row.phone || row.phone_normalized || 'Não informado';
+  const email = row.email || row.email_normalized || 'Não informado';
+  const address = row.pickup_address || row.address || '';
+
+  const latNum = (row.pickup_latitude !== null && row.pickup_latitude !== undefined && row.pickup_latitude !== '')
+    ? Number(row.pickup_latitude)
+    : null;
+  const lngNum = (row.pickup_longitude !== null && row.pickup_longitude !== undefined && row.pickup_longitude !== '')
+    ? Number(row.pickup_longitude)
+    : null;
+
+  return {
+    id: String(row.id || ''),
+    client_code: clientCode,
+    establishment_name: establishmentName,
+    responsible_name: responsibleName,
+    phone: phone,
+    email: email,
+    document: row.document || row.document_normalized || '',
+    address: address,
+    neighborhood: row.neighborhood || '',
+    city: row.city || '',
+    state: row.state || '',
+    postal_code: row.postal_code || '',
+    lifecycle_status: row.lifecycle_status || 'ativo',
+    financial_status: row.financial_status || 'em_dia',
+    created_at: row.created_at || new Date().toISOString(),
+    pickup_address: address,
+    pickup_latitude: (latNum !== null && !isNaN(latNum)) ? latNum : null,
+    pickup_longitude: (lngNum !== null && !isNaN(lngNum)) ? lngNum : null,
+    pickup_place_id: row.pickup_place_id || null,
+    is_internal: !!row.is_internal,
+    open_balance: Number(row.open_balance) || 0
+  };
+}
+
+// Rotina Canônica de Carregamento do Módulo de Clientes Comerciais
+async function loadCommercialClientsModule() {
+  if (commercialClientsModuleFetchPromise) {
+    return commercialClientsModuleFetchPromise;
+  }
+
+  commercialClientsModuleFetchPromise = (async () => {
+    try {
+      await fetchCommercialClients();
+    } finally {
+      commercialClientsModuleFetchPromise = null;
+    }
+  })();
+
+  return commercialClientsModuleFetchPromise;
+}
 
 // 1. Carregar Clientes Comerciais do Banco / API Dev
 async function fetchCommercialClients() {
@@ -9084,54 +9541,54 @@ async function fetchCommercialClients() {
       if (error) {
         console.warn("Aviso ao buscar commercial_clients:", error.message);
       } else if (data) {
-        commercialClientsList = data;
+        commercialClientsList = data.map(normalizeCommercialClient).filter(Boolean);
       }
     } else {
       // Dev Adapter fallback via API local
       const res = await fetch('/api/admin/clients');
       if (res.ok) {
         const json = await res.json();
-        commercialClientsList = json.clients || [];
+        commercialClientsList = (json.clients || []).map(normalizeCommercialClient).filter(Boolean);
       }
     }
   } catch (err) {
     console.error("Erro ao buscar clientes comerciais:", err);
   }
 
-  // Garantir fixtures de homologação se a lista estiver vazia
-  if (!commercialClientsList || commercialClientsList.length === 0) {
+  // Garantir fixtures de homologação se a lista estiver vazia e não estiver conectado ao Supabase
+  if ((!commercialClientsList || commercialClientsList.length === 0) && !supabaseClient) {
     commercialClientsList = [
-      {
+      normalizeCommercialClient({
         id: 'client-fixture-001',
-        public_code: 'CLI-000001',
+        client_code: 'CLI-000001',
         establishment_name: 'Lanchonete Dahora',
         responsible_name: 'Gerente Lanchonete',
-        phone_normalized: '11999998888',
-        email_normalized: 'gerente@lanchonetedahora.com.br',
-        document_normalized: '12.345.678/0001-90',
+        phone: '11999998888',
+        email: 'gerente@lanchonetedahora.com.br',
+        document: '12.345.678/0001-90',
         lifecycle_status: 'ativo',
         financial_status: 'em_dia',
         address: 'Rua Principal, 100',
         neighborhood: 'Centro',
         city: 'Porto Alegre',
         created_at: new Date().toISOString()
-      },
-      {
+      }),
+      normalizeCommercialClient({
         id: 'client-fixture-002',
-        public_code: 'CLI-000002',
+        client_code: 'CLI-000002',
         establishment_name: 'Cliente Teste (Homologação)',
         responsible_name: 'Usuário Teste',
-        phone_normalized: '11988887777',
-        email_normalized: 'cliente.teste@local.test',
-        document_normalized: '98.765.432/0001-10',
+        phone: '11988887777',
+        email: 'cliente.teste@local.test',
+        document: '98.765.432/0001-10',
         lifecycle_status: 'teste',
         financial_status: 'em_dia',
         address: 'Av. das Indústrias, 500',
         neighborhood: 'Industrial',
         city: 'São Paulo',
         created_at: new Date().toISOString()
-      }
-    ];
+      })
+    ].filter(Boolean);
   }
 
   renderCommercialClientsTable();
@@ -9149,10 +9606,10 @@ function renderCommercialClientsTable() {
   const filtered = commercialClientsList.filter(c => {
     const matchesSearch = !searchQuery || 
       (c.establishment_name || '').toLowerCase().includes(searchQuery) ||
-      (c.public_code || '').toLowerCase().includes(searchQuery) ||
+      (c.client_code || '').toLowerCase().includes(searchQuery) ||
       (c.responsible_name || '').toLowerCase().includes(searchQuery) ||
-      (c.email_normalized || '').toLowerCase().includes(searchQuery) ||
-      (c.phone_normalized || '').includes(searchQuery);
+      (c.email || '').toLowerCase().includes(searchQuery) ||
+      (c.phone || '').includes(searchQuery);
 
     const matchesLifecycle = (lifecycleFilter === 'all') || (c.lifecycle_status === lifecycleFilter);
 
@@ -9173,7 +9630,7 @@ function renderCommercialClientsTable() {
   }
 
   tbody.innerHTML = filtered.map(c => {
-    const dateFormatted = new Date(c.created_at).toLocaleDateString('pt-BR');
+    const dateFormatted = c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '—';
     
     // Status Badges
     const lifecycleBadgeClass = c.lifecycle_status === 'ativo' ? 'badge-success' :
@@ -9182,43 +9639,47 @@ function renderCommercialClientsTable() {
 
     const financialBadgeClass = c.financial_status === 'em_dia' ? 'badge-success' : 'badge-danger';
 
-    // Total teles & saldo mock/calculado para o cliente
+    // Total teles para o cliente
     const totalTeles = (mockData.clientHistory || []).filter(d => 
       String(d.client_id) === String(c.id) || (d.client || '').toLowerCase() === (c.establishment_name || '').toLowerCase()
     ).length;
 
-    const openBalance = 0; // Saldo em dia
+    const openBalance = c.open_balance || 0;
+
+    const hasValidLocation = c.pickup_latitude !== null && c.pickup_longitude !== null && !isNaN(c.pickup_latitude) && !isNaN(c.pickup_longitude);
+
+    const locationBadge = !hasValidLocation
+      ? `<div style="margin-top: 4px;"><span class="badge badge-warning" style="font-size: 0.7rem; padding: 2px 6px;">Localização de coleta ainda não definida</span></div>`
+      : `<div style="margin-top: 4px;"><span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px;">Coleta configurada</span></div>`;
 
     return `
       <tr>
-        <td><strong style="color: var(--cyan-text); font-family: monospace;">${escapeHtml(c.public_code)}</strong></td>
-        <td>
-          <div style="font-weight: 600;">${escapeHtml(c.establishment_name)}</div>
-          <span style="font-size: 0.75rem; color: var(--color-text-muted);">${escapeHtml(c.address || '')}</span>
-          ${(!c.pickup_latitude || !c.pickup_longitude || isNaN(Number(c.pickup_latitude)) || isNaN(Number(c.pickup_longitude))) ? `<div style="margin-top: 4px;"><span class="badge badge-warning" style="font-size: 0.7rem; padding: 2px 6px;">Localização de coleta ainda não definida</span></div>` : ''}
+        <td><span class="client-code-chip">${escapeHtml(c.client_code)}</span></td>
+        <td class="comm-col-establishment">
+          <div class="comm-establishment-name">${escapeHtml(c.establishment_name)}</div>
+          <div class="comm-establishment-address">${escapeHtml(c.address || '—')}</div>
+          ${locationBadge}
         </td>
         <td>${escapeHtml(c.responsible_name)}</td>
-        <td>
-          <div>${escapeHtml(c.phone_normalized)}</div>
-          <span style="font-size: 0.75rem; color: var(--color-text-muted);">${escapeHtml(c.email_normalized)}</span>
+        <td class="comm-col-contact">
+          <div class="comm-contact-phone">${escapeHtml(c.phone)}</div>
+          <div class="comm-contact-email">${escapeHtml(c.email)}</div>
         </td>
-        <td><span class="badge ${lifecycleBadgeClass}">${escapeHtml(c.lifecycle_status.toUpperCase())}</span></td>
-        <td><span class="badge ${financialBadgeClass}">${escapeHtml(c.financial_status.replace('_', ' ').toUpperCase())}</span></td>
-        <td><strong>${totalTeles}</strong></td>
-        <td><strong style="color: #10b981;">R$ ${openBalance.toFixed(2).replace('.', ',')}</strong></td>
+        <td><span class="badge ${lifecycleBadgeClass}">${escapeHtml((c.lifecycle_status || '').toUpperCase())}</span></td>
+        <td><span class="badge ${financialBadgeClass}">${escapeHtml((c.financial_status || '').replace('_', ' ').toUpperCase())}</span></td>
+        <td style="text-align: center;"><strong>${totalTeles}</strong></td>
+        <td style="text-align: right;"><strong style="color: #10b981;">R$ ${openBalance.toFixed(2).replace('.', ',')}</strong></td>
         <td>${dateFormatted}</td>
-        <td style="text-align: right;">
-          <div style="display: flex; gap: 6px; justify-content: flex-end;">
-            <button class="btn btn-secondary btn-sm" onclick="openTestClientPanel('${c.id}', 'test')" title="Logar no Painel deste Cliente">
-              <i data-lucide="external-link" style="width: 14px; height: 14px;"></i> <span>Abrir Painel</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="toggleClientStatus('${c.id}')" title="Alterar Status">
-              <i data-lucide="${c.lifecycle_status === 'ativo' ? 'pause-circle' : 'play-circle'}" style="width: 14px; height: 14px;"></i>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="resetClientAccess('${c.id}')" title="Resetar Acesso">
-              <i data-lucide="key" style="width: 14px; height: 14px;"></i>
-            </button>
-          </div>
+        <td class="comm-actions-cell">
+          <button class="btn-icon-action"
+                  data-client-id="${c.id}"
+                  onclick="toggleClientActionDropdown(event, '${c.id}')"
+                  title="Ações do cliente"
+                  aria-label="Ações do cliente"
+                  aria-expanded="false"
+                  aria-haspopup="menu">
+            <i data-lucide="more-vertical"></i>
+          </button>
         </td>
       </tr>
     `;
@@ -9227,19 +9688,164 @@ function renderCommercialClientsTable() {
   if (window.lucide) window.lucide.createIcons();
 }
 
+// ----------------------------------------------------
+// GERENCIADOR DO MENU CONTEXTUAL FLUTUANTE DE AÇÕES
+// ----------------------------------------------------
+let currentOpenDropdownClientId = null;
+
+function closeCommActionDropdown() {
+  const el = document.getElementById('comm-client-floating-dropdown');
+  if (el) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+  }
+  if (currentOpenDropdownClientId) {
+    const btn = document.querySelector(`.btn-icon-action[data-client-id="${currentOpenDropdownClientId}"]`);
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.classList.remove('active');
+    }
+    currentOpenDropdownClientId = null;
+  }
+}
+
+function initCommClientFloatingMenuListeners() {
+  if (window._commClientListenersAttached) return;
+  window._commClientListenersAttached = true;
+
+  document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('comm-client-floating-dropdown');
+    if (!dropdown || dropdown.style.display === 'none') return;
+
+    if (dropdown.contains(e.target) || e.target.closest('.btn-icon-action')) {
+      return;
+    }
+    closeCommActionDropdown();
+  });
+
+  window.addEventListener('scroll', () => {
+    closeCommActionDropdown();
+  }, { capture: true, passive: true });
+
+  window.addEventListener('resize', () => {
+    closeCommActionDropdown();
+  }, { passive: true });
+}
+
+function toggleClientActionDropdown(event, clientId) {
+  event.stopPropagation();
+  initCommClientFloatingMenuListeners();
+
+  if (currentOpenDropdownClientId === clientId) {
+    closeCommActionDropdown();
+    return;
+  }
+
+  closeCommActionDropdown();
+
+  const client = (commercialClientsList || []).find(c => String(c.id) === String(clientId));
+  if (!client) return;
+
+  let dropdown = document.getElementById('comm-client-floating-dropdown');
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = 'comm-client-floating-dropdown';
+    dropdown.className = 'comm-actions-dropdown';
+    document.body.appendChild(dropdown);
+  }
+
+  const isAtivo = client.lifecycle_status === 'ativo';
+
+  dropdown.innerHTML = `
+    <button class="comm-dropdown-item" onclick="handleCommClientDropdownAction(event, '${clientId}', 'pickup')">
+      <i data-lucide="map-pin"></i>
+      <span>Ponto de Coleta</span>
+    </button>
+    <button class="comm-dropdown-item" onclick="handleCommClientDropdownAction(event, '${clientId}', 'panel')">
+      <i data-lucide="external-link"></i>
+      <span>Abrir Painel</span>
+    </button>
+    <button class="comm-dropdown-item" onclick="handleCommClientDropdownAction(event, '${clientId}', 'status')">
+      <i data-lucide="${isAtivo ? 'pause-circle' : 'play-circle'}"></i>
+      <span>${isAtivo ? 'Pausar Cliente' : 'Ativar Cliente'}</span>
+    </button>
+    <button class="comm-dropdown-item" onclick="handleCommClientDropdownAction(event, '${clientId}', 'recover')">
+      <i data-lucide="key"></i>
+      <span>Recuperar Acesso</span>
+    </button>
+  `;
+
+  if (window.lucide) window.lucide.createIcons({ el: dropdown });
+
+  const btn = event.currentTarget;
+  btn.setAttribute('aria-expanded', 'true');
+  btn.classList.add('active');
+  currentOpenDropdownClientId = clientId;
+
+  dropdown.style.display = 'flex';
+
+  const rect = btn.getBoundingClientRect();
+  const menuHeight = dropdown.offsetHeight || 160;
+  const menuWidth = dropdown.offsetWidth || 175;
+
+  let left = rect.right - menuWidth;
+  if (left < 10) left = 10;
+
+  let top = rect.bottom + 4;
+  if (rect.bottom + menuHeight > window.innerHeight - 10) {
+    top = rect.top - menuHeight - 4;
+  }
+
+  dropdown.style.top = `${Math.max(10, top)}px`;
+  dropdown.style.left = `${left}px`;
+}
+
+function handleCommClientDropdownAction(event, clientId, action) {
+  event.stopPropagation();
+  closeCommActionDropdown();
+
+  if (action === 'pickup') {
+    openConfigureClientPickupModal(clientId);
+  } else if (action === 'panel') {
+    openAdminClientPanelView(clientId);
+  } else if (action === 'status') {
+    toggleClientStatus(clientId);
+  } else if (action === 'recover') {
+    openRecoverClientAccessModal(clientId);
+  }
+}
+
+window.toggleClientActionDropdown = toggleClientActionDropdown;
+window.handleCommClientDropdownAction = handleCommClientDropdownAction;
+window.closeCommActionDropdown = closeCommActionDropdown;
+
 // 3. Métricas Rápidas no Admin
 function updateCommercialMetrics() {
   const activeCount = commercialClientsList.filter(c => c.lifecycle_status === 'ativo').length;
   const testCount = commercialClientsList.filter(c => c.lifecycle_status === 'teste').length;
-  const totalTeles = (mockData.clientHistory || []).length;
+  let totalTelesCount = 0;
+  if (Array.isArray(window.allTelesList) && window.allTelesList.length > 0) {
+    totalTelesCount = window.allTelesList.filter(t => t.client_id || t.commercial_client_id).length;
+  } else if (Array.isArray(mockData.clientHistory)) {
+    totalTelesCount = mockData.clientHistory.length;
+  }
+
+  let totalOpenBalance = 0;
+  commercialClientsList.forEach(c => {
+    if (c.open_balance) {
+      totalOpenBalance += Number(c.open_balance) || 0;
+    }
+  });
 
   const elActive = document.getElementById('comm-metric-active-count');
   const elTest = document.getElementById('comm-metric-test-count');
   const elTotal = document.getElementById('comm-metric-total-teles');
+  const elBalance = document.getElementById('comm-metric-open-balance');
 
   if (elActive) elActive.innerText = activeCount;
   if (elTest) elTest.innerText = testCount;
-  if (elTotal) elTotal.innerText = totalTeles;
+  if (elTotal) elTotal.innerText = totalTelesCount;
+  if (elBalance) elBalance.innerText = `R$ ${totalOpenBalance.toFixed(2).replace('.', ',')}`;
 }
 
 // 4. Modal de Novo Cliente Comercial & Controle de Localização
@@ -9530,7 +10136,7 @@ async function submitAddCommercialClient(event) {
     resetCommClientLocationState();
 
     closeAddCommercialClientModal();
-    await fetchCommercialClients();
+    await loadCommercialClientsModule();
 
   } catch (err) {
     console.error("Erro ao cadastrar cliente:", err);
@@ -9544,6 +10150,208 @@ async function submitAddCommercialClient(event) {
   }
 }
 window.submitAddCommercialClient = submitAddCommercialClient;
+
+// 4.1. Modal de Configuração do Ponto de Coleta do Cliente Comercial
+let configurePickupMap = null;
+let configurePickupMarker = null;
+let configurePickupLocationState = {
+  address: '',
+  latitude: null,
+  longitude: null,
+  place_id: '',
+  city: '',
+  state: ''
+};
+
+async function openConfigureClientPickupModal(clientId) {
+  const client = commercialClientsList.find(c => String(c.id) === String(clientId)) || Array.from(opClientsStoreMap.values()).find(c => String(c.id) === String(clientId));
+  if (!client) {
+    alert("Cliente não encontrado.");
+    return;
+  }
+
+  document.getElementById('configure-pickup-client-id').value = clientId;
+  document.getElementById('configure-pickup-modal-title').innerText = `Ponto de Coleta — ${client.establishment_name}`;
+  const addressInput = document.getElementById('configure-pickup-address');
+  if (addressInput) addressInput.value = client.address || client.pickup_address || '';
+
+  const modal = document.getElementById('modal-configure-client-pickup');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
+
+  const initialLat = (client.pickup_latitude && !isNaN(Number(client.pickup_latitude))) ? Number(client.pickup_latitude) : -29.8247;
+  const initialLng = (client.pickup_longitude && !isNaN(Number(client.pickup_longitude))) ? Number(client.pickup_longitude) : -51.1444;
+
+  configurePickupLocationState = {
+    address: client.address || '',
+    latitude: initialLat,
+    longitude: initialLng,
+    place_id: client.pickup_place_id || '',
+    city: client.city || '',
+    state: client.state || ''
+  };
+
+  setTimeout(async () => {
+    try {
+      await loadGoogleMapsApi();
+      const container = document.getElementById('configure-pickup-map');
+      if (!container) return;
+
+      const pos = { lat: initialLat, lng: initialLng };
+
+      if (!configurePickupMap) {
+        configurePickupMap = new window.google.maps.Map(container, {
+          center: pos,
+          zoom: 15,
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false,
+          zoomControl: true
+        });
+
+        configurePickupMarker = new window.google.maps.Marker({
+          position: pos,
+          map: configurePickupMap,
+          draggable: true,
+          title: 'Ponto de Coleta'
+        });
+
+        configurePickupMarker.addListener('dragend', (evt) => {
+          if (evt && evt.latLng) {
+            configurePickupLocationState.latitude = evt.latLng.lat();
+            configurePickupLocationState.longitude = evt.latLng.lng();
+          }
+        });
+      } else {
+        window.google.maps.event.trigger(configurePickupMap, 'resize');
+        configurePickupMap.setCenter(pos);
+        if (configurePickupMarker) configurePickupMarker.setPosition(pos);
+      }
+
+      if (addressInput && !addressInput.dataset.autocompleteAttached) {
+        addressInput.dataset.autocompleteAttached = 'true';
+        const autocomplete = new window.google.maps.places.Autocomplete(addressInput, {
+          componentRestrictions: { country: "br" },
+          bounds: new window.google.maps.LatLngBounds({ lat: -33.75, lng: -57.65 }, { lat: -27.08, lng: -49.69 }),
+          fields: ["address_components", "geometry", "formatted_address", "place_id"]
+        });
+
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (place && place.geometry && place.geometry.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            configurePickupLocationState.latitude = lat;
+            configurePickupLocationState.longitude = lng;
+            configurePickupLocationState.address = place.formatted_address;
+            configurePickupLocationState.place_id = place.place_id || '';
+            if (configurePickupMap) configurePickupMap.setCenter({ lat, lng });
+            if (configurePickupMarker) configurePickupMarker.setPosition({ lat, lng });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("Error loading configurePickupMap:", err);
+    }
+  }, 200);
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeConfigureClientPickupModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  const modal = document.getElementById('modal-configure-client-pickup');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+}
+
+async function submitConfigureClientPickup(event) {
+  if (event) event.preventDefault();
+  const clientId = document.getElementById('configure-pickup-client-id')?.value;
+  const address = document.getElementById('configure-pickup-address')?.value?.trim();
+
+  if (!clientId) {
+    alert("Cliente não selecionado.");
+    return;
+  }
+  if (!address) {
+    alert("Informe o endereço de coleta.");
+    return;
+  }
+
+  let lat = configurePickupLocationState.latitude;
+  let lng = configurePickupLocationState.longitude;
+
+  if (configurePickupMarker && typeof configurePickupMarker.getPosition === 'function') {
+    const pos = configurePickupMarker.getPosition();
+    if (pos) {
+      lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+      lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+    }
+  }
+
+  if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
+    alert("Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas do ponto de coleta.");
+    return;
+  }
+
+  try {
+    if (supabaseClient) {
+      const { error } = await supabaseClient
+        .from('commercial_clients')
+        .update({
+          address: address,
+          pickup_latitude: lat,
+          pickup_longitude: lng,
+          pickup_place_id: configurePickupLocationState.place_id || null
+        })
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      // Confirmação pós-UPDATE: re-consultar no Supabase para garantir que persistiu
+      const { data: verifiedData, error: verifyErr } = await supabaseClient
+        .from('commercial_clients')
+        .select('id, address, pickup_latitude, pickup_longitude, pickup_place_id')
+        .eq('id', clientId)
+        .maybeSingle();
+
+      if (verifyErr || !verifiedData) {
+        throw new Error("Não foi possível confirmar a gravação do ponto de coleta no banco de dados.");
+      }
+
+      if (verifiedData.pickup_latitude == null || verifiedData.pickup_longitude == null || isNaN(Number(verifiedData.pickup_latitude)) || isNaN(Number(verifiedData.pickup_longitude))) {
+        throw new Error("As coordenadas do ponto de coleta não foram gravadas corretamente no banco de dados.");
+      }
+    } else {
+      const client = opClientsStoreMap.get(String(clientId));
+      if (client) {
+        client.address = address;
+        client.pickup_address = address;
+        client.pickup_latitude = lat;
+        client.pickup_longitude = lng;
+        client.pickup_place_id = configurePickupLocationState.place_id || null;
+      }
+    }
+
+    // Somente após confirmação de persistência no Supabase:
+    await fetchCommercialClientsForSelect();
+    await loadCommercialClientsModule();
+    closeConfigureClientPickupModal();
+    showToastNotification("Ponto de coleta salvo com sucesso!");
+  } catch (err) {
+    console.error("Erro ao atualizar ponto de coleta:", err);
+    showToastNotification(`Falha ao salvar ponto de coleta: ${err.message || 'Erro de persistência.'}`);
+  }
+}
+
+window.openConfigureClientPickupModal = openConfigureClientPickupModal;
+window.closeConfigureClientPickupModal = closeConfigureClientPickupModal;
+window.submitConfigureClientPickup = submitConfigureClientPickup;
 
 // 5. Ações Administrativas de Clientes
 async function toggleClientStatus(clientId) {
@@ -9567,27 +10375,342 @@ async function toggleClientStatus(clientId) {
   showToastNotification(`Status do cliente "${client.establishment_name}" alterado para ${nextStatus}.`);
 }
 
-function resetClientAccess(clientId) {
+let pendingRecoverClientId = null;
+
+function openRecoverClientAccessModal(clientId) {
   const client = commercialClientsList.find(c => String(c.id) === String(clientId));
   if (!client) return;
-  alert(`Instruções de redefinição de acesso enviadas para o email ${client.email_normalized}.`);
+
+  const email = (client.email || '').trim();
+  if (!email || email === '—' || email === 'Não informado' || !email.includes('@')) {
+    showToastNotification("Este cliente não possui um e-mail de acesso válido cadastrado.", "warning");
+    return;
+  }
+
+  pendingRecoverClientId = clientId;
+
+  const nameEl = document.getElementById('recover-modal-client-name');
+  const emailEl = document.getElementById('recover-modal-client-email');
+  const noticeEl = document.getElementById('recover-modal-notice');
+  const btn = document.getElementById('btn-confirm-recover-client-access');
+
+  if (nameEl) nameEl.textContent = client.establishment_name;
+  if (emailEl) emailEl.textContent = email;
+  if (noticeEl) {
+    noticeEl.classList.add('hidden');
+    noticeEl.textContent = '';
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<i data-lucide="mail" style="width: 14px; height: 14px;"></i> Enviar Recuperação`;
+  }
+
+  const modal = document.getElementById('modal-recover-client-access');
+  if (modal) modal.classList.remove('hidden');
+  if (window.lucide) window.lucide.createIcons();
 }
 
-// 6. Abrir Painel de Teste / Simulação do Cliente
-function openTestClientPanel(clientId, mode) {
-  const client = commercialClientsList.find(c => String(c.id) === String(clientId)) || commercialClientsList[0];
+function closeRecoverClientAccessModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn') && event.target.tagName !== 'BUTTON') {
+    return;
+  }
+  pendingRecoverClientId = null;
+  const modal = document.getElementById('modal-recover-client-access');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitRecoverClientAccess() {
+  if (!pendingRecoverClientId) return;
+
+  const client = commercialClientsList.find(c => String(c.id) === String(pendingRecoverClientId));
+  if (!client) {
+    closeRecoverClientAccessModal();
+    return;
+  }
+
+  const email = (client.email || '').trim();
+  if (!email || !email.includes('@')) {
+    showToastNotification("Este cliente não possui um e-mail de acesso válido cadastrado.", "warning");
+    closeRecoverClientAccessModal();
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-recover-client-access');
+  const noticeEl = document.getElementById('recover-modal-notice');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px;"></span> Enviando...`;
+  }
+
+  try {
+    if (supabaseClient && supabaseClient.auth) {
+      const redirectTo = `${window.location.origin}/index.html`;
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+    }
+
+    showToastNotification(`Instruções de recuperação enviadas para ${email}.`);
+    pendingRecoverClientId = null;
+    const modal = document.getElementById('modal-recover-client-access');
+    if (modal) modal.classList.add('hidden');
+  } catch (err) {
+    console.error("Erro ao enviar e-mail de recuperação de acesso:", err);
+    if (noticeEl) {
+      noticeEl.textContent = `Erro ao enviar e-mail: ${err.message || 'Falha na comunicação com o servidor de autenticação.'}`;
+      noticeEl.classList.remove('hidden');
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="mail" style="width: 14px; height: 14px;"></i> Tentar Novamente`;
+    }
+  }
+}
+
+function resetClientAccess(clientId) {
+  openRecoverClientAccessModal(clientId);
+}
+
+// Listener de Recuperação de Senha (PASSWORD_RECOVERY)
+function setupPasswordRecoveryListener() {
+  if (!supabaseClient || !supabaseClient.auth) return;
+
+  try {
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('[AUTH RECOVERY] Evento PASSWORD_RECOVERY detectado.');
+        openUpdatePasswordModal();
+      }
+    });
+  } catch (err) {
+    console.warn('[AUTH RECOVERY] Aviso ao configurar onAuthStateChange:', err.message);
+  }
+
+  // Validação de segurança complementar para hash de URL de recuperação
+  if (typeof window !== 'undefined' && window.location && window.location.hash && window.location.hash.includes('type=recovery')) {
+    openUpdatePasswordModal();
+  }
+}
+
+function openUpdatePasswordModal() {
+  const modal = document.getElementById('modal-update-password');
+  if (modal) modal.classList.remove('hidden');
+  const pwdInput = document.getElementById('update-new-password');
+  if (pwdInput) pwdInput.focus();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeUpdatePasswordModal(event) {
+  if (event && event.target && !event.target.classList.contains('modal-overlay') && !event.target.classList.contains('modal-close-btn') && !event.target.closest('.modal-close-btn') && event.target.tagName !== 'BUTTON') {
+    return;
+  }
+  const modal = document.getElementById('modal-update-password');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitUpdatePassword(event) {
+  if (event) event.preventDefault();
+
+  const newPwd = (document.getElementById('update-new-password')?.value || '').trim();
+  const confirmPwd = (document.getElementById('update-confirm-password')?.value || '').trim();
+  const noticeEl = document.getElementById('update-password-notice');
+  const btn = document.getElementById('btn-submit-update-password');
+
+  if (!newPwd || newPwd.length < 6) {
+    if (noticeEl) {
+      noticeEl.textContent = 'A nova senha deve ter no mínimo 6 caracteres.';
+      noticeEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (newPwd !== confirmPwd) {
+    if (noticeEl) {
+      noticeEl.textContent = 'As senhas digitadas não coincidem.';
+      noticeEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px;"></span> Atualizando...`;
+  }
+
+  try {
+    if (supabaseClient && supabaseClient.auth) {
+      const { error } = await supabaseClient.auth.updateUser({ password: newPwd });
+      if (error) throw error;
+    }
+
+    showToastNotification('Sua nova senha foi salva com sucesso!');
+    closeUpdatePasswordModal();
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  } catch (err) {
+    console.error('Erro ao redefinir senha:', err);
+    if (noticeEl) {
+      noticeEl.textContent = `Erro ao salvar senha: ${err.message || 'Falha no servidor de autenticação.'}`;
+      noticeEl.classList.remove('hidden');
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Salvar Nova Senha';
+    }
+  }
+}
+
+// 6. Contexto Administrativo de Visualização do Cliente Comercial
+let adminClientViewContext = null;
+
+// Resolvedor Central de Contexto Ativo de Cliente Comercial
+function resolveActiveClientContext() {
+  // Cenário 1: Admin visualizando cliente comercial específico
+  if (adminClientViewContext && adminClientViewContext.clientId) {
+    return {
+      isAdminView: true,
+      clientId: adminClientViewContext.clientId,
+      clientCode: adminClientViewContext.clientCode,
+      establishmentName: adminClientViewContext.establishmentName,
+      source: 'admin_view_context'
+    };
+  }
+
+  // Cenário 2: Cliente comercial autenticado normalmente no portal
+  if (window.currentClientProfile && window.currentClientProfile.client_id) {
+    return {
+      isAdminView: false,
+      clientId: window.currentClientProfile.client_id,
+      clientCode: window.currentClientProfile.client_code || 'CLI-000000',
+      establishmentName: window.currentClientProfile.establishment_name || 'Meu Estabelecimento',
+      source: 'authenticated_client'
+    };
+  }
+
+  // Cenário 3: Compatibilidade para cliente autenticado em memória
+  if (typeof activeCommercialClient !== 'undefined' && activeCommercialClient && activeCommercialClient.id && mockData.activeProfile === 'client') {
+    return {
+      isAdminView: false,
+      clientId: activeCommercialClient.id,
+      clientCode: activeCommercialClient.client_code || activeCommercialClient.public_code || 'CLI-000000',
+      establishmentName: activeCommercialClient.establishment_name || 'Meu Estabelecimento',
+      source: 'legacy_active_client'
+    };
+  }
+
+  return null;
+}
+
+window.resolveActiveClientContext = resolveActiveClientContext;
+
+async function openAdminClientPanelView(clientId) {
+  if (!clientId) {
+    console.error("[ADMIN CLIENT VIEW] Falha ao abrir painel: clientId não fornecido.");
+    showToastNotification("Selecione um cliente comercial válido.", "error");
+    return;
+  }
+
+  const client = (commercialClientsList || []).find(c => String(c.id) === String(clientId));
+  if (!client) {
+    console.error(`[ADMIN CLIENT VIEW] Cliente não encontrado no sistema (ID: ${clientId}).`);
+    showToastNotification("Cliente comercial não encontrado.", "error");
+    return; // FAIL CLOSED: Não abre nenhum cliente aleatório nem usa fallback commercialClientsList[0]
+  }
+
+  // 1. Registra auditoria obrigatória no backend Supabase via RPC
+  if (supabaseClient) {
+    try {
+      const { data: auditRes, error: auditErr } = await supabaseClient.rpc('admin_log_client_panel_access', {
+        p_client_id: client.id
+      });
+
+      if (auditErr || !auditRes || !auditRes.success) {
+        console.error("[ADMIN CLIENT VIEW] Falha no registro de auditoria de acesso:", auditErr?.message || auditRes);
+        showToastNotification("Não foi possível abrir o painel do cliente com segurança. Tente novamente.", "error");
+        return; // FAIL CLOSED: Se a auditoria falhar, cancela a transição de visualização
+      }
+    } catch (err) {
+      console.error("[ADMIN CLIENT VIEW] Erro inesperado ao invocar RPC de auditoria:", err);
+      showToastNotification("Não foi possível abrir o painel do cliente com segurança. Tente novamente.", "error");
+      return; // FAIL CLOSED
+    }
+  }
+
+  // 2. Define o Contexto Administrativo Explícito de Visualização
+  adminClientViewContext = {
+    clientId: client.id,
+    clientCode: client.client_code || client.public_code || 'CLI-000000',
+    establishmentName: client.establishment_name,
+    responsibleName: client.responsible_name,
+    email: client.email || client.email_normalized
+  };
+
   activeCommercialClient = client;
 
-  // Atualizar nome e perfil na barra lateral
+  // 3. Atualizar estado visual do aplicativo para refletir a visão administrativa
   mockData.activeProfile = 'client';
-  mockData.credentials.client.commerceName = client.establishment_name;
-  mockData.credentials.client.name = client.responsible_name;
-  mockData.credentials.client.email = client.email_normalized;
+  if (mockData.credentials && mockData.credentials.client) {
+    mockData.credentials.client.commerceName = client.establishment_name;
+    mockData.credentials.client.name = client.responsible_name;
+    mockData.credentials.client.email = client.email;
+  }
 
   loginSuccess();
   switchDashboardTab('client-overview');
-  showToastNotification(`Acessando o Painel do Cliente como [${client.establishment_name}] (${client.public_code})`);
+  renderAdminClientViewBanner();
+  showToastNotification(`Visualizando Painel Administrativo como [${client.establishment_name}] (${adminClientViewContext.clientCode})`);
 }
+
+function renderAdminClientViewBanner() {
+  let banner = document.getElementById('admin-client-view-banner');
+  if (!adminClientViewContext) {
+    if (banner) banner.remove();
+    return;
+  }
+
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'admin-client-view-banner';
+    banner.className = 'admin-view-indicator-banner';
+
+    const clientView = document.getElementById('view-client-dashboard') || document.getElementById('app');
+    if (clientView) {
+      clientView.prepend(banner);
+    } else {
+      document.body.prepend(banner);
+    }
+  }
+
+  banner.innerHTML = `
+    <div class="admin-banner-content">
+      <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: var(--warning);"></i>
+      <span>Visualização administrativa — <strong>${escapeHtml(adminClientViewContext.establishmentName)}</strong> (${escapeHtml(adminClientViewContext.clientCode)})</span>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="exitAdminClientPanelView()" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer;">
+      <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> <span>Voltar ao Admin</span>
+    </button>
+  `;
+
+  if (window.lucide) window.lucide.createIcons({ el: banner });
+}
+
+function exitAdminClientPanelView() {
+  adminClientViewContext = null;
+  activeCommercialClient = null;
+  mockData.activeProfile = 'owner';
+
+  const banner = document.getElementById('admin-client-view-banner');
+  if (banner) banner.remove();
+
+  switchDashboardTab('owner-overview');
+  showToastNotification("Visualização administrativa do cliente encerrada.");
+}
+
+// Aliases globais seguros
+window.openAdminClientPanelView = openAdminClientPanelView;
+window.exitAdminClientPanelView = exitAdminClientPanelView;
+window.openTestClientPanel = openAdminClientPanelView; // Alias seguro para compatibilidade
 
 let manualDeliveryMap = null;
 let manualDeliveryMarker = null;
@@ -9654,6 +10777,129 @@ function invalidateManualTeleCustomPickup(newAddress = '') {
   manualTelePickupState.customPlaceId = '';
 }
 
+async function geocodeClientAddressOnDemand(addressText) {
+  if (!addressText || !addressText.trim()) return null;
+  const cleanAddr = addressText.trim();
+  const queryStr = (cleanAddr.toLowerCase().includes('rio grande do sul') || cleanAddr.toLowerCase().includes(' - rs'))
+    ? cleanAddr
+    : `${cleanAddr}, Sapucaia do Sul - RS`;
+
+  try {
+    await loadGoogleMapsApi();
+    if (window.google && window.google.maps && window.google.maps.Geocoder) {
+      const geocoder = new window.google.maps.Geocoder();
+      const res = await new Promise((resolve) => {
+        geocoder.geocode({
+          address: queryStr,
+          componentRestrictions: { country: "br", administrativeArea: "RS" }
+        }, (results, status) => {
+          if (status === 'OK' && results && results[0] && results[0].geometry?.location) {
+            resolve(results[0]);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+
+      if (res && res.geometry && res.geometry.location) {
+        return {
+          lat: res.geometry.location.lat(),
+          lng: res.geometry.location.lng(),
+          place_id: res.place_id || null,
+          formatted_address: res.formatted_address || cleanAddr
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("geocodeClientAddressOnDemand notice:", err);
+  }
+  return null;
+}
+
+async function recoverClientPickupLocationSynchronously(clientObj) {
+  if (!clientObj || !clientObj.id) return false;
+
+  if (clientObj.pickup_latitude && clientObj.pickup_longitude && !isNaN(Number(clientObj.pickup_latitude)) && !isNaN(Number(clientObj.pickup_longitude))) {
+    return true;
+  }
+
+  const clientAddr = (clientObj.address || clientObj.pickup_address || '').trim();
+  if (!clientAddr) return false;
+
+  const geo = await geocodeClientAddressOnDemand(clientAddr);
+  if (!geo || geo.lat == null || geo.lng == null || isNaN(Number(geo.lat)) || isNaN(Number(geo.lng))) {
+    return false;
+  }
+
+  const latNum = Number(geo.lat);
+  const lngNum = Number(geo.lng);
+
+  if (latNum < -34.0 || latNum > -26.0 || lngNum < -58.0 || lngNum > -49.0) {
+    console.warn("Recuperação de coleta ignorada: coordenadas fora do Rio Grande do Sul.");
+    return false;
+  }
+
+  try {
+    if (supabaseClient) {
+      const { error: updateErr } = await supabaseClient
+        .from('commercial_clients')
+        .update({
+          pickup_latitude: latNum,
+          pickup_longitude: lngNum,
+          pickup_place_id: geo.place_id || null
+        })
+        .eq('id', clientObj.id);
+
+      if (updateErr) {
+        console.error("Erro no UPDATE de recuperação automática do ponto de coleta:", updateErr);
+        return false;
+      }
+
+      // Confirmação pós-UPDATE: re-consultar no Supabase para garantir persistência
+      const { data: verifiedData, error: verifyErr } = await supabaseClient
+        .from('commercial_clients')
+        .select('id, pickup_latitude, pickup_longitude, pickup_place_id')
+        .eq('id', clientObj.id)
+        .maybeSingle();
+
+      if (verifyErr || !verifiedData) {
+        console.error("Não foi possível confirmar a gravação da recuperação automática:", verifyErr);
+        return false;
+      }
+
+      if (verifiedData.pickup_latitude == null || verifiedData.pickup_longitude == null || isNaN(Number(verifiedData.pickup_latitude)) || isNaN(Number(verifiedData.pickup_longitude))) {
+        console.error("As coordenadas relidas do banco para o cliente continuam nulas.");
+        return false;
+      }
+
+      const confirmedLat = Number(verifiedData.pickup_latitude);
+      const confirmedLng = Number(verifiedData.pickup_longitude);
+      const confirmedPlaceId = verifiedData.pickup_place_id || null;
+
+      clientObj.pickup_latitude = confirmedLat;
+      clientObj.pickup_longitude = confirmedLng;
+      clientObj.pickup_place_id = confirmedPlaceId;
+
+      const cached = (commercialClientsSelectCache || []).find(c => String(c.id) === String(clientObj.id));
+      if (cached) {
+        cached.pickup_latitude = confirmedLat;
+        cached.pickup_longitude = confirmedLng;
+        cached.pickup_place_id = confirmedPlaceId;
+      }
+
+      return true;
+    } else {
+      clientObj.pickup_latitude = latNum;
+      clientObj.pickup_longitude = lngNum;
+      clientObj.pickup_place_id = geo.place_id || null;
+      return true;
+    }
+  } catch (err) {
+    console.error("Falha ao salvar/confirmar recuperação do ponto de coleta:", err);
+    return false;
+  }
+}
+
 function selectCommercialClientForTele(id, name) {
   const selectedInput = document.getElementById('selectedClientId');
   const searchInput = document.getElementById('admin-client-search');
@@ -9674,8 +10920,21 @@ function selectCommercialClientForTele(id, name) {
   };
 
   if (clientObj) {
-    if (!clientObj.pickup_latitude || !clientObj.pickup_longitude || isNaN(Number(clientObj.pickup_latitude)) || isNaN(Number(clientObj.pickup_longitude))) {
-      showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um ponto de coleta configurado.`);
+    const hasValidCoords = clientObj.pickup_latitude && clientObj.pickup_longitude && !isNaN(Number(clientObj.pickup_latitude)) && !isNaN(Number(clientObj.pickup_longitude));
+    if (!hasValidCoords) {
+      const clientAddr = (clientObj.address || clientObj.pickup_address || '').trim();
+      if (clientAddr) {
+        showToastNotification(`Geocodificando e salvando ponto de coleta de "${clientObj.establishment_name}"...`);
+        recoverClientPickupLocationSynchronously(clientObj).then(ok => {
+          if (ok) {
+            showToastNotification(`Coleta padrão de "${clientObj.establishment_name}" confirmada no banco: ${clientObj.address}`);
+          } else {
+            showToastNotification(`Não foi possível salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.`, 'warning');
+          }
+        });
+      } else {
+        showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um endereço cadastrado.`);
+      }
     } else {
       showToastNotification(`Coleta padrão do cliente carregada: ${clientObj.address}`);
     }
@@ -9951,6 +11210,31 @@ function extractHouseNumberFromAddress(addrText) {
   return null;
 }
 
+function validateCityCoherence(userInputText, resultCity) {
+  if (!userInputText || !resultCity) return { isCoherent: true };
+
+  const normUser = normalizeAddressText(userInputText);
+  const normCity = normalizeAddressText(resultCity);
+
+  if (!normUser || !normCity) return { isCoherent: true };
+
+  if (normUser.includes(normCity)) {
+    return { isCoherent: true };
+  }
+
+  const segments = normUser.split(/[-–—,]/).map(s => s.trim()).filter(Boolean);
+  for (const seg of segments) {
+    if (/^\d+$/.test(seg) || ['rs', 'rio grande do sul', 'brasil', 'br', 'rua', 'r', 'av', 'avenida', 'alameda', 'praça', 'praca', 'bairro', 'centro'].includes(seg)) {
+      continue;
+    }
+    if (seg.length >= 4 && seg !== normCity && !normCity.includes(seg) && !seg.includes(normCity)) {
+      return { isCoherent: false, userCity: seg, resultCity };
+    }
+  }
+
+  return { isCoherent: true };
+}
+
 let manualAddressGeocodeTimeout = null;
 async function geocodeManualAddressText() {
   const addrInput = document.getElementById('manual-delivery-address');
@@ -9958,9 +11242,11 @@ async function geocodeManualAddressText() {
   if (!addressText) return;
 
   const isManualAdjusted = document.getElementById('manual-location-adjusted-manually')?.value === 'true';
+  const isPlacesResolved = addrInput?.dataset?.isPlacesResolved === 'true';
   const latInput = document.getElementById('manual-delivery-lat');
   const lngInput = document.getElementById('manual-delivery-lng');
-  if (isManualAdjusted && latInput?.value && lngInput?.value) {
+
+  if ((isManualAdjusted || isPlacesResolved) && latInput?.value && lngInput?.value) {
     return;
   }
   const precInput = document.getElementById('manual-geocoding-precision');
@@ -9972,11 +11258,30 @@ async function geocodeManualAddressText() {
     if (!window.google || !window.google.maps) return;
     const geocoder = new window.google.maps.Geocoder();
 
-    const query = (addressText.toLowerCase().includes('rio grande do sul') || addressText.toLowerCase().includes(' rs'))
-      ? addressText
-      : `${addressText}, Sapucaia do Sul, RS, Brasil`;
+    const rsBounds = new window.google.maps.LatLngBounds(
+      { lat: -33.75, lng: -57.65 },
+      { lat: -27.08, lng: -49.69 }
+    );
 
-    geocoder.geocode({ address: query }, (results, status) => {
+    let query = addressText;
+    const hasRS = /(\brs\b|rio grande do sul)/i.test(query);
+    const hasBrasil = /brasil/i.test(query);
+
+    if (!hasRS && !hasBrasil) {
+      query += ', RS, Brasil';
+    } else if (hasRS && !hasBrasil) {
+      query += ', Brasil';
+    }
+
+    query = query
+      .replace(/,\s*RS\s*,\s*RS/gi, ', RS')
+      .replace(/,\s*Brasil\s*,\s*Brasil/gi, ', Brasil');
+
+    geocoder.geocode({
+      address: query,
+      bounds: rsBounds,
+      componentRestrictions: { country: 'BR', administrativeArea: 'RS' }
+    }, (results, status) => {
       if (status === 'OK' && results && results[0]) {
         const place = results[0];
         const location = place.geometry?.location;
@@ -9985,19 +11290,33 @@ async function geocodeManualAddressText() {
         const lat = typeof location.lat === 'function' ? location.lat() : location.lat;
         const lng = typeof location.lng === 'function' ? location.lng() : location.lng;
 
+        // Validação Universal Dinâmica de Coerência de Cidade
+        let resultCity = '';
+        if (place.address_components) {
+          place.address_components.forEach(comp => {
+            const types = comp.types || [];
+            if (types.includes('locality') || types.includes('administrative_area_level_2')) {
+              resultCity = comp.long_name || comp.short_name || '';
+            }
+          });
+        }
+
+        const coherence = validateCityCoherence(addressText, resultCity);
+        if (!coherence.isCoherent) {
+          console.warn('[GEOCODE REJECT] Cidade divergente:', resultCity);
+          const warnBox = document.getElementById('manual-geocoding-warning');
+          if (warnBox) {
+            warnBox.classList.remove('hidden');
+            warnBox.innerHTML = `⚠️ <strong>Confirme o endereço:</strong> a localização encontrada (${resultCity}) não corresponde à cidade informada. Ajuste o marcador no mapa.`;
+          }
+          return;
+        }
+
         if (latInput) latInput.value = lat.toFixed(7);
         if (lngInput) lngInput.value = lng.toFixed(7);
 
-        if (manualDeliveryMap) {
-          manualDeliveryMap.setCenter({ lat, lng });
-          manualDeliveryMap.setZoom(16);
-        }
-        if (manualDeliveryMarker) {
-          if (manualDeliveryMarker.position) {
-            manualDeliveryMarker.position = { lat, lng };
-          } else if (typeof manualDeliveryMarker.setPosition === 'function') {
-            manualDeliveryMarker.setPosition({ lat, lng });
-          }
+        if (typeof updateRequestDeliveryDestination === 'function') {
+          updateRequestDeliveryDestination(lat, lng, true, false, 'manual');
         }
 
         let streetNumber = '';
@@ -10031,18 +11350,29 @@ async function initGooglePlacesAutocomplete() {
   if (addrInput && !addrInput.dataset.listenerAttached) {
     addrInput.dataset.listenerAttached = 'true';
     addrInput.addEventListener('input', () => {
-      // Invalidação imediata de coordenadas ao editar o endereço
-      const latInput = document.getElementById('manual-delivery-lat');
-      const lngInput = document.getElementById('manual-delivery-lng');
-      const precInput = document.getElementById('manual-geocoding-precision');
-      if (latInput) latInput.value = '';
-      if (lngInput) lngInput.value = '';
-      if (precInput) precInput.value = 'unconfirmed';
+      const isPlacesResolved = addrInput.dataset.isPlacesResolved === 'true';
+      const resolvedAddress = addrInput.dataset.placesResolvedAddress;
 
-      if (manualAddressGeocodeTimeout) clearTimeout(manualAddressGeocodeTimeout);
-      manualAddressGeocodeTimeout = setTimeout(() => {
-        geocodeManualAddressText();
-      }, 600);
+      if (isPlacesResolved && addrInput.value.trim() !== resolvedAddress) {
+        delete addrInput.dataset.isPlacesResolved;
+        delete addrInput.dataset.placesResolvedAddress;
+        const isManualInput = document.getElementById('manual-location-adjusted-manually');
+        if (isManualInput) isManualInput.value = 'false';
+      }
+
+      if (!addrInput.dataset.isPlacesResolved) {
+        const latInput = document.getElementById('manual-delivery-lat');
+        const lngInput = document.getElementById('manual-delivery-lng');
+        const precInput = document.getElementById('manual-geocoding-precision');
+        if (latInput) latInput.value = '';
+        if (lngInput) lngInput.value = '';
+        if (precInput) precInput.value = 'unconfirmed';
+
+        if (manualAddressGeocodeTimeout) clearTimeout(manualAddressGeocodeTimeout);
+        manualAddressGeocodeTimeout = setTimeout(() => {
+          geocodeManualAddressText();
+        }, 600);
+      }
     });
   }
 
@@ -10059,6 +11389,9 @@ async function initGooglePlacesAutocomplete() {
     const { PlaceAutocompleteElement } = await window.google.maps.importLibrary('places');
 
     container.dataset.googleAutocompleteAttached = 'true';
+    if (addrInput) {
+      addrInput.dataset.placesNewActive = 'true';
+    }
 
     // Bounding Box cobrindo todo o estado do Rio Grande do Sul (RS)
     const rsBounds = {
@@ -10076,6 +11409,10 @@ async function initGooglePlacesAutocomplete() {
     autocompleteElement.id = 'manual-delivery-place-autocomplete';
 
     autocompleteElement.addEventListener('gmp-placeselect', async (evt) => {
+      if (manualAddressGeocodeTimeout) {
+        clearTimeout(manualAddressGeocodeTimeout);
+        manualAddressGeocodeTimeout = null;
+      }
       const eventPlace = evt.place || (evt.detail && evt.detail.place);
       if (!eventPlace) return;
 
@@ -10109,7 +11446,31 @@ function normalizeAddressText(str) {
   return String(str || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
 
+function updatePrecisionBadge(type = 'manual') {
+  const isManualInput = document.getElementById(`${type}-location-adjusted-manually`) || document.getElementById('manual-location-adjusted-manually');
+  const isManualAdjusted = isManualInput?.value === 'true' || requestMaps[type]?.destCoords?.isManualPin === true;
+  const badgeEl = document.getElementById(`${type}-precision-indicator`) || document.getElementById('manual-precision-indicator');
+  if (!badgeEl) return;
+
+  badgeEl.classList.remove('hidden');
+  if (isManualAdjusted) {
+    badgeEl.style.background = 'rgba(34, 197, 94, 0.12)';
+    badgeEl.style.border = '1px solid rgba(34, 197, 94, 0.3)';
+    badgeEl.style.color = '#4ade80';
+    badgeEl.innerHTML = `🟢 <strong>Ponto de entrega confirmado</strong>`;
+  } else {
+    badgeEl.style.background = 'rgba(245, 158, 11, 0.12)';
+    badgeEl.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+    badgeEl.style.color = '#fbbf24';
+    badgeEl.innerHTML = `🟡 <strong>Localização automática</strong> — confira o ponto no mapa`;
+  }
+}
+
 function handlePlaceSelection(place) {
+  if (manualAddressGeocodeTimeout) {
+    clearTimeout(manualAddressGeocodeTimeout);
+    manualAddressGeocodeTimeout = null;
+  }
   const components = place.addressComponents || place.address_components || [];
   let route = '';
   let streetNumber = '';
@@ -10161,13 +11522,10 @@ function handlePlaceSelection(place) {
     return;
   }
 
-  // Validação de Coerência de Cidade
+  // Validação Universal Dinâmica de Coerência de Cidade (qualquer município do RS)
   if (city && userTypedText) {
-    const normCity = normalizeAddressText(city);
-    if ((userTypedText.includes('sapucaia') && !normCity.includes('sapucaia')) ||
-        (userTypedText.includes('esteio') && !normCity.includes('esteio')) ||
-        (userTypedText.includes('sao leopoldo') && !normCity.includes('sao leopoldo')) ||
-        (userTypedText.includes('canoas') && !normCity.includes('canoas'))) {
+    const coherence = validateCityCoherence(userTypedText, city);
+    if (!coherence.isCoherent) {
       if (placeIdInput) placeIdInput.value = '';
       if (latInput) latInput.value = '';
       if (lngInput) lngInput.value = '';
@@ -10210,7 +11568,11 @@ function handlePlaceSelection(place) {
 
   const resolvedNumber = streetNumber || extractHouseNumberFromAddress(cleanFormatted) || extractHouseNumberFromAddress(addrInput?.value);
 
-  if (addrInput) addrInput.value = cleanFormatted;
+  if (addrInput) {
+    addrInput.value = cleanFormatted;
+    addrInput.dataset.placesResolvedAddress = cleanFormatted;
+    addrInput.dataset.isPlacesResolved = "true";
+  }
   if (numInput) numInput.value = resolvedNumber || '';
   if (numVisibleInput) numVisibleInput.value = resolvedNumber || '';
   if (neighInput) neighInput.value = sublocality || '';
@@ -10221,6 +11583,14 @@ function handlePlaceSelection(place) {
   if (latInput) latInput.value = typeof lat === 'number' ? lat.toFixed(7) : lat;
   if (lngInput) lngInput.value = typeof lng === 'number' ? lng.toFixed(7) : lng;
   if (isManualInput) isManualInput.value = 'false';
+
+  if (requestMaps.manual) {
+    requestMaps.manual.destCoords = { lat: Number(lat), lng: Number(lng), isManualPin: false };
+  }
+
+  if (typeof updateRequestDeliveryDestination === 'function') {
+    updateRequestDeliveryDestination(Number(lat), Number(lng), true, false, 'manual');
+  }
 
   if (summaryBox && summaryTitle && summarySubtitle) {
     const mainTitle = route ? (resolvedNumber ? `${route}, ${resolvedNumber}` : route) : cleanFormatted;
@@ -10256,40 +11626,63 @@ function handlePlaceSelection(place) {
   }
 }
 
-async function submitDeliveryRequest(event, type = 'manual') {
+let isSubmittingManualDelivery = false;
+
+async function submitDeliveryRequest(event) {
   if (event) event.preventDefault();
 
-  if (type === 'client') {
-    return submitClientDeliveryRequest(event);
+  if (isSubmittingManualDelivery) return;
+
+  const btnSubmit = document.querySelector('#request-delivery-form button[type="submit"]');
+  const originalBtnText = btnSubmit ? (btnSubmit.dataset.origText || btnSubmit.innerText || 'Chamar Tele') : 'Chamar Tele';
+  if (btnSubmit && !btnSubmit.dataset.origText) btnSubmit.dataset.origText = originalBtnText;
+
+  function unlockFormSubmission() {
+    isSubmittingManualDelivery = false;
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = btnSubmit.dataset.origText || 'Chamar Tele';
+    }
+  }
+
+  isSubmittingManualDelivery = true;
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Chamando...';
   }
 
   const selectedClientId = document.getElementById('selectedClientId')?.value;
   if (!selectedClientId) {
     showToastNotification('Por favor, selecione um cliente comercial cadastrado.');
+    unlockFormSubmission();
     return;
   }
 
   const destName = document.getElementById('manual-delivery-dest-name')?.value?.trim();
   if (!destName || destName === 'Cliente informado') {
     showToastNotification('Informe o nome do destinatário.');
+    unlockFormSubmission();
     return;
   }
 
   const destPhone = document.getElementById('manual-delivery-dest-phone')?.value?.trim();
   if (!destPhone) {
     showToastNotification('Informe o telefone do destinatário.');
+    unlockFormSubmission();
     return;
   }
 
   const address = document.getElementById('manual-delivery-address')?.value?.trim();
   if (!address) {
     showToastNotification('Informe o endereço de entrega.');
+    unlockFormSubmission();
     return;
   }
 
   const stateVal = document.getElementById('manual-delivery-state')?.value?.trim() || 'RS';
   if (stateVal.toUpperCase() !== 'RS' && !stateVal.toLowerCase().includes('rio grande do sul')) {
     showToastNotification('Este endereço está fora da área atendida. Selecione um endereço no Rio Grande do Sul.');
+    unlockFormSubmission();
     return;
   }
 
@@ -10300,10 +11693,12 @@ async function submitDeliveryRequest(event, type = 'manual') {
     deliveryCharge = parseMoneyBR(rawDeliveryCharge);
   } catch (err) {
     showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    unlockFormSubmission();
     return;
   }
   if (!deliveryCharge || deliveryCharge <= 0) {
     showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    unlockFormSubmission();
     return;
   }
 
@@ -10315,6 +11710,7 @@ async function submitDeliveryRequest(event, type = 'manual') {
       orderValue = parseMoneyBR(rawOrderValue);
     } catch (err) {
       showToastNotification(`Valor do Pedido inválido: ${err.message}`);
+      unlockFormSubmission();
       return;
     }
   }
@@ -10359,6 +11755,7 @@ function showModalSubmitError(msg) {
 
   if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
     showModalSubmitError('Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas.');
+    unlockFormSubmission();
     return;
   }
 
@@ -10378,12 +11775,15 @@ function showModalSubmitError(msg) {
 
   if (!number && !isSN) {
     showModalSubmitError('Selecione um endereço que contenha o número do imóvel.');
+    unlockFormSubmission();
     return;
   }
 
   const complement = document.getElementById('manual-delivery-complement')?.value?.trim() || null;
   const neighborhood = document.getElementById('manual-delivery-neighborhood')?.value?.trim() || null;
   const city = document.getElementById('manual-delivery-city')?.value?.trim() || 'Sapucaia do Sul';
+  const postalCode = document.getElementById('manual-delivery-postal-code')?.value?.trim() || null;
+  const placeId = document.getElementById('manual-delivery-place-id')?.value?.trim() || null;
   const notes = document.getElementById('manual-order-notes')?.value || '';
 
   const precision = document.getElementById('manual-geocoding-precision')?.value || 'unconfirmed';
@@ -10398,6 +11798,7 @@ function showModalSubmitError(msg) {
   if (manualTelePickupState.isCustom) {
     if (!manualTelePickupState.customAddress || manualTelePickupState.customLat == null || manualTelePickupState.customLng == null || isNaN(manualTelePickupState.customLat) || isNaN(manualTelePickupState.customLng)) {
       showModalSubmitError('O endereço de coleta alterado precisa ser confirmado via busca ou mapa antes de prosseguir. Não é permitido enviar endereço novo com coordenadas antigas.');
+      unlockFormSubmission();
       return;
     }
     p_pickup_address = manualTelePickupState.customAddress;
@@ -10405,21 +11806,21 @@ function showModalSubmitError(msg) {
     p_pickup_longitude = manualTelePickupState.customLng;
     p_pickup_place_id = manualTelePickupState.customPlaceId || null;
   } else {
-    if (!clientObj || !clientObj.pickup_latitude || !clientObj.pickup_longitude || isNaN(Number(clientObj.pickup_latitude)) || isNaN(Number(clientObj.pickup_longitude))) {
-      showModalSubmitError('Este cliente ainda não possui um ponto de coleta configurado.');
+    let hasCoords = clientObj && clientObj.pickup_latitude && clientObj.pickup_longitude && !isNaN(Number(clientObj.pickup_latitude)) && !isNaN(Number(clientObj.pickup_longitude));
+    if (!hasCoords && clientObj) {
+      showToastNotification(`Geocodificando e salvando ponto de coleta de "${clientObj.establishment_name}"...`);
+      hasCoords = await recoverClientPickupLocationSynchronously(clientObj);
+    }
+
+    if (!hasCoords || !clientObj) {
+      showModalSubmitError('Não foi possível salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.');
+      unlockFormSubmission();
       return;
     }
     p_pickup_address = clientObj.address;
     p_pickup_latitude = Number(clientObj.pickup_latitude);
     p_pickup_longitude = Number(clientObj.pickup_longitude);
     p_pickup_place_id = clientObj.pickup_place_id || null;
-  }
-
-  const btnSubmit = document.querySelector('#request-delivery-form button[type="submit"]');
-  const originalBtnText = btnSubmit ? btnSubmit.innerText : 'Chamar Tele';
-  if (btnSubmit) {
-    btnSubmit.disabled = true;
-    btnSubmit.innerText = 'Criando Tele...';
   }
 
   const idempotencyKey = `idemp-admin-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -10456,31 +11857,31 @@ function showModalSubmitError(msg) {
 
       if (error) {
         showModalSubmitError(`Erro ao criar Tele: ${error.message || error}`);
-        if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerText = originalBtnText; }
+        unlockFormSubmission();
         return;
       }
       if (!data || data.success === false) {
         showModalSubmitError(`Erro ao criar Tele: ${data?.message || 'Falha ao processar solicitação.'}`);
-        if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerText = originalBtnText; }
+        unlockFormSubmission();
         return;
       }
 
       const createdCode = data.tele_code || (data.id ? 'TEL-' + data.id.slice(0, 6).toUpperCase() : '');
+      forceCloseRequestDeliveryModal();
       showToastNotification(`Tele ${createdCode} criada com sucesso! (Status: Aguardando Despacho)`);
       if (typeof fetchPendingDeliveries === 'function') await fetchPendingDeliveries();
       if (typeof loadTelesManagement === 'function') await loadTelesManagement();
       if (typeof renderTelesUnified === 'function') renderTelesUnified();
+    } else {
+      forceCloseRequestDeliveryModal();
+      showToastNotification("Tele criada com sucesso!");
     }
-
-    closeRequestDeliveryModal();
   } catch (err) {
     console.error("Erro ao criar Tele manual:", err);
     showModalSubmitError("Erro de conexão ao criar a Tele.");
+    unlockFormSubmission();
   } finally {
-    if (btnSubmit) {
-      btnSubmit.disabled = false;
-      btnSubmit.innerText = originalBtnText;
-    }
+    isSubmittingManualDelivery = false;
   }
 }
 
@@ -10608,6 +12009,17 @@ async function submitClientDeliveryRequest(event) {
     return;
   }
 
+  let clientLatRaw = document.getElementById('client-delivery-lat')?.value;
+  let clientLngRaw = document.getElementById('client-delivery-lng')?.value;
+  if ((!clientLatRaw || !clientLngRaw) && requestMaps.client?.destCoords) {
+    clientLatRaw = requestMaps.client.destCoords.lat;
+    clientLngRaw = requestMaps.client.destCoords.lng;
+  }
+  const clientLat = clientLatRaw ? parseFloat(clientLatRaw) : null;
+  const clientLng = clientLngRaw ? parseFloat(clientLngRaw) : null;
+  const clientPrecision = document.getElementById('client-geocoding-precision')?.value || (requestMaps.client?.destCoords ? 'rooftop' : 'unconfirmed');
+  const isClientManual = document.getElementById('client-location-adjusted-manually')?.value === 'true' || requestMaps.client?.destCoords?.isManualPin === true;
+
   const payload = {
     p_pickup_address: null, // Null aciona o fallback para commercial_clients.address
     p_delivery_address: address,
@@ -10623,13 +12035,13 @@ async function submitClientDeliveryRequest(event) {
     p_delivery_neighborhood: null,
     p_delivery_city: 'Sapucaia do Sul',
     p_delivery_postal_code: null,
-    p_delivery_latitude: null,
-    p_delivery_longitude: null,
-    p_geocoding_precision: 'unconfirmed',
-    p_location_adjusted_manually: false,
+    p_delivery_latitude: clientLat,
+    p_delivery_longitude: clientLng,
+    p_geocoding_precision: clientPrecision,
+    p_location_adjusted_manually: isClientManual,
     p_pickup_latitude: null,
     p_pickup_longitude: null,
-    p_place_id: null,
+    p_place_id: document.getElementById('client-delivery-place-id')?.value || null,
     p_delivery_state: 'RS',
     p_pickup_place_id: null
   };
@@ -10815,7 +12227,7 @@ async function fetchCommercialClientsForSelect() {
     if (supabaseClient) {
       let query = supabaseClient
         .from('commercial_clients')
-        .select('id, establishment_name, client_code, responsible_name, phone, lifecycle_status')
+        .select('id, client_code, establishment_name, responsible_name, phone, lifecycle_status, is_internal, address, neighborhood, city, state, postal_code, pickup_latitude, pickup_longitude, pickup_place_id')
         .order('establishment_name', { ascending: true });
 
       if (!showInactive) {
@@ -10824,20 +12236,22 @@ async function fetchCommercialClientsForSelect() {
 
       const { data, error } = await query;
       if (error) throw error;
-      commercialClientsForSelect = data || [];
+
+      const normalized = (data || []).map(normalizeCommercialClient).filter(Boolean);
+      commercialClientsForSelect = normalized;
+      commercialClientsSelectCache = normalized;
+      normalized.forEach(c => {
+        if (c && c.id) {
+          opClientsStoreMap.set(String(c.id), c);
+        }
+      });
     } else {
-      // Dev local fallback from opClientsStoreMap
-      commercialClientsForSelect = Array.from(opClientsStoreMap.values()).filter(c => {
+      // Dev local fallback from opClientsStoreMap / commercialClientsList
+      const sourceList = commercialClientsList.length > 0 ? commercialClientsList : Array.from(opClientsStoreMap.values());
+      commercialClientsForSelect = sourceList.filter(c => {
         return showInactive || (c.lifecycle_status || c.status || 'ativo') === 'ativo';
       });
-      if (commercialClientsForSelect.length === 0) {
-        commercialClientsForSelect = [
-          { id: 'client-uuid-1', establishment_name: 'Lancheria Dahora', client_code: 'CLI-000001', responsible_name: 'João Silva', phone: '(11) 99999-0001', lifecycle_status: 'ativo' },
-          { id: 'client-uuid-2', establishment_name: 'Pizzaria da Nonna', client_code: 'CLI-000002', responsible_name: 'Maria Nonna', phone: '(11) 99999-0002', lifecycle_status: 'ativo' },
-          { id: 'client-uuid-3', establishment_name: 'Dogão Express', client_code: 'CLI-000003', responsible_name: 'Marcos Fernandes', phone: '(11) 99999-0003', lifecycle_status: 'ativo' },
-          { id: 'client-uuid-4', establishment_name: 'Lanchonete Dahora', client_code: 'CLI-000004', responsible_name: 'Pedro Santos', phone: '(11) 99999-0004', lifecycle_status: 'ativo' }
-        ];
-      }
+      commercialClientsSelectCache = commercialClientsForSelect;
     }
 
     renderClientSelectDropdownItems(commercialClientsForSelect);
@@ -11116,7 +12530,9 @@ function normalizeTeleRecord(item) {
   return {
     id: id,
     raw_id: item.raw_id || item.id,
-    tele_code: item.tele_code || item.code || item.id || null,
+    tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code :
+               ((item.code && !isUuidString(item.code)) ? item.code :
+               ((item.teleCode && !isUuidString(item.teleCode)) ? item.teleCode : null)),
     client_id: item.client_id || null,
     client: resolveClientDisplayName(item),
     pickup_address: item.pickup_address || item.origin_address || null,
@@ -13804,7 +15220,7 @@ async function submitReopenRiderSettlement() {
 }
 
 // 4. Pagamento Manual em 2 Etapas
-function openPaySettlementModal(settlementId, expectedVersion, riderName, unpaidEligibleStr, blockedStr) {
+async function openPaySettlementModal(settlementId, expectedVersion, riderName, unpaidEligibleStr, blockedStr) {
   activeSettlementOperationalState.settlementId = settlementId;
   activeSettlementOperationalState.settlementVersion = expectedVersion;
   activeSettlementOperationalState.batchId = null;
@@ -13844,6 +15260,49 @@ function openPaySettlementModal(settlementId, expectedVersion, riderName, unpaid
   if (unpaidEl) unpaidEl.textContent = unpaidEligibleStr;
   if (blockedEl) blockedEl.textContent = blockedStr;
 
+  // Reset button states cleanly
+  if (btnCreate) {
+    btnCreate.disabled = false;
+    btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento';
+  }
+  if (btnConfirm) {
+    btnConfirm.disabled = false;
+    btnConfirm.innerHTML = '<i data-lucide="check-check"></i> Confirmar Pagamento Realizado';
+  }
+
+  // Backend Recovery: Verificar se já existe um lote em status 'pending' para este fechamento
+  const client = (typeof supabaseClient !== 'undefined' && supabaseClient) ? supabaseClient : (window.supabaseClient || (typeof global !== 'undefined' ? global.supabaseClient : null));
+  if (client) {
+    try {
+      const { data: detailData } = await client.rpc('get_admin_rider_weekly_settlement_detail', {
+        p_settlement_id: settlementId
+      });
+      if (detailData && Array.isArray(detailData.batches)) {
+        const pendingBatch = detailData.batches.find(b => b.status === 'pending');
+        if (pendingBatch) {
+          activeSettlementOperationalState.batchId = pendingBatch.id;
+          activeSettlementOperationalState.batchVersion = pendingBatch.version;
+          activeSettlementOperationalState.createIdempotencyKey = pendingBatch.idempotency_key || `rps_create_${settlementId}`;
+          activeSettlementOperationalState.payIdempotencyKey = `rps_pay_${pendingBatch.id}_${Date.now()}`;
+
+          if (step1Box) step1Box.classList.add('hidden');
+          if (step2Box) step2Box.classList.remove('hidden');
+          if (btnCreate) btnCreate.classList.add('hidden');
+          if (btnConfirm) { btnConfirm.classList.remove('hidden'); btnConfirm.disabled = false; }
+          if (noticeEl) {
+            noticeEl.textContent = 'Lote de pagamento pendente localizado no banco de dados. Por favor informe a forma de pagamento e o comprovante para concluir.';
+            noticeEl.classList.remove('hidden');
+          }
+          if (modal) modal.classList.remove('hidden');
+          if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+          return;
+        }
+      }
+    } catch(e) {
+      console.warn('[openPaySettlementModal] Falha ao verificar lote pendente existente:', e);
+    }
+  }
+
   if (step1Box) step1Box.classList.remove('hidden');
   if (step2Box) step2Box.classList.add('hidden');
   if (btnCreate) btnCreate.classList.remove('hidden');
@@ -13851,11 +15310,23 @@ function openPaySettlementModal(settlementId, expectedVersion, riderName, unpaid
   if (noticeEl) { noticeEl.textContent = ''; noticeEl.classList.add('hidden'); }
 
   if (modal) modal.classList.remove('hidden');
+  if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
 }
 
 function closeRiderPaySettlementModal() {
   const modal = document.getElementById('modal-pay-settlement');
   if (modal) modal.classList.add('hidden');
+
+  const btnCreate = document.getElementById('btn-create-pay-batch');
+  if (btnCreate) {
+    btnCreate.disabled = false;
+    btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento';
+  }
+  const btnConfirm = document.getElementById('btn-confirm-mark-batch-paid');
+  if (btnConfirm) {
+    btnConfirm.disabled = false;
+    btnConfirm.innerHTML = '<i data-lucide="check-check"></i> Confirmar Pagamento Realizado';
+  }
 }
 
 async function submitCreateRiderPayBatch() {
@@ -13935,15 +15406,13 @@ async function submitCreateRiderPayBatch() {
 async function submitMarkRiderBatchPaid() {
   const { settlementId, batchId, batchVersion, payIdempotencyKey } = activeSettlementOperationalState;
   const methodSelect = document.getElementById('pay-modal-method-select');
-  const refInput = document.getElementById('pay-modal-reference-input');
   const notesInput = document.getElementById('pay-modal-notes-input');
 
-  const method = methodSelect ? methodSelect.value : 'PIX';
-  const reference = refInput ? refInput.value.trim() : '';
+  const method = methodSelect ? methodSelect.value : '';
   const notes = notesInput ? notesInput.value.trim() : '';
 
-  if (!reference) {
-    alert("O código de referência / E2E do comprovante de pagamento é obrigatório.");
+  if (!method) {
+    alert("Por favor selecione a forma de pagamento.");
     return;
   }
 
@@ -13951,11 +15420,12 @@ async function submitMarkRiderBatchPaid() {
   if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Confirmando...'; }
 
   try {
-    const { data, error } = await supabaseClient.rpc('admin_mark_rider_payment_batch_paid', {
+    const client = (typeof supabaseClient !== 'undefined' && supabaseClient) ? supabaseClient : (window.supabaseClient || (typeof global !== 'undefined' ? global.supabaseClient : null));
+    const { data, error } = await client.rpc('admin_mark_rider_payment_batch_paid', {
       p_batch_id: batchId,
       p_expected_version: batchVersion,
       p_payment_method: method,
-      p_payment_reference: reference,
+      p_payment_reference: null,
       p_notes: notes || null,
       p_idempotency_key: payIdempotencyKey
     });

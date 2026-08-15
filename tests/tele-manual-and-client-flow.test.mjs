@@ -8,11 +8,12 @@ import { readFile } from 'node:fs/promises';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 
 async function loginUser(email, password) {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -120,7 +121,7 @@ test('4. Usuário anônimo não consegue listar commercial_clients (RLS bloqueia
 });
 
 test('5. Administrador autenticado consegue listar clientes comerciais e vê o cliente interno Dahora Expresso', async () => {
-  const auth = await loginUser('admin@dahora.local', 'senha123456');
+  const auth = await loginUser('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
   const token = auth.access_token;
 
   const { ok, data } = await queryRest('commercial_clients?select=id,client_code,establishment_name,is_internal', token);
@@ -132,7 +133,7 @@ test('5. Administrador autenticado consegue listar clientes comerciais e vê o c
 });
 
 test('6. Cliente comercial autenticado NÃO vê o cliente interno Dahora Expresso', async () => {
-  const auth = await loginUser('parceiro@mercadocentral.local', 'senha123456');
+  const auth = await loginUser('padaria.central@homolog.test', 'dahoraexpresso1');
   const token = auth.access_token;
 
   const { ok, data } = await queryRest('commercial_clients?select=id,client_code,establishment_name,is_internal', token);
@@ -142,7 +143,7 @@ test('6. Cliente comercial autenticado NÃO vê o cliente interno Dahora Express
 });
 
 test('7. RPC create_admin_tele cria Tele interna em aguardando_despacho com coordenadas, place_id e precisão', async () => {
-  const auth = await loginUser('admin@dahora.local', 'senha123456');
+  const auth = await loginUser('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
   const token = auth.access_token;
 
   const { data: internalList } = await queryRest('commercial_clients?client_code=eq.SYS-DAHORA', SERVICE_ROLE_KEY);
@@ -152,8 +153,8 @@ test('7. RPC create_admin_tele cria Tele interna em aguardando_despacho com coor
 
   const { ok, data } = await callRpc('create_admin_tele', {
     p_client_id: internalClient.id,
-    p_pickup_address: 'Av. Presidente Vargas, 1000',
-    p_delivery_address: 'Rua São João, 500',
+    p_// pickup_address: 'Av. Presidente Vargas, 1000',
+    p_endereco: 'Rua São João, 500',
     p_recipient_name: 'Maria Oliveira',
     p_recipient_phone: '(51) 98888-7777',
     p_idempotency_key: idempKey,
@@ -189,7 +190,7 @@ test('7. RPC create_admin_tele cria Tele interna em aguardando_despacho com coor
 });
 
 test('8. RPC create_admin_tele é idempotente', async () => {
-  const auth = await loginUser('admin@dahora.local', 'senha123456');
+  const auth = await loginUser('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
   const token = auth.access_token;
 
   const { data: internalList } = await queryRest('commercial_clients?client_code=eq.SYS-DAHORA', SERVICE_ROLE_KEY);
@@ -199,8 +200,8 @@ test('8. RPC create_admin_tele é idempotente', async () => {
 
   const params = {
     p_client_id: internalClient.id,
-    p_pickup_address: 'Av. Presidente Vargas, 1000',
-    p_delivery_address: 'Rua São João, 500',
+    p_// pickup_address: 'Av. Presidente Vargas, 1000',
+    p_endereco: 'Rua São João, 500',
     p_recipient_name: 'Maria Oliveira',
     p_recipient_phone: '(51) 98888-7777',
     p_idempotency_key: idempKey
@@ -216,7 +217,7 @@ test('8. RPC create_admin_tele é idempotente', async () => {
 });
 
 test('9. RPC create_client_tele resolve o client_id via auth.uid() e ignora p_client_id externo', async () => {
-  const auth = await loginUser('parceiro@mercadocentral.local', 'senha123456');
+  const auth = await loginUser('padaria.central@homolog.test', 'dahoraexpresso1');
   const token = auth.access_token;
 
   const { data: mercadoList } = await queryRest('commercial_clients?client_code=eq.CLI-000101', SERVICE_ROLE_KEY);
@@ -225,8 +226,8 @@ test('9. RPC create_client_tele resolve o client_id via auth.uid() e ignora p_cl
   const idempKey = `idemp-test-client-${Date.now()}`;
 
   const { ok, data } = await callRpc('create_client_tele', {
-    p_pickup_address: '',
-    p_delivery_address: 'Av. Sapucaia, 1200',
+    p_// pickup_address: '',
+    p_endereco: 'Av. Sapucaia, 1200',
     p_recipient_name: 'Fernando Rocha',
     p_recipient_phone: '(51) 91111-2222',
     p_idempotency_key: idempKey,

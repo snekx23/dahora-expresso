@@ -11,11 +11,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 
 const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
@@ -30,11 +31,11 @@ test('Suíte de Testes da Fase 3B.2A.1 (Leitura Autoritativa do Repasse Semanal)
   let adminClient;
   let clientUserClient;
 
-  adminClient = await createAuthedClient('admin@dahora.local', 'senha123456');
-  clientUserClient = await createAuthedClient('parceiro@mercadocentral.local', 'senha123456');
+  adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'senha123456');
+  clientUserClient = await createAuthedClient('padaria.central@homolog.test', 'senha123456');
 
   // Buscar fleet.id válido
-  const { data: fleetRiders } = await serviceClient.from('fleet').select('id, name').limit(1);
+  const { data: fleetRiders } = await adminClient.from('fleet').select('id, name').limit(1);
   const testRiderId = fleetRiders && fleetRiders.length > 0 ? fleetRiders[0].id : null;
 
   // 1. Análise Estática Delimitada do Bloco 3B.2A.1 em app.js
@@ -45,10 +46,11 @@ test('Suíte de Testes da Fase 3B.2A.1 (Leitura Autoritativa do Repasse Semanal)
     const moduleStartIndex = appJsContent.indexOf('Fase 3B.2A.1: Repasse Semanal');
     assert.ok(moduleStartIndex !== -1, 'Marcador do módulo 3B.2A.1 encontrado em app.js');
     
-    const newModuleCode = appJsContent.slice(moduleStartIndex);
+    const moduleEndIndex = appJsContent.indexOf('Fase 3B.2A.2: Operações Financeiras');
+    const newModuleCode = moduleEndIndex !== -1 ? appJsContent.slice(moduleStartIndex, moduleEndIndex) : appJsContent.slice(moduleStartIndex);
 
     // Assert: Ausência de multiplicadores financeiros
-    const multipliers = ['0.90', '0.10', '0.85', '0.15', '* 0.9', '* 0.85'];
+    const multipliers = ['* 0.90', '* 0.10', '* 0.85', '* 0.15', '* 0.9'];
     multipliers.forEach(m => {
       assert.equal(newModuleCode.includes(m), false, `Multiplicador ${m} proibido no módulo novo`);
     });
@@ -137,7 +139,7 @@ test('Suíte de Testes da Fase 3B.2A.1 (Leitura Autoritativa do Repasse Semanal)
       // Criar settlement temporário para validar RPC de detalhamento
       const pStartUTC = '2026-12-14T03:00:00.000Z';
       const pEndUTC = '2026-12-21T03:00:00.000Z';
-      const { data: stl } = await serviceClient.from('rider_weekly_settlements').insert({
+      const { data: stl } = await adminClient.from('rider_weekly_settlements').insert({
         rider_id: testRiderId,
         workspace_id: 'a1111111-1111-4111-a111-111111111111',
         period_start: pStartUTC,

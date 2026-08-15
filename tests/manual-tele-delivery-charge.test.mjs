@@ -84,8 +84,8 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
     const idempotencyKey = `idemp-test-admin-${Date.now()}`;
     const { data, error } = await adminClient.rpc('create_admin_tele', {
       p_client_id: activeClientId,
-      p_pickup_address: 'Av. Presidente Vargas, 1000 - Centro, Sapucaia do Sul - RS',
-      p_delivery_address: 'Rua Portão, 271 - Vargas, Sapucaia do Sul - RS',
+      p_// pickup_address: 'Av. Presidente Vargas, 1000 - Centro, Sapucaia do Sul - RS',
+      p_endereco: 'Rua Portão, 271 - Vargas, Sapucaia do Sul - RS',
       p_recipient_name: 'Cliente Teste Admin',
       p_recipient_phone: '(51) 98888-1111',
       p_idempotency_key: idempotencyKey,
@@ -114,8 +114,8 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
   test('2. CLIENTE: Criar Tele via RPC com Valor da Tele (R$ 18,50)', async () => {
     const idempotencyKey = `idemp-test-client-${Date.now()}`;
     const { data, error } = await adminClient.rpc('create_client_tele', {
-      p_pickup_address: 'Av. Presidente Vargas, 1000 - Centro, Sapucaia do Sul - RS',
-      p_delivery_address: 'Rua das Flores, 500 - Vargas, Sapucaia do Sul - RS',
+      p_// pickup_address: 'Av. Presidente Vargas, 1000 - Centro, Sapucaia do Sul - RS',
+      p_endereco: 'Rua das Flores, 500 - Vargas, Sapucaia do Sul - RS',
       p_recipient_name: 'Cliente Teste Portal',
       p_recipient_phone: '(51) 97777-2222',
       p_idempotency_key: idempotencyKey,
@@ -144,8 +144,8 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
     // 3.1 Nulo
     const { data: dataNull } = await adminClient.rpc('create_admin_tele', {
       p_client_id: activeClientId,
-      p_pickup_address: 'Av. Presidente Vargas, 1000',
-      p_delivery_address: 'Rua Teste, 100',
+      p_// pickup_address: 'Av. Presidente Vargas, 1000',
+      p_endereco: 'Rua Teste, 100',
       p_recipient_name: 'Sem Valor',
       p_recipient_phone: '(51) 99999-0000',
       p_idempotency_key: `idemp-block-null-${Date.now()}`,
@@ -159,8 +159,8 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
     // 3.2 Zero
     const { data: dataZero } = await adminClient.rpc('create_admin_tele', {
       p_client_id: activeClientId,
-      p_pickup_address: 'Av. Presidente Vargas, 1000',
-      p_delivery_address: 'Rua Teste, 100',
+      p_// pickup_address: 'Av. Presidente Vargas, 1000',
+      p_endereco: 'Rua Teste, 100',
       p_recipient_name: 'Sem Valor Zero',
       p_recipient_phone: '(51) 99999-0000',
       p_idempotency_key: `idemp-block-zero-${Date.now()}`,
@@ -173,8 +173,8 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
     // 3.3 Negativo
     const { data: dataNeg } = await adminClient.rpc('create_admin_tele', {
       p_client_id: activeClientId,
-      p_pickup_address: 'Av. Presidente Vargas, 1000',
-      p_delivery_address: 'Rua Teste, 100',
+      p_// pickup_address: 'Av. Presidente Vargas, 1000',
+      p_endereco: 'Rua Teste, 100',
       p_recipient_name: 'Sem Valor Negativo',
       p_recipient_phone: '(51) 99999-0000',
       p_idempotency_key: `idemp-block-neg-${Date.now()}`,

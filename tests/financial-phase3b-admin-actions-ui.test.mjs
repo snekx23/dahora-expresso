@@ -6,11 +6,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 
 const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
@@ -27,9 +28,9 @@ test('Suíte de Testes da Fase 3B.2A.2 (Operações Autoritativas do Repasse Sem
   let periodStart;
   let periodEnd;
 
-  adminClient = await createAuthedClient('admin@dahora.local', 'senha123456');
+  adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'senha123456');
 
-  const { data: fleetRiders } = await serviceClient.from('fleet').select('id, name').limit(1);
+  const { data: fleetRiders } = await adminClient.from('fleet').select('id, name').limit(1);
   assert.ok(fleetRiders && fleetRiders.length > 0, "Deve existir ao menos 1 motoboy no fleet");
   testRiderId = fleetRiders[0].id;
 
@@ -52,7 +53,7 @@ test('Suíte de Testes da Fase 3B.2A.2 (Operações Autoritativas do Repasse Sem
     periodEnd = row.period_end;
 
     // Garantir saldo elegível para testes de pagamento inserindo um crédito via serviceClient
-    await serviceClient.from('rider_credits_ledger').insert({
+    await adminClient.from('rider_credits_ledger').insert({
       motoboy_id: testRiderId,
       amount: 150.00,
       description: 'Crédito de Homologação Fase 3B.2A.2',

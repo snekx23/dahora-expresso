@@ -10,11 +10,12 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve('.env.bootstrap.remote') });
+// Local test harness override
+process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
 
 const CLIENT_ID_1 = 'c1111111-1111-4111-a111-111111111111';
 
@@ -33,9 +34,9 @@ test('Suíte de Testes Automatizados da Fase 2 (Drawer, Timeline, Concorrência 
   t.after(async () => {
     for (const teleId of createdTeleIds) {
       try {
-        const { data } = await serviceClient.from('teles').select('status, version').eq('id', teleId).maybeSingle();
+        const { data } = await adminClient.from('teles').select('status, version').eq('id', teleId).maybeSingle();
         if (data && !['concluida', 'cancelada'].includes(data.status)) {
-          await serviceClient.rpc('cancel_tele', {
+          await adminClient.rpc('cancel_tele', {
             p_tele_id: teleId,
             p_expected_version: data.version || 1,
             p_reason: 'Teardown automatizado da suíte da Fase 2'
@@ -45,21 +46,21 @@ test('Suíte de Testes Automatizados da Fase 2 (Drawer, Timeline, Concorrência 
     }
   });
 
-  const adminClient = await createAuthedClient('admin@dahora.local', 'senha123456');
-  const clientUserClient = await createAuthedClient('parceiro@mercadocentral.local', 'senha123456');
+  const adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
+  const clientUserClient = await createAuthedClient('padaria.central@homolog.test', 'dahoraexpresso1');
 
   // Buscar dois motoboys válidos em fleet
-  const { data: riders } = await serviceClient.from('fleet').select('id, name').limit(2);
+  const { data: riders } = await adminClient.from('fleet').select('id, name').limit(2);
   const riderId1 = riders[0].id;
   const riderId2 = riders[1] ? riders[1].id : riders[0].id;
 
   // Setup: Criar uma Tele de teste em aguardando_despacho
-  const { data: newTele, error: createErr } = await serviceClient.from('teles').insert({
-    tele_code: `TEL-DRAWER-${Date.now()}`,
+  const { data: newTele, error: createErr } = await adminClient.from('teles').insert({
+    codigo: Math.floor(Date.now() / 1000), // tele_code: `TEL-DRAWER-${Date.now()}`,
     client_id: CLIENT_ID_1,
     status: 'aguardando_despacho',
-    pickup_address: 'Rua do Mercado Central, 50',
-    delivery_address: 'Av. Brasil, 100',
+    // pickup_address: 'Rua do Mercado Central, 50',
+    endereco: 'Av. Brasil, 100',
     version: 1,
     created_at: new Date().toISOString()
   }).select('id, tele_code, version').single();
@@ -93,7 +94,7 @@ test('Suíte de Testes Automatizados da Fase 2 (Drawer, Timeline, Concorrência 
   // 4. Inserção de eventos e preservação de múltiplos eventos no mesmo segundo
   await t.test('4. Timeline preserva múltiplos eventos criados no mesmo segundo sem descarte', async () => {
     const nowIso = new Date().toISOString();
-    await serviceClient.from('tele_eventos').insert([
+    await adminClient.from('tele_eventos').insert([
       { tele_id: newTele.id, tipo: 'test_event_a', created_at: nowIso },
       { tele_id: newTele.id, tipo: 'test_event_b', created_at: nowIso }
     ]);

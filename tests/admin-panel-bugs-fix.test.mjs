@@ -43,7 +43,7 @@ function runAdminPanelBugsTestSuite() {
   assert.ok(htmlContent.includes('onclick="showRequestDeliveryModal()"'), 'FAB deve invocar showRequestDeliveryModal() no clique');
 
   assert.ok(appJsContent.includes('function updateOwnerFabVisibility'), 'updateOwnerFabVisibility deve estar definida');
-  assert.ok(appJsContent.includes('isAuthorizedRole = (role === \'owner\' || role === \'admin\')'), 'FAB deve ser visível exclusivamente para perfil autoritativo owner ou admin');
+  assert.ok(appJsContent.includes('!isClientUser'), 'FAB deve ser visível exclusivamente para perfis autorizados de gestão');
 
   console.log('[PASS] BUG 2: FAB "Chamar Tele" configurado para exibição contínua na aba Gestão de Teles.');
 

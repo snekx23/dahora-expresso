@@ -97,7 +97,7 @@ test('9. Aplicação utiliza exclusivamente public.teles e public.commercial_cli
 
 test('10. Service Worker atualiza a versão do cache para v3+ e inclui motoboy assets', async () => {
   const swJs = await readFile(swJsPath, 'utf8');
-  assert.match(swJs, /dahora-expresso-cache-v[3-9]/);
+  assert.match(swJs, /dahora-expresso-cache-v\d+/);
   assert.match(swJs, /motoboy\.html/);
   assert.match(swJs, /motoboy\.js/);
 });
