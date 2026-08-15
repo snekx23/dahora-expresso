@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('HOTFIX RC.11.1 - Admin Login Resolver Hardening', () => {
+test.describe('HOTFIX RC.11.2 - Admin Login Forensic Validation', () => {
   test.setTimeout(60000);
 
-  test('Valid Admin Case/Whitespace Variations', async ({ page }) => {
+  test('Valid Admin Case/Whitespace Variations with Canonical Password dahoraexpresso1', async ({ page }) => {
     // Intercept network requests to ensure ZERO requests to remote Supabase
     page.on('request', request => {
       const url = request.url();
@@ -35,7 +35,7 @@ test.describe('HOTFIX RC.11.1 - Admin Login Resolver Hardening', () => {
       await page.waitForLoadState('networkidle');
 
       await page.fill('#username', inputVal);
-      await page.fill('#password', 'senha123456');
+      await page.fill('#password', 'dahoraexpresso1');
       await page.click('#login-form button[type="submit"]');
 
       await page.waitForSelector('#view-dashboard', { state: 'visible', timeout: 15000 });
@@ -60,7 +60,7 @@ test.describe('HOTFIX RC.11.1 - Admin Login Resolver Hardening', () => {
     });
 
     await page.fill('#username', 'unknown@invalid.test');
-    await page.fill('#password', 'senha123456');
+    await page.fill('#password', 'dahoraexpresso1');
     await page.click('#login-form button[type="submit"]');
 
     await page.waitForTimeout(1000);
