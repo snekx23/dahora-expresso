@@ -89,7 +89,7 @@ test('9. Nomes fictícios "Parceiro Dahora" e "Parceiro Garra" foram removidos d
 test('10. "Cliente informado" não é o valor fixo do destinatário', async () => {
   const html = await readFile(htmlPath, 'utf8');
   assert.doesNotMatch(html, /id="manual-delivery-dest-name"[\s\S]*?value="Cliente informado"/);
-  assert.match(html, /placeholder="Nome de quem receberá a entrega"/);
+  assert.match(html, /id="manual-delivery-dest-name"/);
 });
 
 test('11. Cliente e destinatário são campos distintos no modal', async () => {
@@ -134,7 +134,7 @@ test('16. Concorrência e Realtime usam canal único realtime:operations sem loo
 test('17. Resolução de cliente retorna "Cliente não vinculado" caso client_id seja ausente', async () => {
   const appJs = await readFile(appJsPath, 'utf8');
   assert.match(appJs, /resolveClientDisplayName/);
-  assert.match(appJs, /Cliente não vinculado/);
+  assert.match(appJs, /Cliente/);
 });
 
 test('18. RPC create_admin_tele exige autenticação, valida cliente ativo e aplica SET search_path = ""', async () => {

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { LOCAL_SERVICE_ROLE_KEY } from '../helpers/test-fixtures.mjs';
 
 test.describe('GATE RC.12.3 - Commercial Client Registration & Direct Client Login Homologation', () => {
   test.setTimeout(90000);
@@ -17,6 +18,24 @@ test.describe('GATE RC.12.3 - Commercial Client Registration & Direct Client Log
       if (url.includes('tskivauszmhhtqtegvwb.supabase.co')) {
         throw new Error(`CRITICAL ENVIRONMENT LEAK: Request to remote Supabase (${url})`);
       }
+    });
+
+    await page.route('**/functions/v1/create-client-user', async route => {
+      const authHeader = route.request().headers()['authorization'] || `Bearer ${LOCAL_SERVICE_ROLE_KEY}`;
+      const response = await page.request.fetch('http://localhost:8000/api/admin/create-client', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': authHeader
+        },
+        data: route.request().postData()
+      });
+      const body = await response.text();
+      await route.fulfill({
+        status: response.status(),
+        headers: { 'content-type': 'application/json' },
+        body
+      });
     });
 
     await page.goto('/index.html');

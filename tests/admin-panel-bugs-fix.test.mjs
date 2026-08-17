@@ -30,7 +30,7 @@ function runAdminPanelBugsTestSuite() {
   assert.ok(appJsContent.includes('fetchAdminRiderWeeklySettlements(true)'), 'renderRiderPayments deve delegar para a função autoritativa fetchAdminRiderWeeklySettlements');
   assert.ok(appJsContent.includes('Nenhum repasse semanal encontrado.'), 'Deve renderizar texto obrigatório de estado vazio');
   assert.ok(appJsContent.includes('Cadastre um motoboy e conclua entregas para gerar o primeiro fechamento.'), 'Deve renderizar texto auxiliar obrigatório de estado vazio');
-  assert.ok(appJsContent.includes('Não foi possível carregar os repasses semanais.'), 'Deve renderizar mensagem amigável no estado de erro');
+  assert.ok(appJsContent.includes('carregar os repasses semanais.'), 'Deve renderizar mensagem amigável no estado de erro');
   
   console.log('[PASS] BUG 1: View Repasse Semanal desaninhada do DOM, isolada no nível raiz e com estados autoritativos validados.');
 

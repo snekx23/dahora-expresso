@@ -78,12 +78,12 @@ async function runNodeIntegrationTests() {
   const { data: consRes, error: consErr } = await adminClient.rpc('admin_create_rider_consumable', {
     p_motoboy_id: fleetId,
     p_category: 'consumivel',
-    p_item_name: 'Óleo Sintético 10W40',
+    p_item_name: `Óleo Sintético ${Date.now()}`,
     p_quantity: 1,
     p_unit_amount: 45.00,
     p_notes: 'Troca em posto credenciado',
     p_competency_date: new Date().toISOString().split('T')[0],
-    p_request_idempotency_key: `node-test-cons-${Date.now()}`
+    p_request_idempotency_key: `node-test-cons-${Date.now()}-${Math.floor(Math.random()*100000)}`
   });
   assert.ifError(consErr, 'RPC admin_create_rider_consumable não deve retornar erro HTTP/RPC');
   assert.strictEqual(consRes.success, true, 'Resposta da RPC de consumível deve indicar sucesso');
@@ -98,7 +98,7 @@ async function runNodeIntegrationTests() {
     p_amount: 30.00,
     p_description: 'Bônus Pontualidade Node',
     p_target_date: new Date().toISOString().split('T')[0],
-    p_request_idempotency_key: `node-test-cred-${Date.now()}`
+    p_request_idempotency_key: `node-test-cred-${Date.now()}-${Math.floor(Math.random()*100000)}`
   });
   assert.ifError(credErr, 'RPC admin_create_rider_adjustment não deve retornar erro');
   assert.strictEqual(credRes.success, true, 'Resposta da RPC de crédito deve indicar sucesso');

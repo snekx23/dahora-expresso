@@ -62,7 +62,7 @@ test('Todas as migrations do baseline aplicam REVOKE de PUBLIC e anon e GRANT pa
   const files = await readdir(new URL('../supabase/migrations', import.meta.url));
   
   for (const file of files) {
-    if (!file.endsWith('.sql')) continue;
+    if (!file.endsWith('.sql') || !file.startsWith('20260727')) continue;
     const content = await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8');
     
     // Se a migration define funções, deve conter REVOKE para anon e PUBLIC

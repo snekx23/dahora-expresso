@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const nodeCompatibleFiles = [
   'admin-panel-bugs-fix.test.mjs',
@@ -66,7 +67,16 @@ for (const file of nodeCompatibleFiles) {
         ...process.env,
         SUPABASE_URL: 'http://127.0.0.1:54321',
         SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw',
-        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTk3Nzg3NywiZXhwIjoyMTAxNTUzODc3fQ.hN8D7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw',
+        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || (function() {
+          const secretKey = 'super-secret-jwt-token-with-at-least-32-characters-long';
+          const header = { alg: 'HS256', typ: 'JWT' };
+          const payload = { iss: 'supabase', ref: 'tskivauszmhhtqtegvwb', role: 'service_role', iat: 1785977877, exp: 2101553877 };
+          const hEnc = Buffer.from(JSON.stringify(header)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          const pEnc = Buffer.from(JSON.stringify(payload)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          const data = `${hEnc}.${pEnc}`;
+          const sig = crypto.createHmac('sha256', secretKey).update(data).digest('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          return `${data}.${sig}`;
+        })(),
         DEMO_RESET_ENABLED: 'true'
       },
       stdio: 'pipe'

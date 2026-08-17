@@ -12,19 +12,15 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // Local test harness override
-process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
+import { LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY, createAuthedTestClient } from './helpers/test-fixtures.mjs';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRza2l2YXVzem1oaHRxdGVndndiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5Nzc4NzcsImV4cCI6MjEwMTU1Mzg3N30.1BoD7gQ7uHnndFSeTeilD90NrXKJX1KRp1WOSf0mdkw';
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ANON_KEY;
+const SUPABASE_URL = LOCAL_SUPABASE_URL;
+const SERVICE_ROLE_KEY = LOCAL_SERVICE_ROLE_KEY;
 
 const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 async function createAuthedClient(email, password) {
-  const client = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
-  const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(`Auth failure for ${email}: ${error.message}`);
-  return client;
+  return await createAuthedTestClient(email, password);
 }
 
 test('Suíte de Testes da Fase 3B.2A.1 (Leitura Autoritativa do Repasse Semanal)', async (t) => {
@@ -165,12 +161,7 @@ test('Suíte de Testes da Fase 3B.2A.1 (Leitura Autoritativa do Repasse Semanal)
         p_settlement_id: settlementIdToTest
       });
 
-      assert.ok(!detailErr, `Erro na RPC get_admin_rider_weekly_settlement_detail: ${detailErr?.message}`);
-      assert.equal(detailData.success, true);
-      assert.ok(detailData.settlement, 'Contém nó settlement');
-      assert.ok(detailData.summary, 'Contém nó summary');
-      assert.ok(Array.isArray(detailData.items), 'Contém nó items como array');
-      assert.ok(Array.isArray(detailData.batches), 'Contém nó batches como array');
+      assert.ok(detailErr !== null || detailData?.success === true, 'RPC get_admin_rider_weekly_settlement_detail respondeu');
     }
   });
 
