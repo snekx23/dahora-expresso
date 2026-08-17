@@ -19,14 +19,14 @@
   --primary: #CC0000;
   --primary-hover: #FF9900;
   --primary-glow: rgba(204, 0, 0, 0.15);
-  
+
   --accent-cyan: #00CCFF;
   --accent-cyan-hover: #0099FF;
   --accent-cyan-glow: rgba(0, 204, 255, 0.15);
-  
+
   --secondary: #272730;
   --secondary-hover: #353542;
-  
+
   --success: #10b981;
   --success-glow: rgba(16, 185, 129, 0.15);
   --error: #ef4444;
@@ -1925,7 +1925,7 @@ select {
   right: 0;
   bottom: 0;
   background-size: 20px 20px;
-  background-image: 
+  background-image:
     linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
 }
@@ -2122,17 +2122,17 @@ select {
     gap: 40px;
     padding: 20px 0;
   }
-  
+
   .hero-content {
     text-align: center;
     align-items: center;
   }
-  
+
   .hero-pillars {
     grid-template-columns: 1fr;
     width: 100%;
   }
-  
+
   .hero-login-wrapper {
     justify-content: center;
   }
@@ -2154,7 +2154,7 @@ select {
   .dashboard-grid, .request-layout, .tracking-layout {
     grid-template-columns: 1fr;
   }
-  
+
   .request-info-sidebar {
     order: -1; /* Place info above on tablet/mobile */
   }
@@ -2164,7 +2164,7 @@ select {
   .dashboard-layout {
     flex-direction: column;
   }
-  
+
   .sidebar {
     position: fixed;
     top: 0;
@@ -2182,33 +2182,33 @@ select {
     background-color: var(--bg-sidebar);
     padding: 24px;
   }
-  
+
   .sidebar.open {
     left: 0; /* Slide in drawer */
   }
-  
+
   .sidebar-header {
     margin-bottom: 32px;
   }
-  
+
   .sidebar-nav {
     flex-direction: column;
     overflow-x: visible;
     gap: 24px;
   }
-  
+
   .nav-group {
     flex-direction: column;
     gap: 6px;
   }
-  
+
   .nav-item {
     padding: 12px 16px;
     font-size: 0.95rem;
     white-space: normal;
     width: 100%;
   }
-  
+
   .sidebar-footer {
     display: flex; /* Show profile & logout button in mobile drawer */
     border-top: 1px solid var(--border-color);
@@ -2221,15 +2221,15 @@ select {
     padding: 0 20px;
     height: 70px;
   }
-  
+
   .topbar-left h2 {
     font-size: 1.2rem;
   }
-  
+
   .topbar-left p {
     display: none;
   }
-  
+
   .current-time {
     display: none;
   }
@@ -2237,11 +2237,11 @@ select {
   .dashboard-content {
     padding: 16px;
   }
-  
+
   .hero-title {
     font-size: 2.2rem;
   }
-  
+
   .login-card {
     padding: 24px;
   }
@@ -3491,7 +3491,7 @@ input:checked + .slider:before {
   box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4) !important;
   cursor: pointer !important;
   transition: transform 0.2s, box-shadow 0.2s !important;
-  z-index: 9999 !important; /* z-index ultra-alto para persistência sobre tabelas */
+  z-index: 9999 !important; /* z-index ultra-alto para persistÃªncia sobre tabelas */
 }
 
 .fab-btn:hover {
@@ -3559,7 +3559,7 @@ input:checked + .slider:before {
 }
 
 /* =====================================================================
-   CENTRO DE OPERAÇÕES (CONTROL TOWER & REALTIME KANBAN)
+   CENTRO DE OPERAÃ‡Ã•ES (CONTROL TOWER & REALTIME KANBAN)
    ===================================================================== */
 .op-control-center-layout {
   display: flex;
@@ -4224,7 +4224,7 @@ gmp-place-autocomplete::part(input):focus {
 }
 
 /* =====================================================================
-   Fase 3B.2A.1 — Weekly Settlement Admin Drawer & Responsive Styles
+   Fase 3B.2A.1 â€” Weekly Settlement Admin Drawer & Responsive Styles
    ===================================================================== */
 body.drawer-open {
   overflow: hidden !important;
@@ -4420,7 +4420,7 @@ body.drawer-open {
 
 /* ================= COMMERCIAL CLIENTS TABLE & ACTIONS STYLING ================= */
 
-/* Chips do Código do Cliente (Legível, Discreto e sem Tachado) */
+/* Chips do CÃ³digo do Cliente (LegÃ­vel, Discreto e sem Tachado) */
 .client-code-chip {
   font-family: monospace;
   font-weight: 700;
@@ -4482,7 +4482,7 @@ body.drawer-open {
   width: 60px;
 }
 
-/* Botão Gatilho das Ações (Compacto [ ⋮ ]) */
+/* BotÃ£o Gatilho das AÃ§Ãµes (Compacto [ â‹® ]) */
 .btn-icon-action {
   background: var(--secondary);
   border: 1px solid var(--border-color);
@@ -4563,7 +4563,7 @@ body.drawer-open {
   flex-shrink: 0;
 }
 
-/* Indicador de Visualização Administrativa do Cliente */
+/* Indicador de VisualizaÃ§Ã£o Administrativa do Cliente */
 .admin-view-indicator-banner {
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.35);
@@ -4584,5 +4584,21 @@ body.drawer-open {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* ================= SOLICITAR ENTREGA - REDESIGN RESPONSIVO ================= */
+@media (max-width: 1024px) {
+  .order-request-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .order-request-summary-column {
+    position: static !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .order-card-section div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
 }
 

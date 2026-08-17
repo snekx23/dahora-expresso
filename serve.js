@@ -1,14 +1,16 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
 
 import { processNotificationOutbox } from './server/push-service.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = 8000;
-const HOST = '0.0.0.0';
+const HOST = '127.0.0.1';
 
 const ENABLE_PUSH_WORKER = false;
 
@@ -77,13 +79,30 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Handle Secure Backend API Route (Dev Adapter)
-
+  // Handle Secure Backend API Route (Dev Adapter & Real Local Provisioner)
   if (reqUrl === '/api/admin/create-client' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
+        // 1. Validar conexÃ£o estritamente loopback local (127.0.0.1 / ::1 / ::ffff:127.0.0.1)
+        const remoteIp = req.socket.remoteAddress || req.connection?.remoteAddress || '';
+        const allowedIps = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+        if (!allowedIps.includes(remoteIp)) {
+          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Acesso negado: rota restrita a loopback local.' }));
+          return;
+        }
+
+        // 2. Validar token Bearer JWT
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : '';
+        if (!token) {
+          res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'NÃ£o autorizado: token Bearer JWT ausente ou malformado.' }));
+          return;
+        }
+
         const payload = JSON.parse(body || '{}');
         const {
           establishment_name,
@@ -95,101 +114,184 @@ const server = http.createServer((req, res) => {
           complement,
           neighborhood,
           city,
+          postal_code,
           document,
           map_color,
           notes,
-          force_db_error // para testes de compensação/rollback
+          pickup_latitude,
+          pickup_longitude,
+          pickup_place_id,
+          street_number,
+          route,
+          state
         } = payload;
 
-        // 1. Validações
         if (!establishment_name || !responsible_name || !phone || !email || !password || !address) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'Campos obrigatórios ausentes: Nome do estabelecimento, responsável, telefone, email, senha e endereço são obrigatórios.' }));
+          res.end(JSON.stringify({ error: 'Campos obrigatÃ³rios ausentes (nome do estabelecimento, responsÃ¡vel, telefone, e-mail, senha, endereÃ§o).' }));
           return;
         }
 
         if (password.length < 6) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'A senha deve conter no mínimo 6 caracteres.' }));
+          res.end(JSON.stringify({ error: 'A senha deve conter no mÃ­nimo 6 caracteres.' }));
           return;
         }
 
         const emailNorm = email.trim().toLowerCase();
         const phoneNorm = phone.replace(/\D/g, '');
-        let docNorm = document ? document.replace(/\D/g, '') : null;
-        if (!docNorm) docNorm = null;
+        const docNorm = document ? document.replace(/\D/g, '') : null;
 
-        // Verificar duplicidades no store local / banco
-        const isDuplicate = devClientsStore.some(c => 
-          c.email_normalized === emailNorm || 
-          (docNorm && c.document_normalized && c.document_normalized === docNorm)
-        );
+        // Provision directly into local Supabase GoTrue + DB
+        try {
+          const secretKey = 'super-secret-jwt-token-with-at-least-32-characters-long';
+          const header = { alg: 'HS256', typ: 'JWT' };
+          const jwtPayload = { iss: 'supabase', ref: 'tskivauszmhhtqtegvwb', role: 'service_role', iat: 1785977877, exp: 2101553877 };
+          const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          const encodedPayload = Buffer.from(JSON.stringify(jwtPayload)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          const dataToSign = `${encodedHeader}.${encodedPayload}`;
+          const sig = crypto.createHmac('sha256', secretKey).update(dataToSign).digest('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+          const localServiceRoleKey = `${dataToSign}.${sig}`;
 
-        if (isDuplicate) {
-          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'Email ou Documento (CPF/CNPJ) já cadastrado para outro cliente.' }));
-          return;
-        }
+          const supabaseAdmin = createClient('http://127.0.0.1:54321', localServiceRoleKey, {
+            auth: { autoRefreshToken: false, persistSession: false }
+          });
 
-        // 2. Simulação da criação de Usuário no Auth
-        const simulatedAuthUserId = `auth-user-${Date.now()}`;
-        let authUserCreated = true;
-
-        // 3. Simulação de gravação relacional com mecanismo de Compensação (Rollback)
-        if (force_db_error) {
-          // Trata falha relacional simulada -> aciona compensação
-          if (authUserCreated) {
-            authUserCreated = false; // Rollback executado
+          // 3. Validar token JWT do Admin via GoTrue auth.getUser(token)
+          const { data: authUser, error: authErr } = await supabaseAdmin.auth.getUser(token);
+          if (authErr || !authUser?.user) {
+            res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'SessÃ£o administrativa invÃ¡lida ou expirada.' }));
+            return;
           }
-          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'Erro relacional simulado no banco de dados. Rollback do Auth User executado com sucesso.' }));
-          return;
+
+          const actorUserId = authUser.user.id;
+
+          // 4. Validar perfil do Admin em user_profiles (is_active e roles permitidas)
+          const { data: actorProfile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('role, is_active')
+            .eq('user_id', actorUserId)
+            .maybeSingle();
+
+          const allowedRoles = ['owner', 'admin', 'operador', 'gerente'];
+          if (!actorProfile || !actorProfile.is_active || !allowedRoles.includes(actorProfile.role)) {
+            res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'Acesso negado: permissÃ£o administrativa insuficiente.' }));
+            return;
+          }
+
+          // 5. Pre-check de duplicidades no banco relacional
+          const { data: existingClient } = await supabaseAdmin
+            .from('commercial_clients')
+            .select('id')
+            .or(`email.eq.${emailNorm}${docNorm ? `,document.eq.${docNorm}` : ''}`)
+            .limit(1);
+
+          if (existingClient && existingClient.length > 0) {
+            res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'E-mail ou Documento (CPF/CNPJ) jÃ¡ cadastrado para outro cliente.' }));
+            return;
+          }
+
+          // 6. Criar usuÃ¡rio no Auth GoTrue via Admin API
+          const { data: authUserData, error: createAuthError } = await supabaseAdmin.auth.admin.createUser({
+            email: emailNorm,
+            password: password,
+            email_confirm: true,
+            user_metadata: { establishment_name, responsible_name, role: 'client_user' }
+          });
+
+          if (createAuthError || !authUserData?.user) {
+            const msg = (createAuthError?.message || '').toLowerCase();
+            const isDup = msg.includes('already registered') || msg.includes('already been registered') || createAuthError?.status === 422;
+            const statusCode = isDup ? 409 : 400;
+            res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: `E-mail ou Documento (CPF/CNPJ) jÃ¡ cadastrado para outro cliente.` }));
+            return;
+          }
+
+          const newAuthUserId = authUserData.user.id;
+
+          // 7. Chamada AtÃ´mica Ã  RPC provision_commercial_client_relational
+          try {
+            const { data: rpcClientObj, error: rpcError } = await supabaseAdmin.rpc('provision_commercial_client_relational', {
+              p_actor_user_id: actorUserId,
+              p_auth_user_id: newAuthUserId,
+              p_establishment_name: establishment_name,
+              p_responsible_name: responsible_name,
+              p_phone: phoneNorm,
+              p_email: emailNorm,
+              p_document: docNorm || emailNorm,
+              p_address: address,
+              p_complement: complement || null,
+              p_neighborhood: neighborhood || null,
+              p_city: city || null,
+              p_postal_code: postal_code || null,
+              p_pickup_latitude: pickup_latitude !== undefined && pickup_latitude !== null ? Number(pickup_latitude) : null,
+              p_pickup_longitude: pickup_longitude !== undefined && pickup_longitude !== null ? Number(pickup_longitude) : null,
+              p_pickup_place_id: pickup_place_id || null,
+              p_street_number: street_number || null,
+              p_route: route || null,
+              p_state: state || null,
+              p_map_color: map_color || '#ffb700',
+              p_notes: notes || null,
+              p_lifecycle_status: 'ativo',
+              p_financial_status: 'em_dia'
+            });
+
+            if (rpcError || !rpcClientObj) throw rpcError || new Error('Falha ao executar RPC relacional.');
+
+            res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+              message: 'Cliente e acesso criados com sucesso.',
+              client: rpcClientObj
+            }));
+            return;
+
+          } catch (dbErr) {
+            console.error('Falha relacional. Executando rollback compensatÃ³rio do usuÃ¡rio Auth:', dbErr);
+            const isConflict = dbErr.code === '23505' || (dbErr.message && dbErr.message.includes('duplicate key'));
+            const statusCode = isConflict ? 409 : 500;
+            const errorMsg = isConflict
+              ? 'E-mail ou Documento (CPF/CNPJ) jÃ¡ cadastrado para outro cliente.'
+              : `Erro ao criar cadastro relacional: ${dbErr.message || dbErr}. Rollback efetuado com sucesso.`;
+
+            await supabaseAdmin.auth.admin.deleteUser(newAuthUserId);
+            res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: errorMsg }));
+            return;
+          }
+
+        } catch (sbErr) {
+          console.warn('Fallback to devClientsStore mock adapter error:', sbErr);
+          const publicCode = `CLI-${String(devClientCodeSeq++).padStart(6, '0')}`;
+          const newClient = {
+            id: `client-uuid-${Date.now()}`,
+            client_code: publicCode,
+            establishment_name,
+            responsible_name,
+            phone_normalized: phoneNorm,
+            email_normalized: emailNorm,
+            document_normalized: docNorm,
+            lifecycle_status: 'ativo',
+            financial_status: 'em_dia',
+            address,
+            complement: complement || '',
+            neighborhood: neighborhood || '',
+            city: city || '',
+            map_color: map_color || '#3b82f6',
+            notes: notes || '',
+            created_at: new Date().toISOString()
+          };
+          devClientsStore.push(newClient);
+
+          res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({
+            message: 'Cliente e acesso criados com sucesso (mock).',
+            client: newClient
+          }));
         }
-
-        const publicCode = `CLI-${String(devClientCodeSeq++).padStart(6, '0')}`;
-        const newClient = {
-          id: `client-uuid-${Date.now()}`,
-          public_code: publicCode,
-          establishment_name,
-          responsible_name,
-          phone_normalized: phoneNorm,
-          email_normalized: emailNorm,
-          document_normalized: docNorm,
-          lifecycle_status: 'ativo',
-          financial_status: 'em_dia',
-          address,
-          complement: complement || '',
-          neighborhood: neighborhood || '',
-          city: city || '',
-          map_color: map_color || '#3b82f6',
-          notes: notes || '',
-          created_at: new Date().toISOString()
-        };
-
-        devClientsStore.push(newClient);
-
-        // 4. Registro de Auditoria (SEM SALVAR SENHA!)
-        const auditLog = {
-          id: `audit-${Date.now()}`,
-          actor_type: 'admin',
-          actor_id: 'admin-session-id',
-          action: 'commercial_client_created',
-          details: {
-            client_id: newClient.id,
-            public_code: newClient.public_code,
-            establishment_name: newClient.establishment_name,
-            email_normalized: newClient.email_normalized
-          },
-          created_at: new Date().toISOString()
-        };
-        devAuditStore.push(auditLog);
-
-        res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({
-          message: 'Cliente e acesso criados com sucesso.',
-          client: newClient,
-          audit: auditLog
-        }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: `Erro no servidor: ${err.message}` }));
@@ -217,7 +319,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST Dev Endpoint: Criação de Tele Manual pelo Administrador
+  // POST Dev Endpoint: CriaÃ§Ã£o de Tele Manual pelo Administrador
   if (reqUrl === '/api/admin/create-tele' && req.method === 'POST') {
     let bodyStr = '';
     req.on('data', chunk => { bodyStr += chunk.toString(); });
@@ -234,32 +336,32 @@ const server = http.createServer((req, res) => {
 
         if (!delivery_address || !delivery_address.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'DELIVERY_ADDRESS_REQUIRED', message: 'Endereço de entrega é obrigatório.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'DELIVERY_ADDRESS_REQUIRED', message: 'EndereÃ§o de entrega Ã© obrigatÃ³rio.' }));
           return;
         }
 
         if (!recipient_name || !recipient_name.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'RECIPIENT_NAME_REQUIRED', message: 'Nome do destinatário é obrigatório.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'RECIPIENT_NAME_REQUIRED', message: 'Nome do destinatÃ¡rio Ã© obrigatÃ³rio.' }));
           return;
         }
 
         if (!recipient_phone || !recipient_phone.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'RECIPIENT_PHONE_REQUIRED', message: 'Telefone do destinatário é obrigatório.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'RECIPIENT_PHONE_REQUIRED', message: 'Telefone do destinatÃ¡rio Ã© obrigatÃ³rio.' }));
           return;
         }
 
         const val = Number(order_value || 0);
         if (val < 0) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'INVALID_ORDER_VALUE', message: 'Valor do pedido não pode ser negativo.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'INVALID_ORDER_VALUE', message: 'Valor do pedido nÃ£o pode ser negativo.' }));
           return;
         }
 
         if (val > 50000) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'ORDER_VALUE_LIMIT_EXCEEDED', message: 'Valor do pedido excede o limite máximo de R$ 50.000,00.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'ORDER_VALUE_LIMIT_EXCEEDED', message: 'Valor do pedido excede o limite mÃ¡ximo de R$ 50.000,00.' }));
           return;
         }
 
@@ -306,7 +408,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST Dev Endpoint: Despacho Seguro & Concorrência Otimista (assign-rider)
+  // POST Dev Endpoint: Despacho Seguro & ConcorrÃªncia Otimista (assign-rider)
   if (reqUrl === '/api/operations/assign-rider' && req.method === 'POST') {
     let bodyStr = '';
     req.on('data', chunk => { bodyStr += chunk.toString(); });
@@ -335,45 +437,45 @@ const server = http.createServer((req, res) => {
           rider = {
             id: String(rider_id),
             name: 'Motoboy Dev ' + rider_id,
-            status: 'Disponível',
+            status: 'DisponÃ­vel',
             simultaneous_limit: 3
           };
           devRidersStore.set(String(rider_id), rider);
         }
 
-        // 3. Validar Status Imutável
+        // 3. Validar Status ImutÃ¡vel
         const currentNorm = (tele.status || '').toLowerCase();
         if (['concluido', 'concluida', 'entregue', 'cancelado', 'cancelada'].includes(currentNorm)) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_STATUS_INVALID', message: 'Não é possível despachar uma Tele concluída ou cancelada.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_STATUS_INVALID', message: 'NÃ£o Ã© possÃ­vel despachar uma Tele concluÃ­da ou cancelada.' }));
           return;
         }
 
-        // 4. Validar Versão Otimista
+        // 4. Validar VersÃ£o Otimista
         if (expected_version !== undefined && expected_version !== null && tele.version !== expected_version) {
           res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_VERSION_CONFLICT', message: 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.', current_version: tele.version }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_VERSION_CONFLICT', message: 'Esta Tele foi atualizada por outro operador. Os dados serÃ£o recarregados.', current_version: tele.version }));
           return;
         }
 
         // 5. Validar Status do Motoboy
-        if (['Indisponível', 'Bloqueado', 'Inativo'].includes(rider.status)) {
+        if (['IndisponÃ­vel', 'Bloqueado', 'Inativo'].includes(rider.status)) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'RIDER_UNAVAILABLE', message: 'Motoboy indisponível para novos despachos.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'RIDER_UNAVAILABLE', message: 'Motoboy indisponÃ­vel para novos despachos.' }));
           return;
         }
 
-        // 6. Validar Reatribuição (Troca de Motoboy)
+        // 6. Validar ReatribuiÃ§Ã£o (Troca de Motoboy)
         const previousRiderId = tele.motoboy_id;
         if (previousRiderId && String(previousRiderId) !== String(rider_id)) {
           if (!reason || !reason.trim()) {
             res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ success: false, error_code: 'REASSIGN_REASON_REQUIRED', message: 'Motivo obrigatório para trocar de motoboy.' }));
+            res.end(JSON.stringify({ success: false, error_code: 'REASSIGN_REASON_REQUIRED', message: 'Motivo obrigatÃ³rio para trocar de motoboy.' }));
             return;
           }
         }
 
-        // 7. Validar Capacidade Simultânea
+        // 7. Validar Capacidade SimultÃ¢nea
         let activeCount = 0;
         devTelesStore.forEach(t => {
           if (String(t.motoboy_id) === String(rider_id) && !['concluido', 'concluida', 'cancelado', 'cancelada'].includes((t.status || '').toLowerCase())) {
@@ -395,7 +497,7 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        // 8. Atualização Atômica Em Memória
+        // 8. AtualizaÃ§Ã£o AtÃ´mica Em MemÃ³ria
         tele.version = (tele.version || 1) + 1;
         tele.motoboy_id = String(rider_id);
         tele.status = 'motoboy_designado';
@@ -431,7 +533,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST Dev Endpoint: Conclusão Idempotente da Tele (complete-tele)
+  // POST Dev Endpoint: ConclusÃ£o Idempotente da Tele (complete-tele)
   if (reqUrl === '/api/operations/complete-tele' && req.method === 'POST') {
     let bodyStr = '';
     req.on('data', chunk => { bodyStr += chunk.toString(); });
@@ -462,30 +564,30 @@ const server = http.createServer((req, res) => {
             tele_id,
             status: 'concluida',
             version: tele.version,
-            message: 'Tele já havia sido concluída anteriormente.'
+            message: 'Tele jÃ¡ havia sido concluÃ­da anteriormente.'
           }));
           return;
         }
 
         if (['cancelado', 'cancelada'].includes(normStatus)) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_ALREADY_CANCELLED', message: 'Não é possível concluir uma Tele cancelada.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_ALREADY_CANCELLED', message: 'NÃ£o Ã© possÃ­vel concluir uma Tele cancelada.' }));
           return;
         }
 
         if (expected_version !== undefined && expected_version !== null && tele.version !== expected_version) {
           res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_VERSION_CONFLICT', message: 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.', current_version: tele.version }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_VERSION_CONFLICT', message: 'Esta Tele foi atualizada por outro operador. Os dados serÃ£o recarregados.', current_version: tele.version }));
           return;
         }
 
         if (!tele.motoboy_id) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_WITHOUT_RIDER', message: 'A Tele precisa ter um motoboy atribuído antes de ser concluída.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_WITHOUT_RIDER', message: 'A Tele precisa ter um motoboy atribuÃ­do antes de ser concluÃ­da.' }));
           return;
         }
 
-        // Resolução Financeira no Backend (80% Motoboy, 20% Empresa)
+        // ResoluÃ§Ã£o Financeira no Backend (80% Motoboy, 20% Empresa)
         const rawPrice = typeof tele.valor === 'number' ? tele.valor : parseFloat(String(tele.price || '15').replace(/[^\d.,]/g, '').replace(',', '.') || '15');
         const valorCliente = isNaN(rawPrice) || rawPrice <= 0 ? 15.00 : rawPrice;
         const valorMotoboy = Math.round(valorCliente * 0.80 * 100) / 100;
@@ -537,7 +639,7 @@ const server = http.createServer((req, res) => {
 
         if (!reason || !reason.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'CANCELLATION_REASON_REQUIRED', message: 'Motivo do cancelamento é obrigatório.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'CANCELLATION_REASON_REQUIRED', message: 'Motivo do cancelamento Ã© obrigatÃ³rio.' }));
           return;
         }
 
@@ -550,13 +652,13 @@ const server = http.createServer((req, res) => {
         const normStatus = (tele.status || '').toLowerCase();
         if (['concluido', 'concluida', 'entregue'].includes(normStatus)) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_ALREADY_COMPLETED', message: 'Não é possível cancelar uma Tele que já foi concluída.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_ALREADY_COMPLETED', message: 'NÃ£o Ã© possÃ­vel cancelar uma Tele que jÃ¡ foi concluÃ­da.' }));
           return;
         }
 
         if (expected_version !== undefined && expected_version !== null && tele.version !== expected_version) {
           res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error_code: 'TELE_VERSION_CONFLICT', message: 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.' }));
+          res.end(JSON.stringify({ success: false, error_code: 'TELE_VERSION_CONFLICT', message: 'Esta Tele foi atualizada por outro operador. Os dados serÃ£o recarregados.' }));
           return;
         }
 
@@ -592,7 +694,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (reqUrl === '/') reqUrl = '/index.html';
-  
+
   const safePath = path.normalize(reqUrl).replace(/^(\.\.[\/\\])+/, '');
   const filePath = path.join(__dirname, 'public', safePath);
   const ext = path.extname(filePath).toLowerCase();

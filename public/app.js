@@ -6,18 +6,19 @@
 // Supabase Configuration
 let supabaseClient = null;
 let maxSimultaneousDeliveries = 1;
+let adminClientViewContext = null;
 
 (function initSupabaseAppClient() {
   if (typeof window === 'undefined') return;
 
   if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.key) {
-    console.error("[SUPABASE INIT] Configuração do ambiente não disponível.");
+    console.error("[SUPABASE INIT] ConfiguraÃ§Ã£o do ambiente nÃ£o disponÃ­vel.");
     document.addEventListener('DOMContentLoaded', () => {
-      const errInfo = window.__CONFIGURATION_ERROR || { message: 'Ambiente não configurado. Verifique as configurações do sistema.' };
+      const errInfo = window.__CONFIGURATION_ERROR || { message: 'Ambiente nÃ£o configurado. Verifique as configuraÃ§Ãµes do sistema.' };
       const banner = document.createElement('div');
       banner.className = 'config-error-banner';
       banner.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:#0f172a; color:#f87171; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999; padding:24px; text-align:center; font-family:sans-serif;';
-      banner.innerHTML = `<h2 style="font-size:1.5rem; margin-bottom:12px;">⚠️ Sistema Indisponível</h2><p style="font-size:1rem; max-width:480px; color:#94a3b8;">${errInfo.message}</p>`;
+      banner.innerHTML = `<h2 style="font-size:1.5rem; margin-bottom:12px;">âš ï¸ Sistema IndisponÃ­vel</h2><p style="font-size:1rem; max-width:480px; color:#94a3b8;">${errInfo.message}</p>`;
       document.body.appendChild(banner);
     });
     return;
@@ -49,8 +50,8 @@ const mockData = {
   clientHistory: [],
   credentials: {
     owner: { name: 'Gustavo Souza', role: 'Dono & CEO', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=256&auto=format&fit=crop' },
-    client: { name: 'Gerente Lanchonete Dahora', role: 'Área do parceiro', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
-    order: { name: 'Pedido Lanchonete Dahora', role: 'Solicitação de entrega', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' }
+    client: { name: 'Gerente Lanchonete Dahora', role: 'Ãrea do parceiro', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' },
+    order: { name: 'Pedido Lanchonete Dahora', role: 'SolicitaÃ§Ã£o de entrega', commerceName: 'Lanchonete Dahora', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=256&auto=format&fit=crop' }
   },
   pendingDeliveries: [],
   riderConsumables: [],
@@ -124,7 +125,7 @@ function handleInvalidSession(customMessage) {
   mockData.cities = [];
   mockData.riderConsumables = [];
 
-  const msg = customMessage || "Sua sessão expirou. Faça login novamente.";
+  const msg = customMessage || "Sua sessÃ£o expirou. FaÃ§a login novamente.";
   if (typeof showToastNotification === 'function') {
     showToastNotification(msg);
   }
@@ -171,7 +172,7 @@ async function fetchCommerces() {
 
     commercesList = commercialClientsSelectCache.map(c => ({
       id: c.id,
-      nome: c.is_internal ? 'Dahora Expresso — Operação Interna' : (c.establishment_name || c.client_code || 'Cliente')
+      nome: c.is_internal ? 'Dahora Expresso â€” OperaÃ§Ã£o Interna' : (c.establishment_name || c.client_code || 'Cliente')
     }));
 
     if (typeof renderCommercialClientsDropdown === 'function') {
@@ -251,15 +252,15 @@ async function fetchFleet() {
 
       const isStale = lastSeenAt ? ((Date.now() - new Date(lastSeenAt).getTime()) > 10 * 60 * 1000) : false;
 
-      let batteryDisplay = '🔋 Indisponível';
+      let batteryDisplay = 'ðŸ”‹ IndisponÃ­vel';
       if (batterySupported && batteryLevel !== null) {
         if (isCharging) {
-          batteryDisplay = `⚡ ${batteryLevel}% — Carregando`;
+          batteryDisplay = `âš¡ ${batteryLevel}% â€” Carregando`;
         } else {
-          batteryDisplay = `🔋 ${batteryLevel}%`;
+          batteryDisplay = `ðŸ”‹ ${batteryLevel}%`;
         }
         if (isStale) {
-          batteryDisplay += ' — desatualizado';
+          batteryDisplay += ' â€” desatualizado';
         }
       }
 
@@ -351,7 +352,7 @@ async function fetchClientHistory() {
       delivery_address: escapeHtml(item.delivery_address || item.address || ''),
       pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
       rider: escapeHtml(item.rider || 'Aguardando Despacho'),
-      dist: '—',
+      dist: 'â€”',
       price: formatMoneyBR(Number(item.delivery_charge || item.valor || 15)),
       date: item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : 'Hoje',
       status: escapeHtml(item.status),
@@ -391,12 +392,12 @@ async function searchActiveRidersForExtract() {
   if (end) end.setHours(23, 59, 59, 999);
 
   if (start > end) {
-    alert("A data inicial não pode ser posterior à data final.");
+    alert("A data inicial nÃ£o pode ser posterior Ã  data final.");
     return;
   }
 
   if (!supabaseClient) {
-    alert("Supabase não está conectado.");
+    alert("Supabase nÃ£o estÃ¡ conectado.");
     return;
   }
 
@@ -418,7 +419,7 @@ async function searchActiveRidersForExtract() {
     grid.innerHTML = '';
 
     if (activeRiderNames.length === 0) {
-      grid.innerHTML = '<p class="text-muted" style="grid-column: 1 / -1;">Nenhum motoboy ativo encontrado neste período.</p>';
+      grid.innerHTML = '<p class="text-muted" style="grid-column: 1 / -1;">Nenhum motoboy ativo encontrado neste perÃ­odo.</p>';
     } else {
       activeRiderNames.forEach((riderName, index) => {
         const div = document.createElement('div');
@@ -482,7 +483,7 @@ async function generateRiderExtract() {
     document.getElementById('extract-rider-title').innerText = `Extrato de ${riderName}`;
     const startFormatted = start.toLocaleDateString('pt-BR');
     const endFormatted = end.toLocaleDateString('pt-BR');
-    document.getElementById('extract-rider-period').innerText = `Período selecionado: ${startFormatted} até ${endFormatted}`;
+    document.getElementById('extract-rider-period').innerText = `PerÃ­odo selecionado: ${startFormatted} atÃ© ${endFormatted}`;
 
     let totalServices = 0;
     let totalPayout = 0;
@@ -492,7 +493,7 @@ async function generateRiderExtract() {
 
     data.forEach(item => {
       totalServices++;
-      
+
       const grossPrice = getFixedPriceByAddress(item.address);
       const netPayout = grossPrice * 0.90;
       totalPayout += netPayout;
@@ -558,7 +559,7 @@ async function fetchPendingDeliveries() {
       tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
       client_id: item.client_id,
       client: escapeHtml(resolveClientDisplayName(item)),
-      destName: escapeHtml(item.recipient_name || item.dest_name || 'Destinatário'),
+      destName: escapeHtml(item.recipient_name || item.dest_name || 'DestinatÃ¡rio'),
       address: escapeHtml(item.delivery_address || item.address || ''),
       delivery_address: escapeHtml(item.delivery_address || item.address || ''),
       pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
@@ -583,9 +584,9 @@ function formatRiderDisplayName(r) {
   if (!r) return 'Motoboy sem nome';
   const name = r.name || r.full_name || r.motoboy_name || '';
   const code = r.motoboy_code || r.code || '';
-  if (name && code) return `${name} — ${code}`;
+  if (name && code) return `${name} â€” ${code}`;
   if (name) return name;
-  if (code) return `Motoboy — ${code}`;
+  if (code) return `Motoboy â€” ${code}`;
   return 'Motoboy sem nome';
 }
 
@@ -610,7 +611,7 @@ async function fetchRiderConsumables() {
       id: item.id,
       rider_id: escapeHtml(String(item.motoboy_id || item.rider_id || '')),
       rider_name: escapeHtml(item.motoboy_name || item.rider_name || 'Motoboy'),
-      categoria: escapeHtml(item.categoria === 'vale' ? 'Vale' : 'Consumível'),
+      categoria: escapeHtml(item.categoria === 'vale' ? 'Vale' : 'ConsumÃ­vel'),
       item_name: escapeHtml(item.item_name || 'Item'),
       item_type: escapeHtml(item.item_name || 'Item'),
       quantidade: parseInt(item.quantidade || 1),
@@ -657,7 +658,7 @@ async function fetchRiderCredits() {
 
 
 const initAppHandler = async () => {
-  // Register Service Worker for PWA (Disabilitado no localhost dev; Ativo em produção)
+  // Register Service Worker for PWA (Disabilitado no localhost dev; Ativo em produÃ§Ã£o)
   if ('serviceWorker' in navigator) {
     const isLocalhost = Boolean(
       window.location.hostname === 'localhost' ||
@@ -761,24 +762,24 @@ const initAppHandler = async () => {
   const toggleBtn = document.getElementById('sidebar-toggle-btn');
   const sidebar = document.querySelector('.sidebar');
   let overlay = document.getElementById('sidebar-overlay');
-  
+
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'sidebar-overlay';
     overlay.className = 'sidebar-overlay';
     document.body.appendChild(overlay);
   }
-  
+
   function openMobileSidebar() {
     if (sidebar) sidebar.classList.add('open');
     if (overlay) overlay.classList.add('active');
   }
-  
+
   function closeMobileSidebar() {
     if (sidebar) sidebar.classList.remove('open');
     if (overlay) overlay.classList.remove('active');
   }
-  
+
   if (toggleBtn) {
     toggleBtn.addEventListener('click', openMobileSidebar);
   }
@@ -789,7 +790,7 @@ const initAppHandler = async () => {
   if (overlay) {
     overlay.addEventListener('click', closeMobileSidebar);
   }
-  
+
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
     item.addEventListener('click', () => {
       if (window.innerWidth <= 768) {
@@ -807,15 +808,15 @@ const initAppHandler = async () => {
     });
   }
 
-  // 1. Restaurar e validar a sessão do Supabase Auth
+  // 1. Restaurar e validar a sessÃ£o do Supabase Auth
   const authState = await checkAdminSession();
   if (!authState) {
-    // Nenhuma sessão ativa -> Exibir tela de login sem chamar APIs protegidas
-    handleInvalidSession("Sua sessão expirou. Faça login novamente.");
+    // Nenhuma sessÃ£o ativa -> Exibir tela de login sem chamar APIs protegidas
+    handleInvalidSession("Sua sessÃ£o expirou. FaÃ§a login novamente.");
     return;
   }
 
-  // 2. Sessão Ativa & Válida -> Carregar painel
+  // 2. SessÃ£o Ativa & VÃ¡lida -> Carregar painel
   if (authState.profile && (authState.profile.role === 'client_user' || authState.profile.role === 'client')) {
     mockData.activeProfile = 'client';
   } else {
@@ -833,7 +834,7 @@ if (document.readyState === 'loading') {
 
 function switchLoginTab(profile) {
   mockData.activeProfile = profile;
-  
+
   document.querySelectorAll('.login-tabs .tab-btn').forEach(btn => {
     btn.classList.remove('active');
   });
@@ -865,7 +866,7 @@ function switchLoginTab(profile) {
 
 async function handleLogin(event) {
   if (event) event.preventDefault();
-  
+
   const loginInput = document.getElementById('username').value.trim().toLowerCase();
   const passwordInput = document.getElementById('password').value.trim();
 
@@ -897,7 +898,7 @@ async function handleLogin(event) {
 
     if (error || !data.session) {
       if (loader) loader.classList.add('hidden');
-      alert('Usuário ou senha incorretos.');
+      alert('UsuÃ¡rio ou senha incorretos.');
       return;
     }
 
@@ -905,7 +906,7 @@ async function handleLogin(event) {
     const authState = await checkAdminSession();
     if (!authState) {
       if (loader) loader.classList.add('hidden');
-      alert('Usuário autenticado, porém sem permissão de acesso ao painel.');
+      alert('UsuÃ¡rio autenticado, porÃ©m sem permissÃ£o de acesso ao painel.');
       return;
     }
 
@@ -943,7 +944,7 @@ async function loginSuccess() {
   document.getElementById('user-avatar').src = creds.avatar;
   document.getElementById('user-display-name').innerText = currentAdminProfile ? currentAdminProfile.name : creds.name;
   document.getElementById('user-display-sub').innerText = (currentAdminProfile && currentAdminProfile.admin_code)
-    ? `${currentAdminProfile.admin_code} • ${currentAdminProfile.role === 'owner' ? 'Dono & CEO' : currentAdminProfile.role}`
+    ? `${currentAdminProfile.admin_code} â€¢ ${currentAdminProfile.role === 'owner' ? 'Dono & CEO' : currentAdminProfile.role}`
     : (currentAdminProfile ? currentAdminProfile.role : creds.role);
 
   const clientInfoPanels = document.getElementById('client-info-panels');
@@ -980,7 +981,7 @@ async function loginSuccess() {
   if (profile === 'owner') {
     document.getElementById('display-role').innerText = 'Painel do Dono';
     document.getElementById('nav-owner-group').classList.remove('hidden');
-    document.getElementById('dashboard-title').innerText = 'Painel de Logística Dahora Expresso';
+    document.getElementById('dashboard-title').innerText = 'Painel de LogÃ­stica Dahora Expresso';
 
     const savedTab = localStorage.getItem('activeDashboardTab') || '';
     const isValidOwnerTab = savedTab && savedTab.startsWith('owner-');
@@ -1057,8 +1058,10 @@ function updateOwnerFabVisibility(targetTab) {
 async function switchDashboardTab(targetTab) {
   if (!targetTab) return;
 
+  const originalRequestedTab = targetTab;
+
   const userRole = (currentAdminProfile?.role || '').trim().toLowerCase();
-  const isClientUser = (userRole === 'client_user' || userRole === 'client' || mockData.activeProfile === 'client');
+  const isClientUser = (userRole === 'client_user' || userRole === 'client' || mockData.activeProfile === 'client' || !!adminClientViewContext);
 
   if (isClientUser && targetTab.startsWith('owner-')) {
     targetTab = 'client-overview';
@@ -1066,13 +1069,27 @@ async function switchDashboardTab(targetTab) {
     targetTab = 'owner-overview';
   }
 
+  // Mapeamento autoritativo de aliases do painel do cliente para os IDs reais do DOM e inicializadores
+  if (targetTab === 'client-request-delivery') {
+    targetTab = 'order-request';
+  } else if (targetTab === 'client-deliveries') {
+    targetTab = 'client-teles';
+  } else if (targetTab === 'client-financials') {
+    targetTab = 'client-financials';
+  } else if (targetTab === 'client-extract') {
+    targetTab = 'client-extract';
+  } else if (targetTab === 'client-profile') {
+    openProfileSettings();
+    return;
+  }
+
   localStorage.setItem('activeDashboardTab', targetTab);
 
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
   });
-  
-  const navItem = document.querySelector(`.nav-item[data-tab="${targetTab}"]`);
+
+  const navItem = document.querySelector(`.nav-item[data-tab="${originalRequestedTab}"]`) || document.querySelector(`.nav-item[data-tab="${targetTab}"]`);
   if (navItem) {
     navItem.classList.add('active');
   }
@@ -1080,6 +1097,7 @@ async function switchDashboardTab(targetTab) {
   // Update Main Dashboard Views
   document.querySelectorAll('.dashboard-tab-content').forEach(view => {
     view.classList.remove('active');
+    view.classList.add('hidden');
   });
 
   const activeTabEl = document.getElementById(`tab-${targetTab}`);
@@ -1168,6 +1186,10 @@ async function switchDashboardTab(targetTab) {
     await fetchClientHistory();
     updateClientDashboardOverview();
     initClientOverviewChart();
+  } else if (targetTab === 'client-financials') {
+    await loadClientFinancialsData();
+  } else if (targetTab === 'client-extract') {
+    await loadClientExtractData();
   } else if (targetTab === 'client-fleet-map') {
     await fetchFleet();
     initClientFleetMap();
@@ -1204,6 +1226,9 @@ async function switchDashboardTab(targetTab) {
   } else if (targetTab === 'order-request') {
     setTimeout(() => {
       initRequestDeliveryMap('client');
+      if (typeof initClientOrderSummaryListeners === 'function') {
+        initClientOrderSummaryListeners();
+      }
     }, 200);
   }
 }
@@ -1220,7 +1245,7 @@ async function loadTelesManagement() {
       fetchClientHistory()
     ]);
   } catch (err) {
-    console.error('Erro ao carregar dados da Gestão de Teles:', err);
+    console.error('Erro ao carregar dados da GestÃ£o de Teles:', err);
     showTelesLoadError();
     return;
   }
@@ -1245,7 +1270,7 @@ function showTelesLoadError() {
   const errorCard = `
     <div class="tele-state-card tele-state-error" style="text-align: center; padding: 40px; color: #ef4444;">
       <i data-lucide="alert-triangle" style="width: 48px; height: 48px; margin-bottom: 12px; display: inline-block;"></i>
-      <p style="font-weight: 600;">Não foi possível carregar as teles.</p>
+      <p style="font-weight: 600;">NÃ£o foi possÃ­vel carregar as teles.</p>
       <button class="btn btn-secondary btn-sm" onclick="loadTelesManagement()" style="margin-top: 12px;">Tentar novamente</button>
     </div>
   `;
@@ -1256,27 +1281,27 @@ function showTelesLoadError() {
 // Global Filter Setter
 window.setTeleFilter = function(filter) {
   currentTeleFilter = filter;
-  
+
   // Highlight active pill
   const pills = document.querySelectorAll('.filter-pill');
   pills.forEach(pill => {
     pill.classList.remove('active');
   });
-  
+
   const activePill = document.getElementById(`filter-${filter}`);
   if (activePill) activePill.classList.add('active');
-  
+
   renderTelesUnified();
 };
 
 // Global View Mode Setter
 window.setTeleViewMode = function(mode) {
   teleViewMode = mode;
-  
+
   // Highlight active toggle button
   const gridBtn = document.getElementById('view-toggle-grid');
   const listBtn = document.getElementById('view-toggle-list');
-  
+
   if (mode === 'grid') {
     if (gridBtn) gridBtn.classList.add('active');
     if (listBtn) listBtn.classList.remove('active');
@@ -1284,7 +1309,7 @@ window.setTeleViewMode = function(mode) {
     if (gridBtn) gridBtn.classList.remove('active');
     if (listBtn) listBtn.classList.add('active');
   }
-  
+
   renderTelesUnified();
 };
 
@@ -1308,7 +1333,7 @@ function renderFleetTable() {
           <div class="item-icon-avatar bg-yellow"><i data-lucide="bike" class="text-black"></i></div>
           <div>
             <strong>${escapeHtml(rider.name)}</strong>
-            <p class="text-muted text-xs">Cód: ${escapeHtml(rider.motoboy_code || '—')}</p>
+            <p class="text-muted text-xs">CÃ³d: ${escapeHtml(rider.motoboy_code || 'â€”')}</p>
           </div>
         </div>
       </td>
@@ -1337,7 +1362,7 @@ function renderFleetTable() {
         </div>
       </td>
       <td>
-        <button class="btn btn-secondary btn-sm icon-action-btn" onclick="event.stopPropagation(); openRiderActions('${rider.id}')" title="Ações do motoboy" aria-label="Ações do motoboy">
+        <button class="btn btn-secondary btn-sm icon-action-btn" onclick="event.stopPropagation(); openRiderActions('${rider.id}')" title="AÃ§Ãµes do motoboy" aria-label="AÃ§Ãµes do motoboy">
           <i data-lucide="settings"></i>
         </button>
       </td>
@@ -1404,15 +1429,15 @@ function formatOrderIdForDisplay(teleCode, fallbackObj) {
     return 'TEL-' + candidate.replace(/^#/, '');
   }
 
-  return 'Código indisponível';
+  return 'CÃ³digo indisponÃ­vel';
 }
 
 function formatRiderOptionLabel(rider) {
   if (!rider) return '';
   const statusNorm = String(rider.status || '').toLowerCase();
-  const isOnline = rider.status === 'Disponível' || rider.status === 'disponivel' || statusNorm === 'disponivel' || rider.status === 'Em Atendimento' || rider.status === 'A caminho da coleta';
-  const displayStatus = isOnline ? 'Disponível' : (rider.status || 'Indisponível');
-  return `${escapeHtml(rider.name)} — ${escapeHtml(displayStatus)}`;
+  const isOnline = rider.status === 'DisponÃ­vel' || rider.status === 'disponivel' || statusNorm === 'disponivel' || rider.status === 'Em Atendimento' || rider.status === 'A caminho da coleta';
+  const displayStatus = isOnline ? 'DisponÃ­vel' : (rider.status || 'IndisponÃ­vel');
+  return `${escapeHtml(rider.name)} â€” ${escapeHtml(displayStatus)}`;
 }
 
 function formatOrderDate(dateText, createdAt) {
@@ -1421,11 +1446,11 @@ function formatOrderDate(dateText, createdAt) {
   if (Number.isNaN(d.getTime())) return dateText || '';
 
   const now = new Date();
-  
+
   // Set times to 00:00:00 to compare calendar days accurately
   const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
+
   const diffTime = nowDate.getTime() - dDate.getTime();
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
@@ -1528,7 +1553,7 @@ function renderRiderSettings() {
               <input type="checkbox" ${isChecked} onchange="toggleRiderDistanceLimit('${rider.id}', this.checked)">
               <span class="slider"></span>
             </label>
-            <span class="switch-label-text">Liberar sem limites de distância</span>
+            <span class="switch-label-text">Liberar sem limites de distÃ¢ncia</span>
           </div>
         </td>
       </tr>
@@ -1561,12 +1586,12 @@ async function toggleRiderDistanceLimit(riderId, isBypassed) {
     if (localRider) {
       localRider.bypassDistanceLimit = isBypassed;
     }
-    
+
     // Update stats and UI immediately
     renderRiderSettings();
   } catch (err) {
     console.error("Error toggling distance limit bypass:", err);
-    alert("Erro ao salvar a configuração de distância no Supabase. Tente novamente.");
+    alert("Erro ao salvar a configuraÃ§Ã£o de distÃ¢ncia no Supabase. Tente novamente.");
     // Re-render to revert toggle state visually
     renderRiderSettings();
   }
@@ -1707,7 +1732,7 @@ async function updateRiderDeliveryLimit(riderId, limitValue) {
     const rider = mockData.fleet.find(r => r.id === riderId);
     if (rider) rider.maxSimultaneousDeliveries = parsedLimit;
     renderRiderLimits();
-    showToastNotification('Limite de entregas simultâneas atualizado com sucesso.');
+    showToastNotification('Limite de entregas simultÃ¢neas atualizado com sucesso.');
     return;
   }
 
@@ -1722,7 +1747,7 @@ async function updateRiderDeliveryLimit(riderId, limitValue) {
     const rider = mockData.fleet.find(r => r.id === riderId);
     if (rider) rider.maxSimultaneousDeliveries = parsedLimit;
     renderRiderLimits();
-    showToastNotification('Limite de entregas simultâneas atualizado com sucesso.');
+    showToastNotification('Limite de entregas simultÃ¢neas atualizado com sucesso.');
   } catch (err) {
     console.error("Error updating rider delivery limit:", err);
     alert("Erro ao atualizar o limite de entregas do motoboy no Supabase. Tente novamente.");
@@ -1732,14 +1757,14 @@ async function updateRiderDeliveryLimit(riderId, limitValue) {
 
 // Restore default simultaneous delivery limit (1) for ALL riders
 async function restoreDefaultAllRiderLimits() {
-  if (!confirm('Tem certeza de que deseja restaurar o limite padrão (1 entrega) para TODOS os motoboys?')) return;
+  if (!confirm('Tem certeza de que deseja restaurar o limite padrÃ£o (1 entrega) para TODOS os motoboys?')) return;
 
   if (!supabaseClient) {
     mockData.fleet.forEach(rider => {
       rider.maxSimultaneousDeliveries = 1;
     });
     renderRiderLimits();
-    showToastNotification('Todos os motoboys foram redefinidos para o limite padrão (1 entrega).');
+    showToastNotification('Todos os motoboys foram redefinidos para o limite padrÃ£o (1 entrega).');
     return;
   }
 
@@ -1754,7 +1779,7 @@ async function restoreDefaultAllRiderLimits() {
       rider.maxSimultaneousDeliveries = 1;
     });
     renderRiderLimits();
-    showToastNotification('Todos os motoboys foram redefinidos para o limite padrão (1 entrega).');
+    showToastNotification('Todos os motoboys foram redefinidos para o limite padrÃ£o (1 entrega).');
   } catch (err) {
     console.error("Error restoring all rider limits:", err);
     alert("Erro ao redefinir os limites no Supabase. Tente novamente.");
@@ -1774,7 +1799,7 @@ function renderClientHistoryTable() {
 
   tbody.innerHTML = '';
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente nÃ£o vinculado';
 
   const filteredHistory = mockData.clientHistory.filter(order => {
     return order.client === currentCommerce;
@@ -1783,7 +1808,7 @@ function renderClientHistoryTable() {
   filteredHistory.forEach(order => {
     const tr = document.createElement('tr');
     tr.className = 'ops-table-row';
-    const isActive = order.status !== 'Entregue' && order.status !== 'Concluído' && order.status !== 'Cancelado';
+    const isActive = order.status !== 'Entregue' && order.status !== 'ConcluÃ­do' && order.status !== 'Cancelado';
 
     // Composite ID Shield
     let displayId = order.id;
@@ -1890,20 +1915,20 @@ function calculateEstimate(type = 'client') {
   }
 
   const minutes = Math.round(distance * 3.5 + 4); // mock speed minutes
-  
+
   // Pricing logic: Strict city-based pricing
   let price = 15.00;
-  let priceText = 'R$ 15,00 (Fora da área de entrega)';
-  
+  let priceText = 'R$ 15,00 (Fora da Ã¡rea de entrega)';
+
   const lowercaseAddress = addressInput.toLowerCase();
   const sortedCities = [...(mockData.cities || [])].sort((a, b) => b.nome.length - a.nome.length);
   const matchedCity = sortedCities.find(city => lowercaseAddress.includes(city.nome.toLowerCase()));
-  
+
   if (matchedCity) {
     price = matchedCity.taxa;
     priceText = 'R$ ' + price.toFixed(2).replace('.', ',');
   }
-  
+
   // Update UI values
   const estDistEl = document.getElementById(`${type}-est-distance`);
   const estTimeEl = document.getElementById(`${type}-est-time`);
@@ -1982,7 +2007,7 @@ function runLogisticsSimulation(order) {
 
   // Step 3: Rider arrived at client and handed order (20 seconds total)
   setTimeout(() => {
-    trackerStatus.innerText = 'Concluído';
+    trackerStatus.innerText = 'ConcluÃ­do';
     trackerStatus.className = 'status-badge status-success';
 
     // Highlight step 3 as complete, step 4 active
@@ -1993,7 +2018,7 @@ function runLogisticsSimulation(order) {
     // Update simulation record in internal storage
     order.status = 'Entregue';
     order.statusClass = 'status-success';
-    
+
     // Update total dashboard metrics for simulation
     const metricsValEl = document.getElementById('client-total-orders');
     if (metricsValEl) {
@@ -2011,7 +2036,7 @@ function runLogisticsSimulation(order) {
     document.getElementById('nav-tracking-tab').querySelector('.pulse-dot').classList.add('hidden');
 
   }, 20000);
-  
+
   // Step 4: Fully finalize order tracker card states (23 seconds total)
   setTimeout(() => {
     document.getElementById('step-4').className = 'step-node completed';
@@ -2028,10 +2053,12 @@ function parseCurrencyBR(value) {
 }
 
 function formatCurrencyBR(value) {
-  return value > 0
-    ? value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-    : '—';
+  const num = Number(value) || 0;
+  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+const formatCurrency = formatCurrencyBR;
+window.formatCurrency = formatCurrencyBR;
+window.formatCurrencyBR = formatCurrencyBR;
 
 function renderOwnerOverviewMetrics() {
   const completedOrders = mockData.clientHistory.filter(order => order.status === 'Entregue' || order.statusClass === 'status-success');
@@ -2045,10 +2072,10 @@ function renderOwnerOverviewMetrics() {
   if (monthlyRevenueEl) monthlyRevenueEl.innerText = formatCurrencyBR(grossTotal);
 
   const activeRidersEl = document.getElementById('owner-active-riders');
-  if (activeRidersEl) activeRidersEl.innerText = mockData.fleet.length ? String(activeRiders) : '—';
+  if (activeRidersEl) activeRidersEl.innerText = mockData.fleet.length ? String(activeRiders) : 'â€”';
 
   const completedTodayEl = document.getElementById('owner-completed-today');
-  if (completedTodayEl) completedTodayEl.innerText = completedToday ? String(completedToday) : '—';
+  if (completedTodayEl) completedTodayEl.innerText = completedToday ? String(completedToday) : 'â€”';
 
   const averageTicketEl = document.getElementById('owner-average-ticket');
   if (averageTicketEl) averageTicketEl.innerText = formatCurrencyBR(averageTicket);
@@ -2067,9 +2094,9 @@ function initOwnerOverviewChart() {
   ownerOverviewChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+      labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'SÃ¡b', 'Dom'],
       datasets: [{
-        label: 'Entregas Concluídas',
+        label: 'Entregas ConcluÃ­das',
         data: buildOwnerWeeklyDeliverySeries(),
         borderColor: '#ffb700',
         backgroundColor: 'rgba(255, 183, 0, 0.1)',
@@ -2101,8 +2128,8 @@ function initOwnerOverviewChart() {
 function buildOwnerWeeklyDeliverySeries() {
   const completedOrders = mockData.clientHistory.filter(order => order.status === 'Entregue' || order.statusClass === 'status-success');
   const totals = [0, 0, 0, 0, 0, 0, 0];
-  const dayNames = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-  const labelIndex = { seg: 0, ter: 1, qua: 2, qui: 3, sex: 4, 'sáb': 5, sab: 5, dom: 6 };
+  const dayNames = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sÃ¡b'];
+  const labelIndex = { seg: 0, ter: 1, qua: 2, qui: 3, sex: 4, 'sÃ¡b': 5, sab: 5, dom: 6 };
 
   completedOrders.forEach(order => {
     const dateText = String(order.date || '').toLowerCase();
@@ -2141,7 +2168,7 @@ function initOwnerFinancialChart() {
   ownerFinancialChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: ['Repasse Motoboys', 'Comissão Plataforma', 'Seguros / Taxas'],
+      labels: ['Repasse Motoboys', 'ComissÃ£o Plataforma', 'Seguros / Taxas'],
       datasets: [{
         data: [71, 24, 5],
         backgroundColor: ['#ffb700', '#f97316', '#10b981'],
@@ -2176,10 +2203,10 @@ function initClientOverviewChart() {
   clientOverviewChart = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+      labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'SÃ¡b', 'Dom'],
       datasets: [
         {
-          label: 'Entregas Concluídas',
+          label: 'Entregas ConcluÃ­das',
           data: chartData,
           backgroundColor: '#ffb700',
           borderRadius: 4
@@ -2198,7 +2225,7 @@ function initClientOverviewChart() {
         y: {
           beginAtZero: true,
           grid: { color: 'rgba(255,255,255,0.05)' },
-          ticks: { 
+          ticks: {
             color: '#8e8e9f',
             stepSize: 1
           }
@@ -2231,7 +2258,7 @@ async function initOwnerFleetMap() {
     await loadGoogleMapsApi();
 
     if (!window.google?.maps) {
-      throw new Error('Google Maps API não foi carregada.');
+      throw new Error('Google Maps API nÃ£o foi carregada.');
     }
 
     mapContainer.innerHTML = '';
@@ -2279,7 +2306,7 @@ async function initOwnerFleetMap() {
     }
   } catch (error) {
     console.error('Erro ao inicializar mapa da frota:', error);
-    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Não foi possível carregar o Google Maps. Verifique a chave e as APIs habilitadas.</div>`;
+    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">NÃ£o foi possÃ­vel carregar o Google Maps. Verifique a chave e as APIs habilitadas.</div>`;
   }
 }
 
@@ -2301,7 +2328,7 @@ async function initClientFleetMap() {
     await loadGoogleMapsApi();
 
     if (!window.google?.maps) {
-      throw new Error('Google Maps API não foi carregada.');
+      throw new Error('Google Maps API nÃ£o foi carregada.');
     }
 
     mapContainer.innerHTML = '';
@@ -2349,7 +2376,7 @@ async function initClientFleetMap() {
     }
   } catch (error) {
     console.error('Erro ao inicializar mapa da frota do cliente:', error);
-    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Não foi possível carregar o Google Maps. Verifique a chave e as APIs habilitadas.</div>`;
+    mapContainer.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">NÃ£o foi possÃ­vel carregar o Google Maps. Verifique a chave e as APIs habilitadas.</div>`;
   }
 }
 
@@ -2366,7 +2393,7 @@ window.getRiderStatusDetails = function(status) {
     return {
       statusClass: 'status-neutral',
       color: '#8e8e9f',
-      label: norm.includes('descanso') ? 'Em Descanso' : 'Indisponível',
+      label: norm.includes('descanso') ? 'Em Descanso' : 'IndisponÃ­vel',
       isPulsing: false,
       isUnavailable: true
     };
@@ -2376,7 +2403,7 @@ window.getRiderStatusDetails = function(status) {
     return {
       statusClass: 'status-success',
       color: '#22c55e',
-      label: 'Disponível',
+      label: 'DisponÃ­vel',
       isPulsing: true,
       isUnavailable: false
     };
@@ -2417,7 +2444,7 @@ function renderMapMarkers(centerCoords) {
       <div class="marker-pulse" style="border-color: var(--primary); animation-duration: 2.5s;"></div>
       <i class="marker-icon-dot" style="background-color: var(--primary); width: 6px; height: 6px; border-radius: 50%; display: block;"></i>
     `;
-    
+
     ownerCentralMarker = new window.CustomHTMLMapMarker(centerLatLng, ownerFleetMap, el.outerHTML, () => {
       window.openBaseMapPopup();
     });
@@ -2425,7 +2452,7 @@ function renderMapMarkers(centerCoords) {
     ownerCentralMarker.setLatLng(centerLatLng);
   }
 
-  // Filtrar motoboys com coordenadas válidas (jamais criar marcadores em posições fictícias)
+  // Filtrar motoboys com coordenadas vÃ¡lidas (jamais criar marcadores em posiÃ§Ãµes fictÃ­cias)
   const validRiders = (mockData.fleet || []).filter(rider => {
     return rider.lat !== null &&
            rider.lat !== undefined &&
@@ -2441,7 +2468,7 @@ function renderMapMarkers(centerCoords) {
     closeFleetRiderPanel();
   }
 
-  // Remover do mapa marcadores de entregadores deletados ou sem coordenadas válidas (usando rider.id)
+  // Remover do mapa marcadores de entregadores deletados ou sem coordenadas vÃ¡lidas (usando rider.id)
   Object.keys(ownerFleetMarkers).forEach(riderId => {
     if (!currentRidersIds.has(String(riderId))) {
       if (ownerFleetMarkers[riderId] && ownerFleetMarkers[riderId].setMap) {
@@ -2503,7 +2530,7 @@ window.openRiderMapPopup = function(riderId) {
       pendingOptions += `<option value="${d.id}" style="color: #fff; background: #1e1e24;">${d.id} - ${d.destName || 'Cliente'} (${d.price})</option>`;
     });
   } else {
-    pendingOptions = '<option value="" disabled>Nenhuma tele disponível</option>';
+    pendingOptions = '<option value="" disabled>Nenhuma tele disponÃ­vel</option>';
   }
 
   const assignedTeles = getActiveOrdersForRider(rider);
@@ -2513,7 +2540,7 @@ window.openRiderMapPopup = function(riderId) {
       assignedHtml += `
         <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.05); padding: 4px 6px; border-radius: 4px; margin-bottom: 4px;">
           <div style="font-size: 0.75rem; color: #fff;">
-            <strong>${t.id}</strong> • ${t.destName || 'Cliente'} (${t.price})
+            <strong>${t.id}</strong> â€¢ ${t.destName || 'Cliente'} (${t.price})
           </div>
           <button onclick="window.removeTeleFromRiderFromPopup('${t.id}', '${rider.id}')" style="background: rgba(239, 68, 68, 0.15); border: none; color: #ef4444; border-radius: 4px; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;" title="Desvincular Tele">
             <i data-lucide="trash-2" style="width: 11px; height: 11px;"></i>
@@ -2522,7 +2549,7 @@ window.openRiderMapPopup = function(riderId) {
       `;
     });
   } else {
-    assignedHtml = `<p style="margin: 0; font-size: 0.75rem; color: #8e8e9f; font-style: italic;">Nenhuma tele atribuída</p>`;
+    assignedHtml = `<p style="margin: 0; font-size: 0.75rem; color: #8e8e9f; font-style: italic;">Nenhuma tele atribuÃ­da</p>`;
   }
 
   const htmlContent = `
@@ -2533,7 +2560,7 @@ window.openRiderMapPopup = function(riderId) {
           ${escapeHtml(statusDetails.label)}
         </span>
       </div>
-      
+
       <div style="margin-bottom: 8px;">
         <label style="display: block; font-size: 0.72rem; color: #8e8e9f; margin-bottom: 3px;">Vincular Nova Tele</label>
         <div style="display: flex; gap: 4px; align-items: center;">
@@ -2545,9 +2572,9 @@ window.openRiderMapPopup = function(riderId) {
           </button>
         </div>
       </div>
-      
+
       <div>
-        <label style="display: block; font-size: 0.72rem; color: #8e8e9f; margin-bottom: 4px;">Teles Atribuídas (${assignedTeles.length})</label>
+        <label style="display: block; font-size: 0.72rem; color: #8e8e9f; margin-bottom: 4px;">Teles AtribuÃ­das (${assignedTeles.length})</label>
         ${assignedHtml}
       </div>
     </div>
@@ -2556,7 +2583,7 @@ window.openRiderMapPopup = function(riderId) {
   const centerCoords = ownerFleetCenterCoords;
   const offsets = [[0.004, -0.006], [0.008, 0.012], [-0.005, 0.009], [-0.012, -0.004], [0.003, -0.015], [-0.009, 0.005]];
   const index = mockData.fleet.findIndex(r => r.id === rider.id);
-  
+
   const hasRealGPS = rider.lat !== null && rider.lat !== undefined && !isNaN(parseFloat(rider.lat)) && rider.lng !== null && rider.lng !== undefined && !isNaN(parseFloat(rider.lng));
 
   let coords;
@@ -2572,14 +2599,14 @@ window.openRiderMapPopup = function(riderId) {
   if (ownerFleetInfoWindow) {
     ownerFleetInfoWindow.close();
   }
-  
+
   ownerFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
     position: new window.google.maps.LatLng(coords[0], coords[1])
   });
-  
+
   ownerFleetInfoWindow.open(ownerFleetMap);
-  
+
   setTimeout(() => {
     if (window.lucide) lucide.createIcons();
   }, 100);
@@ -2589,7 +2616,7 @@ window.openBaseMapPopup = function() {
   if (!window.google?.maps) return;
   const currentCreds = mockData.credentials[mockData.activeProfile];
   const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Lanchonete Dahora';
-  
+
   const commerceAddresses = {
     'Lanchonete Dahora': 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS',
     'Lanchonete Dahora': 'Rua Flores da Cunha, 450 - Centro, Sapucaia do Sul - RS'
@@ -2624,12 +2651,12 @@ window.openBaseMapPopup = function() {
   if (ownerFleetInfoWindow) {
     ownerFleetInfoWindow.close();
   }
-  
+
   ownerFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
     position: new window.google.maps.LatLng(centerCoords[0], centerCoords[1])
   });
-  
+
   ownerFleetInfoWindow.open(ownerFleetMap);
 
   setTimeout(() => {
@@ -2671,7 +2698,7 @@ function renderClientMapMarkers(centerCoords) {
       <div class="marker-pulse" style="border-color: var(--primary); animation-duration: 2.5s;"></div>
       <i class="marker-icon-dot" style="background-color: var(--primary); width: 6px; height: 6px; border-radius: 50%; display: block;"></i>
     `;
-    
+
     clientCentralMarker = new window.CustomHTMLMapMarker(centerLatLng, clientFleetMap, el.outerHTML, () => {
       window.openClientBaseMapPopup();
     });
@@ -2681,11 +2708,11 @@ function renderClientMapMarkers(centerCoords) {
 
   // Filter active/live riders with valid coordinates
   const activeRiders = mockData.fleet.filter(rider => {
-    return rider.lat !== null && 
-           rider.lat !== undefined && 
-           !isNaN(parseFloat(rider.lat)) && 
-           rider.lng !== null && 
-           rider.lng !== undefined && 
+    return rider.lat !== null &&
+           rider.lat !== undefined &&
+           !isNaN(parseFloat(rider.lat)) &&
+           rider.lng !== null &&
+           rider.lng !== undefined &&
            !isNaN(parseFloat(rider.lng));
   });
 
@@ -2704,10 +2731,10 @@ function renderClientMapMarkers(centerCoords) {
   // Render active riders
   activeRiders.forEach(rider => {
     const riderLatLng = new window.google.maps.LatLng(parseFloat(rider.lat), parseFloat(rider.lng));
-    
+
     // Status colors
-    const currentStatusColor = rider.status === 'Em Descanso' 
-      ? '#8e8e9f' 
+    const currentStatusColor = rider.status === 'Em Descanso'
+      ? '#8e8e9f'
       : (rider.statusClass === 'status-progress' || rider.status === 'Em rota' || rider.status === 'Em Coleta' ? '#ffb700' : '#22c55e');
 
     const isPulsing = rider.status !== 'Em Descanso';
@@ -2737,7 +2764,7 @@ window.openClientRiderMapPopup = function(riderId) {
   const currentStatus = rider.status;
   const currentStatusColor = rider.status === 'Em Descanso' ? '#8e8e9f' : (rider.statusClass === 'status-progress' ? '#ffb700' : '#22c55e');
 
-  const battery = rider.battery_level !== null && rider.battery_level !== undefined ? `${rider.battery_level}%` : '—';
+  const battery = rider.battery_level !== null && rider.battery_level !== undefined ? `${rider.battery_level}%` : 'â€”';
 
   const htmlContent = `
     <div style="padding: 16px; min-width: 240px; font-family: sans-serif; color: #fff; box-sizing: border-box;">
@@ -2764,19 +2791,19 @@ window.openClientRiderMapPopup = function(riderId) {
   if (clientFleetInfoWindow) {
     clientFleetInfoWindow.close();
   }
-  
+
   clientFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
     position: new window.google.maps.LatLng(coords[0], coords[1])
   });
-  
+
   clientFleetInfoWindow.open(clientFleetMap);
 };
 
 window.openClientBaseMapPopup = function() {
   const currentCreds = mockData.credentials[mockData.activeProfile];
   const currentCommerce = (currentCreds && currentCreds.commerceName) ? currentCreds.commerceName : 'Lanchonete Dahora';
-  
+
   const commerceAddresses = {
     'Lanchonete Dahora': 'Av. Sapucaia, 1250 - Centro, Sapucaia do Sul - RS',
     'Lanchonete Dahora': 'Rua Flores da Cunha, 450 - Centro, Sapucaia do Sul - RS'
@@ -2798,12 +2825,12 @@ window.openClientBaseMapPopup = function() {
   if (clientFleetInfoWindow) {
     clientFleetInfoWindow.close();
   }
-  
+
   clientFleetInfoWindow = new window.google.maps.InfoWindow({
     content: htmlContent,
     position: new window.google.maps.LatLng(centerCoords[0], centerCoords[1])
   });
-  
+
   clientFleetInfoWindow.open(clientFleetMap);
 
   setTimeout(() => {
@@ -2859,7 +2886,7 @@ window.saveEditPrice = async function(itemId, itemType) {
 
   const newValue = parseFloat(input.value);
   if (isNaN(newValue) || newValue < 0) {
-    alert("Por favor, insira um valor numérico válido maior ou igual a zero.");
+    alert("Por favor, insira um valor numÃ©rico vÃ¡lido maior ou igual a zero.");
     return;
   }
 
@@ -2873,14 +2900,14 @@ window.saveEditPrice = async function(itemId, itemType) {
         .select('status')
         .eq('id', itemId)
         .single();
-      
+
       if (checkError || !data) {
         alert("Erro ao verificar o status da tele no banco de dados.");
         return;
       }
-      
-      if (data.status === 'Entregue' || data.status === 'Concluído' || data.status === 'Cancelado') {
-        alert("Operação bloqueada: Esta tele já foi concluída ou cancelada e não pode mais ser editada.");
+
+      if (data.status === 'Entregue' || data.status === 'ConcluÃ­do' || data.status === 'Cancelado') {
+        alert("OperaÃ§Ã£o bloqueada: Esta tele jÃ¡ foi concluÃ­da ou cancelada e nÃ£o pode mais ser editada.");
         await fetchPendingDeliveries();
         await fetchClientHistory();
         window.renderTelesUnified();
@@ -2891,9 +2918,9 @@ window.saveEditPrice = async function(itemId, itemType) {
         .from('teles')
         .select('id')
         .eq('id', itemId);
-        
+
       if (checkError || !data || data.length === 0) {
-        alert("Operação bloqueada: Esta tele foi despachada, cancelada ou modificada.");
+        alert("OperaÃ§Ã£o bloqueada: Esta tele foi despachada, cancelada ou modificada.");
         await fetchPendingDeliveries();
         await fetchClientHistory();
         window.renderTelesUnified();
@@ -3020,12 +3047,12 @@ window.renderTelesUnified = function() {
       id: d.id,
       tele_code: d.tele_code || null,
       type: 'pending',
-      client: d.client || 'Cliente não vinculado',
+      client: d.client || 'Cliente nÃ£o vinculado',
       destName: d.destName,
       address: d.address,
       dest_lat: d.dest_lat,
       dest_lng: d.dest_lng,
-      dist: d.dist || '—',
+      dist: d.dist || 'â€”',
       price: priceFormatted,
       payment: d.payment || 'A combinar',
       cargo: d.cargo || 'Pedido',
@@ -3043,7 +3070,7 @@ window.renderTelesUnified = function() {
     let type = 'active';
     if (isTerminalStatus(o.status)) type = 'completed';
     else if (isCanceledStatus(o.status)) type = 'canceled';
-    
+
     const fixedPrice = getFixedPriceByAddress(o.address);
     const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
     const repasseFormatted = `R$ ${(fixedPrice * 0.9).toFixed(2).replace('.', ',')}`;
@@ -3052,13 +3079,13 @@ window.renderTelesUnified = function() {
       id: o.id,
       tele_code: o.tele_code || null,
       type: type,
-      client: o.client || 'Cliente não vinculado',
+      client: o.client || 'Cliente nÃ£o vinculado',
       destName: o.destName,
       address: o.address,
       dest_lat: o.dest_lat,
       dest_lng: o.dest_lng,
       motoboy_id: o.motoboy_id,
-      dist: o.dist || '—',
+      dist: o.dist || 'â€”',
       price: priceFormatted,
       payment: o.payment || 'Pago',
       cargo: o.cargo || 'Pedido',
@@ -3067,7 +3094,7 @@ window.renderTelesUnified = function() {
       riderId: (mockData.fleet.find(r => r.name === o.rider) || {}).id || null,
       date: o.date,
       created_at: o.created_at,
-      status: isTerminalStatus(o.status) ? 'Concluída' : (isCanceledStatus(o.status) ? 'Cancelada' : o.status),
+      status: isTerminalStatus(o.status) ? 'ConcluÃ­da' : (isCanceledStatus(o.status) ? 'Cancelada' : o.status),
       statusClass: o.statusClass || (isTerminalStatus(o.status) ? 'status-success' : (isCanceledStatus(o.status) ? 'status-danger' : 'status-progress'))
     };
   });
@@ -3096,7 +3123,7 @@ window.renderTelesUnified = function() {
 
   const sortBtnLabel = document.getElementById('sort-order-label');
   if (sortBtnLabel) {
-    sortBtnLabel.innerText = currentTeleSortOrder === 'desc' ? 'Recentes ↓' : 'Antigas ↑';
+    sortBtnLabel.innerText = currentTeleSortOrder === 'desc' ? 'Recentes â†“' : 'Antigas â†‘';
   }
 
   // 3. Output selected view mode
@@ -3114,7 +3141,7 @@ function renderTelesGrid(list) {
       <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); color: var(--color-text-muted);">
         <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--color-text-muted); margin-bottom: 12px; display: inline-block;"></i>
         <p style="font-weight: 600; color: var(--color-text);">Nenhuma tele encontrada</p>
-        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critérios do filtro selecionado.</p>
+        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critÃ©rios do filtro selecionado.</p>
       </div>
     `;
     lucide.createIcons();
@@ -3128,7 +3155,7 @@ function renderTelesGrid(list) {
     if (item.type === 'pending') {
       const selectId = `pending-select-${item.id.replace('#', '')}`;
       const riderOptions = mockData.fleet.map(r => `<option value="${r.id}">${formatRiderOptionLabel(r)}</option>`).join('');
-      
+
       html += `
         <div class="active-card" style="border: 1px solid rgba(255, 183, 0, 0.2);">
           <div class="active-card-header">
@@ -3140,7 +3167,7 @@ function renderTelesGrid(list) {
           </div>
             <p><strong>Destino:</strong> ${item.destName}</p>
             <p class="text-muted text-xs" style="margin-top: 4px; display: flex; align-items: center; gap: 4px; line-height: 1.4;">
-              <i data-lucide="map-pin" style="width: 12px; height: 12px; flex-shrink: 0;"></i> 
+              <i data-lucide="map-pin" style="width: 12px; height: 12px; flex-shrink: 0;"></i>
               <span style="flex: 1;">${item.address}</span>
               ${item.dest_lat && item.dest_lng ? `
                 <button onclick="window.openQuickMapModal('${item.id}', ${item.dest_lat}, ${item.dest_lng})" style="background: rgba(255, 185, 0, 0.15); border: 1px solid rgba(255, 185, 0, 0.3); color: var(--primary); border-radius: 4px; padding: 2px 5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; outline: none; transition: all 0.2s;" title="Visualizar no Mapa">
@@ -3150,8 +3177,8 @@ function renderTelesGrid(list) {
             </p>
             <p style="margin-top: 6px;"><strong>Mercadoria:</strong> ${item.cargo}</p>
             <p style="margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-              <strong>Distância:</strong> ${item.dist.split('|')[0]} • 
-              <strong>Taxa:</strong> 
+              <strong>DistÃ¢ncia:</strong> ${item.dist.split('|')[0]} â€¢
+              <strong>Taxa:</strong>
               <span id="price-container-${item.id.replace('#', '')}" style="display: inline-flex; align-items: center; gap: 4px;">
                 <span style="font-weight: 600; color: var(--primary);">${item.price}</span>
                 <button onclick="window.startEditPrice('${item.id}', '${item.type}')" style="background: none; border: none; padding: 0; color: var(--color-text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s;" onmouseenter="this.style.color='var(--primary)'" onmouseleave="this.style.color='var(--color-text-muted)'" title="Editar Taxa">
@@ -3161,7 +3188,7 @@ function renderTelesGrid(list) {
               (Repasse: <span id="repasse-container-${item.id.replace('#', '')}">${item.repasseMotoboy}</span>)
             </p>
             <p style="margin-top: 4px;"><strong>Status:</strong> <span class="status-indicator status-warning">${item.status}</span></p>
-            
+
             <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
               <select id="${selectId}" style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.8rem; padding: 6px; outline: none; height: 32px;">
                 <option value="" disabled selected>Selecionar Motoboy...</option>
@@ -3182,7 +3209,7 @@ function renderTelesGrid(list) {
     } else {
       const isCanceled = item.type === 'canceled';
       const isCompleted = item.type === 'completed';
-      
+
       let footerHtml = '';
       if (item.type === 'active') {
         footerHtml = `
@@ -3222,8 +3249,8 @@ function renderTelesGrid(list) {
             <p class="text-muted text-xs" style="margin-top: 4px; display: flex; align-items: center; gap: 4px;"><i data-lucide="map-pin" style="width: 12px; height: 12px;"></i> ${item.address}</p>
             <p style="margin-top: 6px;"><strong>Mercadoria:</strong> ${item.cargo}</p>
             <p style="margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-              <strong>Distância:</strong> ${item.dist.split('|')[0]} • 
-              <strong>Taxa:</strong> 
+              <strong>DistÃ¢ncia:</strong> ${item.dist.split('|')[0]} â€¢
+              <strong>Taxa:</strong>
               ${item.type === 'active' ? `
                 <span id="price-container-${item.id.replace('#', '')}" style="display: inline-flex; align-items: center; gap: 4px;">
                   <span style="font-weight: 600; color: var(--primary);">${item.price}</span>
@@ -3237,7 +3264,7 @@ function renderTelesGrid(list) {
               (Repasse: <span id="repasse-container-${item.id.replace('#', '')}">${item.repasseMotoboy}</span>)
             </p>
             <p style="margin-top: 4px;"><strong>Status:</strong> <span class="status-indicator ${item.statusClass}">${item.status}</span></p>
-            
+
             <div class="rider-info-row" style="margin-top: 10px; display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px;">
               <div style="background: ${isCanceled ? 'rgba(239, 68, 68, 0.1)' : 'var(--primary-glow)'}; color: ${isCanceled ? '#ef4444' : 'var(--primary)'}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                 <i data-lucide="bike" style="width: 16px; height: 16px;"></i>
@@ -3278,7 +3305,7 @@ function renderTelesTable(list) {
       <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); color: var(--color-text-muted);">
         <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--color-text-muted); margin-bottom: 12px; display: inline-block;"></i>
         <p style="font-weight: 600; color: var(--color-text);">Nenhuma tele encontrada</p>
-        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critérios do filtro selecionado.</p>
+        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critÃ©rios do filtro selecionado.</p>
       </div>
     `;
     lucide.createIcons();
@@ -3293,20 +3320,20 @@ function renderTelesTable(list) {
         <thead>
           <tr>
             <th>Origem</th>
-            <th>Código</th>
+            <th>CÃ³digo</th>
             <th>Cliente</th>
-            <th>Destinatário / Endereço</th>
-            <th>Motoboy Atribuído</th>
-            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenação por Data/Hora">
+            <th>DestinatÃ¡rio / EndereÃ§o</th>
+            <th>Motoboy AtribuÃ­do</th>
+            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenaÃ§Ã£o por Data/Hora">
               <div style="display: inline-flex; align-items: center; gap: 6px;">
                 <span>Data/Hora</span>
                 <span style="font-size: 0.78rem; padding: 2px 6px; background: rgba(255, 185, 0, 0.15); color: var(--primary); border-radius: 4px; border: 1px solid rgba(255, 185, 0, 0.3);">
-                  ${currentTeleSortOrder === 'desc' ? '↓ Recentes' : '↑ Antigas'}
+                  ${currentTeleSortOrder === 'desc' ? 'â†“ Recentes' : 'â†‘ Antigas'}
                 </span>
               </div>
             </th>
             <th>Valores (Taxa/Repasse)</th>
-            <th style="text-align: right;">Ações</th>
+            <th style="text-align: right;">AÃ§Ãµes</th>
           </tr>
         </thead>
         <tbody>
@@ -3367,7 +3394,7 @@ function renderTelesTable(list) {
         </button>
       `;
     } else {
-      actionsHtml = `<span style="font-size: 0.75rem; color: var(--color-text-muted); font-style: italic;">Histórico</span>`;
+      actionsHtml = `<span style="font-size: 0.75rem; color: var(--color-text-muted); font-style: italic;">HistÃ³rico</span>`;
     }
 
     html += `
@@ -3418,7 +3445,7 @@ function renderTelesTable(list) {
 window.handleCardDispatch = function(deliveryId, selectId) {
   const select = document.getElementById(selectId);
   if (!select || !select.value) {
-    alert("Selecione um motoboy disponível!");
+    alert("Selecione um motoboy disponÃ­vel!");
     return;
   }
   dispatchDelivery(deliveryId, select.value);
@@ -3448,7 +3475,7 @@ window.handleTableReassignRider = async function(deliveryId, oldRiderName, newRi
       if (oldRider) {
         await supabaseClient
           .from('fleet')
-          .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
+          .update({ status: 'DisponÃ­vel', status_class: 'status-success', delivery: 'Nenhuma' })
           .eq('id', oldRider.id);
       }
 
@@ -3466,7 +3493,7 @@ window.handleTableReassignRider = async function(deliveryId, oldRiderName, newRi
     }
 
     await loadTelesManagement();
-    showToastNotification(`Tele ${deliveryId} reatribuída para ${newRider.name}.`);
+    showToastNotification(`Tele ${deliveryId} reatribuÃ­da para ${newRider.name}.`);
   } else {
     renderTelesUnified();
   }
@@ -3492,7 +3519,7 @@ window.handleCancelTeleClick = async function(deliveryId, riderName, type) {
         rpcSuccess = true;
       }
     } catch (e) {
-      console.warn("RPC cancel_tele indisponível, realizando atualização direta de status:", e);
+      console.warn("RPC cancel_tele indisponÃ­vel, realizando atualizaÃ§Ã£o direta de status:", e);
     }
 
     if (!rpcSuccess) {
@@ -3520,7 +3547,7 @@ window.handleCancelTeleClick = async function(deliveryId, riderName, type) {
         if (remainingOrders.length === 0) {
           await supabaseClient
             .from('fleet')
-            .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
+            .update({ status: 'DisponÃ­vel', status_class: 'status-success', delivery: 'Nenhuma' })
             .eq('id', rider.id);
         }
       }
@@ -3565,7 +3592,7 @@ window.toggleTeleRouteMap = async function(deliveryId) {
   const isValidDestGps = destLat !== null && !isNaN(destLat) && destLng !== null && !isNaN(destLng) && (destLat !== 0 || destLng !== 0);
 
   if (!isValidRiderGps || !isValidDestGps) {
-    mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px; padding:16px; gap:8px;"><i data-lucide="map-pin-off" style="width:16px;height:16px;"></i><span>Rota indisponível</span></div>`;
+    mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px; padding:16px; gap:8px;"><i data-lucide="map-pin-off" style="width:16px;height:16px;"></i><span>Rota indisponÃ­vel</span></div>`;
     lucide.createIcons();
     return;
   }
@@ -3573,7 +3600,7 @@ window.toggleTeleRouteMap = async function(deliveryId) {
   try {
     const maps = await loadGoogleMapsApi();
     if (!maps || !window.google?.maps) {
-      mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px;">Rota indisponível</div>`;
+      mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px;">Rota indisponÃ­vel</div>`;
       return;
     }
 
@@ -3652,7 +3679,7 @@ window.toggleTeleRouteMap = async function(deliveryId) {
     }
   } catch (err) {
     console.warn('Aviso ao inicializar mapa de rota para tele:', deliveryId, err);
-    mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px;">Rota indisponível</div>`;
+    mapDiv.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; background:rgba(255,255,255,0.02); border-radius:8px;">Rota indisponÃ­vel</div>`;
   }
 };
 
@@ -3709,7 +3736,7 @@ window.showFleetRiderPanel = function(rider, mockRider, currentStatus, currentSt
             </button>
             ${mockRider ? `
               <button class="map-popup-delete-btn" onclick="deleteRiderAccountById('${mockRider.id}')" style="height: 36px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background-color: #ef4444; border: 1px solid #ef4444; color: #fff; padding: 0 12px;">Excluir conta</button>
-              <button class="map-popup-settings-btn" onclick="openRiderActions('${mockRider.id}')" title="Funções do motoboy" aria-label="Funções do motoboy" style="width: 38px; height: 36px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background-color: var(--secondary); border: 1px solid var(--border-color); color: var(--color-text); padding: 0;">
+              <button class="map-popup-settings-btn" onclick="openRiderActions('${mockRider.id}')" title="FunÃ§Ãµes do motoboy" aria-label="FunÃ§Ãµes do motoboy" style="width: 38px; height: 36px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background-color: var(--secondary); border: 1px solid var(--border-color); color: var(--color-text); padding: 0;">
                 <i data-lucide="settings" style="width: 14px; height: 14px;"></i>
               </button>
             ` : ''}
@@ -3723,7 +3750,7 @@ window.showFleetRiderPanel = function(rider, mockRider, currentStatus, currentSt
           ${mockRider ? `
             <div class="map-popup-actions" style="display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px;">
               <button class="map-popup-delete-btn" onclick="deleteRiderAccountById('${mockRider.id}')" style="height: 36px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background-color: #ef4444; border: 1px solid #ef4444; color: #fff; padding: 0 12px;">Excluir conta</button>
-              <button class="map-popup-settings-btn" onclick="openRiderActions('${mockRider.id}')" title="Funções do motoboy" aria-label="Funções do motoboy" style="width: 38px; height: 36px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background-color: var(--secondary); border: 1px solid var(--border-color); color: var(--color-text); padding: 0;">
+              <button class="map-popup-settings-btn" onclick="openRiderActions('${mockRider.id}')" title="FunÃ§Ãµes do motoboy" aria-label="FunÃ§Ãµes do motoboy" style="width: 38px; height: 36px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; background-color: var(--secondary); border: 1px solid var(--border-color); color: var(--color-text); padding: 0;">
                 <i data-lucide="settings" style="width: 14px; height: 14px;"></i>
               </button>
             </div>
@@ -3742,7 +3769,7 @@ window.showFleetRiderPanel = function(rider, mockRider, currentStatus, currentSt
         <i data-lucide="x"></i>
       </button>
     </div>
-    <p class="fleet-panel-subtitle">${escapeHtml(rider.vehicle)} • <strong>${escapeHtml(rider.plate)}</strong></p>
+    <p class="fleet-panel-subtitle">${escapeHtml(rider.vehicle)} â€¢ <strong>${escapeHtml(rider.plate)}</strong></p>
     <span class="status-indicator ${statusDetails.statusClass}">${escapeHtml(statusDetails.label)}</span>
     ${dispatchHtml}
   `;
@@ -3832,25 +3859,25 @@ async function dispatchDelivery(deliveryId, riderId) {
 
   const rider = mockData.fleet.find(r => r.id === riderId || String(r.id) === String(riderId));
   if (!rider) {
-    alert("Selecione um motoboy válido para atribuição.");
+    alert("Selecione um motoboy vÃ¡lido para atribuiÃ§Ã£o.");
     return;
   }
 
   const statusNorm = String(rider.status || '').toLowerCase();
-  const isAvailable = rider.status === 'Disponível' || rider.status === 'disponivel' || statusNorm === 'disponivel';
-  const isRestingOrOffline = rider.status === 'Indisponível' || rider.status === 'Em Descanso' || statusNorm === 'indisponivel' || statusNorm === 'em_descanso' || statusNorm === 'offline';
+  const isAvailable = rider.status === 'DisponÃ­vel' || rider.status === 'disponivel' || statusNorm === 'disponivel';
+  const isRestingOrOffline = rider.status === 'IndisponÃ­vel' || rider.status === 'Em Descanso' || statusNorm === 'indisponivel' || statusNorm === 'em_descanso' || statusNorm === 'offline';
   const isBlockedOrInactive = rider.status === 'Inativo' || rider.status === 'Suspenso' || rider.status === 'Bloqueado' || statusNorm === 'inativo' || statusNorm === 'suspenso' || statusNorm === 'bloqueado';
 
   if (!isAvailable) {
     if (isRestingOrOffline) {
-      alert("Este motoboy está desconectado no PWA. Conecte o aplicativo antes de atribuir a Tele.");
+      alert("Este motoboy estÃ¡ desconectado no PWA. Conecte o aplicativo antes de atribuir a Tele.");
       return;
     }
     if (isBlockedOrInactive) {
-      alert("Este motoboy não está disponível para receber Teles.");
+      alert("Este motoboy nÃ£o estÃ¡ disponÃ­vel para receber Teles.");
       return;
     }
-    alert("Este motoboy não está disponível para receber Teles no momento.");
+    alert("Este motoboy nÃ£o estÃ¡ disponÃ­vel para receber Teles no momento.");
     return;
   }
 
@@ -3869,7 +3896,7 @@ async function dispatchDelivery(deliveryId, riderId) {
         rpcSuccess = true;
       }
     } catch (e) {
-      console.warn("RPC assign_rider_to_tele indisponível, realizando atribuição direta:", e);
+      console.warn("RPC assign_rider_to_tele indisponÃ­vel, realizando atribuiÃ§Ã£o direta:", e);
     }
 
     if (!rpcSuccess) {
@@ -3900,7 +3927,7 @@ async function dispatchDelivery(deliveryId, riderId) {
   }
 
   await loadTelesManagement();
-  showToastNotification(`Tele ${displayCode} atribuída com sucesso a ${rider.name}.`);
+  showToastNotification(`Tele ${displayCode} atribuÃ­da com sucesso a ${rider.name}.`);
 }
 
 
@@ -3930,11 +3957,11 @@ window.renderClientTelesUnified = function() {
   if (!container) return;
 
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente nÃ£o vinculado';
 
   const pendingList = mockData.pendingDeliveries.filter(d => d.client === currentCommerce);
-  const activeList = mockData.clientHistory.filter(o => o.client === currentCommerce && o.status !== 'Entregue' && o.status !== 'Concluído' && o.status !== 'Cancelado');
-  const completedList = mockData.clientHistory.filter(o => o.client === currentCommerce && (o.status === 'Entregue' || o.status === 'Concluído'));
+  const activeList = mockData.clientHistory.filter(o => o.client === currentCommerce && o.status !== 'Entregue' && o.status !== 'ConcluÃ­do' && o.status !== 'Cancelado');
+  const completedList = mockData.clientHistory.filter(o => o.client === currentCommerce && (o.status === 'Entregue' || o.status === 'ConcluÃ­do'));
   const canceledList = mockData.clientHistory.filter(o => o.client === currentCommerce && o.status === 'Cancelado');
 
   const pendingCount = pendingList.length;
@@ -3963,12 +3990,12 @@ window.renderClientTelesUnified = function() {
       id: d.id,
       tele_code: d.tele_code || null,
       type: 'pending',
-      client: d.client || 'Cliente não vinculado',
+      client: d.client || 'Cliente nÃ£o vinculado',
       destName: d.destName,
       address: d.address,
       dest_lat: d.dest_lat,
       dest_lng: d.dest_lng,
-      dist: d.dist || '—',
+      dist: d.dist || 'â€”',
       price: priceFormatted,
       payment: d.payment || 'A combinar',
       cargo: d.cargo || 'Pedido',
@@ -3982,9 +4009,9 @@ window.renderClientTelesUnified = function() {
 
   const historyItems = [...activeList, ...completedList, ...canceledList].map(o => {
     let type = 'active';
-    if (o.status === 'Entregue' || o.status === 'Concluído') type = 'completed';
+    if (o.status === 'Entregue' || o.status === 'ConcluÃ­do') type = 'completed';
     else if (o.status === 'Cancelado') type = 'canceled';
-    
+
     const fixedPrice = getFixedPriceByAddress(o.address);
     const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
 
@@ -3992,12 +4019,12 @@ window.renderClientTelesUnified = function() {
       id: o.id,
       tele_code: o.tele_code || null,
       type: type,
-      client: o.client || 'Cliente não vinculado',
+      client: o.client || 'Cliente nÃ£o vinculado',
       destName: o.destName,
       address: o.address,
       dest_lat: o.dest_lat,
       dest_lng: o.dest_lng,
-      dist: o.dist || '—',
+      dist: o.dist || 'â€”',
       price: priceFormatted,
       payment: o.payment || 'Pago',
       cargo: o.cargo || 'Pedido',
@@ -4005,7 +4032,7 @@ window.renderClientTelesUnified = function() {
       date: o.date,
       created_at: o.created_at,
       status: o.status,
-      statusClass: o.statusClass || (o.status === 'Entregue' || o.status === 'Concluído' ? 'status-success' : (o.status === 'Cancelado' ? 'status-danger' : 'status-progress'))
+      statusClass: o.statusClass || (o.status === 'Entregue' || o.status === 'ConcluÃ­do' ? 'status-success' : (o.status === 'Cancelado' ? 'status-danger' : 'status-progress'))
     };
   });
 
@@ -4045,7 +4072,7 @@ function renderClientTelesGrid(list) {
       <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); color: var(--color-text-muted);">
         <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--color-text-muted); margin-bottom: 12px; display: inline-block;"></i>
         <p style="font-weight: 600; color: var(--color-text);">Nenhuma tele encontrada</p>
-        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critérios do filtro selecionado.</p>
+        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critÃ©rios do filtro selecionado.</p>
       </div>
     `;
     if (window.lucide) lucide.createIcons();
@@ -4070,7 +4097,7 @@ function renderClientTelesGrid(list) {
         <div class="active-card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
           <p style="margin: 0;"><strong>Destino:</strong> ${escapeHtml(item.destName)}</p>
           <p class="text-muted text-xs" style="margin: 0; display: flex; align-items: center; gap: 4px; line-height: 1.4;">
-            <i data-lucide="map-pin" style="width: 12px; height: 12px; flex-shrink: 0;"></i> 
+            <i data-lucide="map-pin" style="width: 12px; height: 12px; flex-shrink: 0;"></i>
             <span style="flex: 1;">${escapeHtml(item.address)}</span>
             ${item.dest_lat && item.dest_lng ? `
               <button onclick="window.openQuickMapModal('${item.id}', ${item.dest_lat}, ${item.dest_lng})" style="background: rgba(255, 185, 0, 0.15); border: 1px solid rgba(255, 185, 0, 0.3); color: var(--primary); border-radius: 4px; padding: 2px 5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; outline: none; transition: all 0.2s;" title="Visualizar no Mapa">
@@ -4080,8 +4107,8 @@ function renderClientTelesGrid(list) {
           </p>
           <p style="margin: 0;"><strong>Mercadoria:</strong> ${escapeHtml(item.cargo)}</p>
           <p style="margin: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-            <strong>Distância:</strong> ${escapeHtml(item.dist.split('|')[0])} • 
-            <strong>Taxa:</strong> 
+            <strong>DistÃ¢ncia:</strong> ${escapeHtml(item.dist.split('|')[0])} â€¢
+            <strong>Taxa:</strong>
             <span style="font-weight: 600; color: var(--primary);">${escapeHtml(item.price)}</span>
           </p>
           <p style="margin: 0;"><strong>Motoboy:</strong> <span class="badge badge-success" style="background: var(--accent-cyan-glow); color: var(--accent-cyan); border-color: rgba(0, 174, 239, 0.2);">${escapeHtml(item.rider)}</span></p>
@@ -4105,7 +4132,7 @@ function renderClientTelesTable(list) {
       <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); color: var(--color-text-muted);">
         <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--color-text-muted); margin-bottom: 12px; display: inline-block;"></i>
         <p style="font-weight: 600; color: var(--color-text);">Nenhuma tele encontrada</p>
-        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critérios do filtro selecionado.</p>
+        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critÃ©rios do filtro selecionado.</p>
       </div>
     `;
     if (window.lucide) lucide.createIcons();
@@ -4118,15 +4145,15 @@ function renderClientTelesTable(list) {
         <thead>
           <tr>
             <th>Origem</th>
-            <th>Código</th>
-            <th>Destinatário</th>
-            <th>Endereço</th>
+            <th>CÃ³digo</th>
+            <th>DestinatÃ¡rio</th>
+            <th>EndereÃ§o</th>
             <th>Motoboy</th>
-            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenação por Data/Hora">
+            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenaÃ§Ã£o por Data/Hora">
               <div style="display: inline-flex; align-items: center; gap: 6px;">
                 <span>Data/Hora</span>
                 <span style="font-size: 0.78rem; padding: 2px 6px; background: rgba(255, 185, 0, 0.15); color: var(--primary); border-radius: 4px; border: 1px solid rgba(255, 185, 0, 0.3);">
-                  ${currentTeleSortOrder === 'desc' ? '↓ Recentes' : '↑ Antigas'}
+                  ${currentTeleSortOrder === 'desc' ? 'â†“ Recentes' : 'â†‘ Antigas'}
                 </span>
               </div>
             </th>
@@ -4179,7 +4206,7 @@ async function completeDelivery(deliveryId, riderName) {
 
     if (historyError) {
       console.error("Error completing delivery in client history on Supabase:", historyError);
-      alert("Erro ao atualizar o histórico de entrega no Supabase.");
+      alert("Erro ao atualizar o histÃ³rico de entrega no Supabase.");
       return;
     }
 
@@ -4187,7 +4214,7 @@ async function completeDelivery(deliveryId, riderName) {
     const { error: fleetError } = await supabaseClient
       .from('fleet')
       .update({
-        status: 'Disponível',
+        status: 'DisponÃ­vel',
         status_class: 'status-success',
         delivery: 'Nenhuma'
       })
@@ -4223,7 +4250,7 @@ async function completeDelivery(deliveryId, riderName) {
   }
 
   // Display toast notification
-  showToastNotification(`Tele ${deliveryId} concluída e entregue!`);
+  showToastNotification(`Tele ${deliveryId} concluÃ­da e entregue!`);
 }
 
 // Global click handler wrapper
@@ -4249,7 +4276,7 @@ function openCredentialCard(code, name, pin) {
 
   if (nameEl) nameEl.innerText = name;
   if (codeEl) codeEl.innerText = code;
-  if (pinEl)  pinEl.innerText = '••••';
+  if (pinEl)  pinEl.innerText = 'â€¢â€¢â€¢â€¢';
 
   const toggleBtn = document.getElementById('pin-toggle-btn');
   if (toggleBtn) toggleBtn.innerHTML = '<i data-lucide="eye"></i>';
@@ -4269,7 +4296,7 @@ function togglePinVisibility() {
   _pinVisible = !_pinVisible;
   const pinEl = document.getElementById('cred-pin');
   const toggleBtn = document.getElementById('pin-toggle-btn');
-  if (pinEl) pinEl.innerText = _pinVisible ? _currentCreds.pin : '••••';
+  if (pinEl) pinEl.innerText = _pinVisible ? _currentCreds.pin : 'â€¢â€¢â€¢â€¢';
   if (toggleBtn) {
     toggleBtn.innerHTML = _pinVisible
       ? '<i data-lucide="eye-off"></i>'
@@ -4279,7 +4306,7 @@ function togglePinVisibility() {
 }
 
 function copyCredentials() {
-  const text = `Dahora Expresso — Acesso Motoboy\nNome: ${_currentCreds.name}\nCódigo de Acesso: ${_currentCreds.code}\nPIN: ${_currentCreds.pin}\nAcesso: https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html`;
+  const text = `Dahora Expresso â€” Acesso Motoboy\nNome: ${_currentCreds.name}\nCÃ³digo de Acesso: ${_currentCreds.code}\nPIN: ${_currentCreds.pin}\nAcesso: https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html`;
   navigator.clipboard.writeText(text).then(() => {
     showToastNotification('Credenciais copiadas!');
   }).catch(() => {
@@ -4295,16 +4322,16 @@ function copyCredentials() {
 
 function shareWhatsApp() {
   const text = encodeURIComponent(
-    `*Dahora Expresso — Seu Acesso*\n\nOlá, ${_currentCreds.name}! Suas credenciais de acesso ao app de motoboy são:\n\n*Código de Acesso:* ${_currentCreds.code}\n*PIN:* ${_currentCreds.pin}\n\n*Link:* https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html\n\n_Não compartilhe seu PIN com ninguém._`
+    `*Dahora Expresso â€” Seu Acesso*\n\nOlÃ¡, ${_currentCreds.name}! Suas credenciais de acesso ao app de motoboy sÃ£o:\n\n*CÃ³digo de Acesso:* ${_currentCreds.code}\n*PIN:* ${_currentCreds.pin}\n\n*Link:* https://dahora-expresso.guigui-couto23.workers.dev/motoboy.html\n\n_NÃ£o compartilhe seu PIN com ninguÃ©m._`
   );
   window.open(`https://wa.me/?text=${text}`, '_blank');
 }
 
-// Mostra credenciais de um motoboy já cadastrado
+// Mostra credenciais de um motoboy jÃ¡ cadastrado
 function viewRiderCredentials(riderId) {
   const rider = mockData.fleet.find(r => r.id === riderId);
   if (!rider) return;
-  openCredentialCard(rider.motoboy_code || '—', rider.name, rider.pin || '(sem PIN)');
+  openCredentialCard(rider.motoboy_code || 'â€”', rider.name, rider.pin || '(sem PIN)');
 }
 
 
@@ -4346,7 +4373,7 @@ async function deleteRiderAccountById(riderId) {
     const hasHistory = (telesCount || 0) > 0 || (txCount || 0) > 0 || (consCount || 0) > 0;
 
     if (hasHistory) {
-      const msg = `Este motoboy (${rider.name}) possui histórico operacional/financeiro (${telesCount || 0} teles, ${txCount || 0} transações) e não pode ser excluído definitivamente.\n\nDeseja desativar o acesso alterando o status para INATIVO?`;
+      const msg = `Este motoboy (${rider.name}) possui histÃ³rico operacional/financeiro (${telesCount || 0} teles, ${txCount || 0} transaÃ§Ãµes) e nÃ£o pode ser excluÃ­do definitivamente.\n\nDeseja desativar o acesso alterando o status para INATIVO?`;
       if (confirm(msg)) {
         await deactivateRiderAccount(riderId);
       }
@@ -4354,7 +4381,7 @@ async function deleteRiderAccountById(riderId) {
     }
   }
 
-  if (!confirm(`Tem certeza que deseja EXCLUIR permanentemente o entregador ${rider.name}? Esta ação só é permitida pois não existe histórico operacional registrado.`)) {
+  if (!confirm(`Tem certeza que deseja EXCLUIR permanentemente o entregador ${rider.name}? Esta aÃ§Ã£o sÃ³ Ã© permitida pois nÃ£o existe histÃ³rico operacional registrado.`)) {
     return;
   }
 
@@ -4373,7 +4400,7 @@ async function deleteRiderAccountById(riderId) {
     await fetchFleet();
     renderFleetTable();
     closeRiderActions();
-    showToastNotification(`Conta de ${rider.name} excluída com sucesso.`);
+    showToastNotification(`Conta de ${rider.name} excluÃ­da com sucesso.`);
   } catch (err) {
     console.error('Error deleting rider account:', err);
     alert('Erro ao excluir conta do motoboy: ' + err.message);
@@ -4416,7 +4443,7 @@ async function removeTeleFromRider(deliveryId, riderId) {
       if (remainingOrders.length === 0) {
         await supabaseClient
           .from('fleet')
-          .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
+          .update({ status: 'DisponÃ­vel', status_class: 'status-success', delivery: 'Nenhuma' })
           .eq('id', rider.id);
       }
     }
@@ -4436,7 +4463,7 @@ function openRiderActions(riderId) {
   const statusEl = document.getElementById('rider-action-status');
 
   if (nameEl) nameEl.innerText = rider.name;
-  if (codeEl) codeEl.innerText = rider.motoboy_code || '—';
+  if (codeEl) codeEl.innerText = rider.motoboy_code || 'â€”';
   if (statusEl) statusEl.innerText = rider.status;
 
   document.getElementById('modal-rider-actions').classList.remove('hidden');
@@ -4446,9 +4473,9 @@ function openRiderActions(riderId) {
 function copyRiderAccessCode() {
   const codeEl = document.getElementById('rider-action-code');
   const code = codeEl ? codeEl.innerText.trim() : '';
-  if (!code || code === '—') return;
+  if (!code || code === 'â€”') return;
   navigator.clipboard.writeText(code).then(() => {
-    showToastNotification('Código de Acesso copiado!');
+    showToastNotification('CÃ³digo de Acesso copiado!');
   }).catch(() => {
     const ta = document.createElement('textarea');
     ta.value = code;
@@ -4456,7 +4483,7 @@ function copyRiderAccessCode() {
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showToastNotification('Código de Acesso copiado!');
+    showToastNotification('CÃ³digo de Acesso copiado!');
   });
 }
 
@@ -4492,7 +4519,7 @@ function openEditSelectedRider() {
   document.getElementById('edit-rider-pin').value = rider.pin || '';
   document.getElementById('edit-rider-vehicle').value = rider.vehicle || '';
   document.getElementById('edit-rider-plate').value = rider.plate || '';
-  document.getElementById('edit-rider-status').value = rider.status || 'Disponível';
+  document.getElementById('edit-rider-status').value = rider.status || 'DisponÃ­vel';
   closeRiderActions();
   document.getElementById('modal-edit-rider').classList.remove('hidden');
   lucide.createIcons();
@@ -4505,7 +4532,7 @@ function closeEditRider(event) {
 }
 
 function getRiderStatusClass(status) {
-  if (status === 'Disponível') return 'status-success';
+  if (status === 'DisponÃ­vel') return 'status-success';
   if (status === 'Em Descanso') return 'status-neutral';
   return 'status-progress';
 }
@@ -4551,7 +4578,7 @@ function clearNotifications(event) {
   document.getElementById('notification-list').innerHTML = `
     <div style="text-align: center; padding: 32px 16px; color: var(--color-text-muted);">
       <i data-lucide="check-circle" style="width: 36px; height: 36px; color: var(--success); display: inline-block; margin-bottom: 8px;"></i>
-      <p style="font-size: 0.9rem;">Nenhuma notificação pendente.</p>
+      <p style="font-size: 0.9rem;">Nenhuma notificaÃ§Ã£o pendente.</p>
     </div>
   `;
   const badge = document.getElementById('bell-badge');
@@ -4575,7 +4602,7 @@ function addBellNotification(title, type = 'chat') {
   const list = document.getElementById('notification-list');
   if (list) {
     // If the list is empty (default placeholder), remove it
-    if (list.querySelector('[data-lucide="check-circle"]') || list.innerHTML.includes('Nenhuma notificação pendente')) {
+    if (list.querySelector('[data-lucide="check-circle"]') || list.innerHTML.includes('Nenhuma notificaÃ§Ã£o pendente')) {
       list.innerHTML = '';
     }
 
@@ -4608,7 +4635,7 @@ function addBellNotification(title, type = 'chat') {
 
     // Insert at the top of the list
     list.insertBefore(notifItem, list.firstChild);
-    
+
     // Recompile Lucide icons so the new icon renders properly
     lucide.createIcons();
   }
@@ -4623,7 +4650,7 @@ function initializeRealNotifications() {
   if (!list) return;
 
   list.innerHTML = '';
-  
+
   const notifications = [];
   const profile = mockData.activeProfile;
   const creds = mockData.credentials[profile];
@@ -4636,7 +4663,7 @@ function initializeRealNotifications() {
       const batVal = parseInt(rider.battery) || 100;
       if (batVal < 20) {
         notifications.push({
-          title: `<strong>${escapeHtml(rider.name)}</strong> está com bateria abaixo de 20% (${batVal}%)`,
+          title: `<strong>${escapeHtml(rider.name)}</strong> estÃ¡ com bateria abaixo de 20% (${batVal}%)`,
           type: 'alert',
           time: 'Alerta ativo'
         });
@@ -4662,7 +4689,7 @@ function initializeRealNotifications() {
 
   // 3. Check for recent completed deliveries (limit to 3)
   if (mockData.clientHistory && mockData.clientHistory.length > 0) {
-    let filteredHistory = mockData.clientHistory.filter(item => item.status === 'Entregue' || item.status === 'Concluído');
+    let filteredHistory = mockData.clientHistory.filter(item => item.status === 'Entregue' || item.status === 'ConcluÃ­do');
     if (!isOwner && commerceName) {
       filteredHistory = filteredHistory.filter(d => d.client === commerceName);
     }
@@ -4692,7 +4719,7 @@ function initializeRealNotifications() {
     list.innerHTML = `
       <div style="text-align: center; padding: 32px 16px; color: var(--color-text-muted);">
         <i data-lucide="check-circle" style="width: 36px; height: 36px; color: var(--success); display: inline-block; margin-bottom: 8px;"></i>
-        <p style="font-size: 0.9rem;">Nenhuma notificação pendente.</p>
+        <p style="font-size: 0.9rem;">Nenhuma notificaÃ§Ã£o pendente.</p>
       </div>
     `;
   } else {
@@ -4761,7 +4788,7 @@ function formatPhoneBR(value) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
-// Inicializador de máscaras e listeners para o formulário de entregadores
+// Inicializador de mÃ¡scaras e listeners para o formulÃ¡rio de entregadores
 document.addEventListener('DOMContentLoaded', () => {
   const phoneEl = document.getElementById('mb-phone');
   if (phoneEl) {
@@ -4814,7 +4841,7 @@ async function submitRegisterMotoboy(event) {
   const phoneDigits = phoneRaw.replace(/\D/g, '');
   if (phoneDigits.length < 10 || phoneDigits.length > 11) {
     if (phoneErrorEl) {
-      phoneErrorEl.innerText = 'Informe um telefone válido com DDD.';
+      phoneErrorEl.innerText = 'Informe um telefone vÃ¡lido com DDD.';
       phoneErrorEl.classList.remove('hidden');
     }
     if (phoneEl) phoneEl.style.borderColor = '#ef4444';
@@ -4823,7 +4850,7 @@ async function submitRegisterMotoboy(event) {
 
   if (!/^\d{4}$/.test(pinRaw)) {
     if (pinErrorEl) {
-      pinErrorEl.innerText = 'Informe um PIN de acesso com exatamente 4 números.';
+      pinErrorEl.innerText = 'Informe um PIN de acesso com exatamente 4 nÃºmeros.';
       pinErrorEl.classList.remove('hidden');
     }
     if (pinEl) pinEl.style.borderColor = '#ef4444';
@@ -4874,7 +4901,7 @@ async function submitRegisterMotoboy(event) {
       phone: phoneDigits,
       vehicle: vehicle,
       plate: plate,
-      status: 'Indisponível'
+      status: 'IndisponÃ­vel'
     });
   }
 
@@ -4932,8 +4959,8 @@ function renderClientRatings() {
     list.innerHTML = `
       <div class="empty-state-card" style="min-height: 260px;">
         <i data-lucide="star"></i>
-        <h4>Nenhuma avaliação registrada</h4>
-        <p>As avaliações aparecerão aqui depois que forem enviadas pelo formulário.</p>
+        <h4>Nenhuma avaliaÃ§Ã£o registrada</h4>
+        <p>As avaliaÃ§Ãµes aparecerÃ£o aqui depois que forem enviadas pelo formulÃ¡rio.</p>
       </div>
     `;
     lucide.createIcons();
@@ -4965,14 +4992,14 @@ function submitClientRating(event) {
   const comment = document.getElementById('rating-comment').value.trim();
   clientRatings.unshift({
     score,
-    title: score >= 4 ? 'Nova avaliação positiva' : 'Avaliação precisa de atenção',
-    comment: comment || 'Sem comentário adicional.',
+    title: score >= 4 ? 'Nova avaliaÃ§Ã£o positiva' : 'AvaliaÃ§Ã£o precisa de atenÃ§Ã£o',
+    comment: comment || 'Sem comentÃ¡rio adicional.',
     date: 'Agora'
   });
   document.getElementById('rating-comment').value = '';
   renderClientRatings();
   updateClientDashboardOverview();
-  showToastNotification('Avaliação enviada.');
+  showToastNotification('AvaliaÃ§Ã£o enviada.');
 }
 
 function openProfileSettings() {
@@ -5000,7 +5027,7 @@ function updateProfilePreview() {
     avatarPreview.src = avatar && avatar.value ? avatar.value : document.getElementById('user-avatar').src;
   }
   if (namePreview) namePreview.innerText = name && name.value ? name.value : 'Nome do perfil';
-  if (rolePreview) rolePreview.innerText = role && role.value ? role.value : 'Cargo / Função';
+  if (rolePreview) rolePreview.innerText = role && role.value ? role.value : 'Cargo / FunÃ§Ã£o';
 }
 
 function closeProfileSettings(event) {
@@ -5022,11 +5049,11 @@ function submitProfileSettings(event) {
   document.getElementById('user-avatar').src = creds.avatar;
   document.getElementById('user-display-name').innerText = creds.name;
   document.getElementById('user-display-sub').innerText = creds.partner
-    ? `${creds.role} • Sócio: ${creds.partner}`
+    ? `${creds.role} â€¢ SÃ³cio: ${creds.partner}`
     : creds.role;
 
   closeProfileSettings();
-  showToastNotification('Perfil atualizado nesta sessão.');
+  showToastNotification('Perfil atualizado nesta sessÃ£o.');
 }
 
 /* ================= PWA INSTALLATION & MODAL CONTROLS ================= */
@@ -5047,7 +5074,7 @@ window.addEventListener('appinstalled', (evt) => {
 
 window.installPWA = async function() {
   if (!deferredPrompt) {
-    showToastNotification("Instalação direta indisponível. Por favor, instale manualmente usando o guia abaixo.");
+    showToastNotification("InstalaÃ§Ã£o direta indisponÃ­vel. Por favor, instale manualmente usando o guia abaixo.");
     return;
   }
   deferredPrompt.prompt();
@@ -5075,18 +5102,18 @@ window.closeDownloadApp = function(event) {
   modal.classList.add('hidden');
 };
 
-// ─── SUPPORT CHAT IMPLEMENTATION ─────────────────────────────────────────────
+// â”€â”€â”€ SUPPORT CHAT IMPLEMENTATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Helper to create message bubbles
 function createMessageBubble(msg, currentRole) {
   const isMe = msg.sender_role === currentRole;
   const alignStyle = isMe ? 'align-self: flex-end; align-items: flex-end;' : 'align-self: flex-start; align-items: flex-start;';
-  
+
   // Premium gradients/colors for bubbles
-  const bubbleStyle = isMe 
+  const bubbleStyle = isMe
     ? 'background: linear-gradient(135deg, #f97316, #c2410c); color: #ffffff; border-radius: 16px 16px 2px 16px; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);'
     : 'background: #272732; border: 1px solid var(--border-color); color: var(--color-text); border-radius: 16px 16px 16px 2px;';
-  
+
   const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Agora';
 
   return `
@@ -5100,7 +5127,7 @@ function createMessageBubble(msg, currentRole) {
   `;
 }
 
-// ─── CLIENT CHAT LOGIC ────────────────────────────────────────────────────────
+// â”€â”€â”€ CLIENT CHAT LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadClientChatHistory() {
   const container = document.getElementById('client-chat-messages');
@@ -5186,7 +5213,7 @@ async function sendClientChatMessage(event) {
         client_email: creds.email,
         sender_role: 'admin',
         sender_name: 'Suporte Dahora Expresso',
-        message: 'Olá! Recebemos sua mensagem. Um atendente entrará em contato em breve.',
+        message: 'OlÃ¡! Recebemos sua mensagem. Um atendente entrarÃ¡ em contato em breve.',
         created_at: new Date().toISOString()
       };
       appendAndScrollClient(reply);
@@ -5225,7 +5252,7 @@ function appendAndScrollClient(msg) {
   div.style.display = 'contents';
   div.innerHTML = createMessageBubble(msg, 'client');
   container.appendChild(div);
-  
+
   // Smooth scroll to bottom
   container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
 }
@@ -5291,7 +5318,7 @@ function renderAdminChatChannels(channels) {
     const normalBg = isActive ? 'this.style.background=\'rgba(255, 255, 255, 0.08)\'' : 'this.style.background=\'transparent\'';
 
     return `
-      <div class="chat-channel-item" onclick="selectAdminChatChannel('${chan.email}', '${chan.name.replace(/'/g, "\\'")}')" 
+      <div class="chat-channel-item" onclick="selectAdminChatChannel('${chan.email}', '${chan.name.replace(/'/g, "\\'")}')"
            onmouseover="${highlightHover}" onmouseout="${normalBg}"
            style="padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s; ${activeBg}">
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -5306,8 +5333,8 @@ function renderAdminChatChannels(channels) {
 
 function filterAdminChatChannels() {
   const query = document.getElementById('admin-chat-search')?.value.trim().toLowerCase() || '';
-  const filtered = activeAdminChatChannels.filter(c => 
-    (c.name || '').toLowerCase().includes(query) || 
+  const filtered = activeAdminChatChannels.filter(c =>
+    (c.name || '').toLowerCase().includes(query) ||
     (c.email || '').toLowerCase().includes(query)
   );
   renderAdminChatChannels(filtered);
@@ -5406,7 +5433,7 @@ async function sendAdminChatMessage(event) {
       created_at: new Date().toISOString()
     };
     appendAndScrollAdmin(newMsg);
-    
+
     // Simulate auto-reply
     setTimeout(() => {
       const reply = {
@@ -5456,7 +5483,7 @@ function appendAndScrollAdmin(msg) {
 }
 
 
-// ─── ADMIN RIDER CHAT LOGIC ──────────────────────────────────────────────────
+// â”€â”€â”€ ADMIN RIDER CHAT LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadAdminRiderChatChannels() {
   const listContainer = document.getElementById('admin-rider-chat-channels-list');
@@ -5555,7 +5582,7 @@ function renderAdminRiderChatChannels(channels) {
     const normalBg = isActive ? 'this.style.background=\'rgba(255, 255, 255, 0.08)\'' : 'this.style.background=\'transparent\'';
 
     return `
-      <div class="chat-channel-item" onclick="selectAdminRiderChatChannel('${chan.email}', '${chan.name.replace(/'/g, "\\'")}')" 
+      <div class="chat-channel-item" onclick="selectAdminRiderChatChannel('${chan.email}', '${chan.name.replace(/'/g, "\\'")}')"
            onmouseover="${highlightHover}" onmouseout="${normalBg}"
            style="padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s; ${activeBg}">
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -5570,8 +5597,8 @@ function renderAdminRiderChatChannels(channels) {
 
 function filterAdminRiderChatChannels() {
   const query = document.getElementById('admin-rider-chat-search')?.value.trim().toLowerCase() || '';
-  const filtered = activeAdminRiderChatChannels.filter(r => 
-    (r.name || '').toLowerCase().includes(query) || 
+  const filtered = activeAdminRiderChatChannels.filter(r =>
+    (r.name || '').toLowerCase().includes(query) ||
     (r.email || '').toLowerCase().includes(query)
   );
   renderAdminRiderChatChannels(filtered);
@@ -5707,7 +5734,7 @@ function appendAndScrollAdminRider(msg) {
   container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
 }
 
-// ─── REALTIME SUPPORT SUBSCRIPTION ───────────────────────────────────────────
+// â”€â”€â”€ REALTIME SUPPORT SUBSCRIPTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function subscribeSupportRealtime() {
   if (!supabaseClient) return;
@@ -5818,7 +5845,7 @@ function subscribeDashboardRealtime() {
           const newBat = parseInt(payload.new.battery_level != null ? payload.new.battery_level : payload.new.battery) || 100;
           const oldBat = parseInt(payload.old?.battery_level != null ? payload.old.battery_level : payload.old?.battery) || 100;
           if (newBat < 20 && oldBat >= 20) {
-            addBellNotification(`<strong>${escapeHtml(payload.new.name)}</strong> está com bateria abaixo de 20% (${newBat}%)`, 'alert');
+            addBellNotification(`<strong>${escapeHtml(payload.new.name)}</strong> estÃ¡ com bateria abaixo de 20% (${newBat}%)`, 'alert');
           }
         }
       })
@@ -5845,7 +5872,7 @@ function subscribeDashboardRealtime() {
             // Check if coordinates are close to the generic city center or missing
             const isGeneric = isNaN(lat) || isNaN(lng) || (Math.abs(lat - (-29.8378)) < 0.005 && Math.abs(lng - (-51.1444)) < 0.005);
             if (isGeneric && window.google && window.google.maps && window.google.maps.Geocoder) {
-              console.log("Realtime Geocoder Shield: Coordenadas genéricas/ausentes detectadas. Iniciando recalibração para o endereço:", payload.new.address);
+              console.log("Realtime Geocoder Shield: Coordenadas genÃ©ricas/ausentes detectadas. Iniciando recalibraÃ§Ã£o para o endereÃ§o:", payload.new.address);
               const geocoder = new window.google.maps.Geocoder();
               geocoder.geocode({ address: payload.new.address }, async (results, status) => {
                 if (status === 'OK' && results[0]) {
@@ -5860,7 +5887,7 @@ function subscribeDashboardRealtime() {
                       .eq('id', payload.new.id);
                   }
                 } else {
-                  console.warn("Realtime Geocoder Shield: Falha ao geocodificar endereço.");
+                  console.warn("Realtime Geocoder Shield: Falha ao geocodificar endereÃ§o.");
                 }
               });
             }
@@ -5881,7 +5908,7 @@ function subscribeDashboardRealtime() {
           initOwnerOverviewChart();
         }
 
-        if (payload.eventType === 'INSERT' || (payload.eventType === 'UPDATE' && (payload.new.status === 'Entregue' || payload.new.status === 'Concluído'))) {
+        if (payload.eventType === 'INSERT' || (payload.eventType === 'UPDATE' && (payload.new.status === 'Entregue' || payload.new.status === 'ConcluÃ­do'))) {
           addBellNotification(`<strong>${escapeHtml(payload.new.rider || 'Motoboy')}</strong> concluiu a entrega <strong>#${escapeHtml(payload.new.id)}</strong>`, 'delivery');
         }
       })
@@ -5935,7 +5962,7 @@ function subscribeDashboardRealtime() {
           renderClientMapMarkers(clientFleetCenterCoords);
         }
 
-        if (commerceName && payload.new.client === commerceName && (payload.eventType === 'INSERT' || (payload.eventType === 'UPDATE' && (payload.new.status === 'Entregue' || payload.new.status === 'Concluído')))) {
+        if (commerceName && payload.new.client === commerceName && (payload.eventType === 'INSERT' || (payload.eventType === 'UPDATE' && (payload.new.status === 'Entregue' || payload.new.status === 'ConcluÃ­do')))) {
           addBellNotification(`<strong>${escapeHtml(payload.new.rider || 'Motoboy')}</strong> concluiu a entrega <strong>#${escapeHtml(payload.new.id)}</strong>`, 'delivery');
         }
       })
@@ -5953,7 +5980,7 @@ function subscribeDashboardRealtime() {
         }
 
         if (commerceName && payload.new.client === commerceName && payload.eventType === 'INSERT') {
-          addBellNotification(`Sua solicitação de motoboy <strong>#${escapeHtml(payload.new.id)}</strong> foi recebida.`, 'store');
+          addBellNotification(`Sua solicitaÃ§Ã£o de motoboy <strong>#${escapeHtml(payload.new.id)}</strong> foi recebida.`, 'store');
         }
       });
   }
@@ -5961,12 +5988,12 @@ function subscribeDashboardRealtime() {
   dashboardRealtimeChannel.subscribe();
 }
 
-// ─── REQUEST DELIVERY MAP ─────────────────────────────────────────────────────
+// â”€â”€â”€ REQUEST DELIVERY MAP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function loadGoogleMapsAPI(callback) {
   const apiKey = getGoogleMapsApiKey();
   if (!apiKey) {
-    if (callback) callback(new Error("Chave do Google Maps não configurada no ambiente."));
+    if (callback) callback(new Error("Chave do Google Maps nÃ£o configurada no ambiente."));
     return;
   }
   loadGoogleMapsApi().then(() => {
@@ -5977,12 +6004,12 @@ function loadGoogleMapsAPI(callback) {
           this.latlng = latlng;
           this.html = html;
           this.onClick = onClick;
-          
+
           this.div = document.createElement('div');
           this.div.style.position = 'absolute';
           this.div.style.cursor = 'pointer';
           this.div.innerHTML = html;
-          
+
           if (onClick) {
             this.div.addEventListener('click', (e) => {
               e.stopPropagation();
@@ -6149,7 +6176,7 @@ function initRequestDeliveryMap(type = 'client') {
       return;
     }
   }
-  
+
   loadGoogleMapsAPI(() => {
     const darkMapStyle = [
       { elementType: "geometry", stylers: [{ color: "#1e1e24" }] },
@@ -6163,7 +6190,7 @@ function initRequestDeliveryMap(type = 'client') {
       { featureType: "transit", stylers: [{ visibility: "off" }] },
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d0d11" }] }
     ];
-    
+
     const latLng = new window.google.maps.LatLng(requestMaps[type].centerCoords[0], requestMaps[type].centerCoords[1]);
     requestMaps[type].map = new window.google.maps.Map(mapContainer, {
       center: latLng,
@@ -6186,7 +6213,7 @@ function initRequestDeliveryMap(type = 'client') {
     const setRestaurantMarker = (coords) => {
       const center = new window.google.maps.LatLng(coords[0], coords[1]);
       requestMaps[type].restaurantMarker = new window.CustomHTMLMapMarker(center, requestMaps[type].map, restaurantIconHtml, () => {
-        const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Seu Comércio</strong>' });
+        const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Seu ComÃ©rcio</strong>' });
         info.open(requestMaps[type].map, requestMaps[type].restaurantMarker);
       });
     };
@@ -6349,9 +6376,9 @@ async function setupAddressGeocodingListener(type = 'client') {
 
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
-      
+
       if (!place || !place.geometry || !place.geometry.location) {
-        alert("Endereço não encontrado ou inválido. Selecione um endereço sugerido pela lista.");
+        alert("EndereÃ§o nÃ£o encontrado ou invÃ¡lido. Selecione um endereÃ§o sugerido pela lista.");
         return;
       }
 
@@ -6364,6 +6391,12 @@ async function setupAddressGeocodingListener(type = 'client') {
       addressInput.dataset.lastResolvedAddress = place.formatted_address;
       addressInput.dataset.isPlacesResolved = "true";
 
+      const placeIdInput = document.getElementById(`${type}-delivery-place-id`) || document.getElementById('manual-delivery-place-id');
+      if (placeIdInput) placeIdInput.value = place.place_id || '';
+
+      const isManualInput = document.getElementById(`${type}-location-adjusted-manually`) || document.getElementById('manual-location-adjusted-manually');
+      if (isManualInput) isManualInput.value = 'false';
+
       const precisionInput = document.getElementById(`${type}-geocoding-precision`) || document.getElementById('manual-geocoding-precision');
       if (precisionInput) precisionInput.value = String(locType).toLowerCase();
 
@@ -6374,7 +6407,23 @@ async function setupAddressGeocodingListener(type = 'client') {
       const val = addressInput.value.trim();
       if (val !== addressInput.dataset.lastResolvedAddress) {
         delete addressInput.dataset.isPlacesResolved;
+        addressInput.dataset.lastResolvedAddress = '';
         requestMaps[type].destCoords = null;
+
+        const latInput = document.getElementById(`${type}-delivery-lat`) || document.getElementById('manual-delivery-lat');
+        const lngInput = document.getElementById(`${type}-delivery-lng`) || document.getElementById('manual-delivery-lng');
+        if (latInput) latInput.value = '';
+        if (lngInput) lngInput.value = '';
+
+        const placeIdInput = document.getElementById(`${type}-delivery-place-id`) || document.getElementById('manual-delivery-place-id');
+        if (placeIdInput) placeIdInput.value = '';
+
+        const isManualInput = document.getElementById(`${type}-location-adjusted-manually`) || document.getElementById('manual-location-adjusted-manually');
+        if (isManualInput) isManualInput.value = 'false';
+
+        const precisionInput = document.getElementById(`${type}-geocoding-precision`) || document.getElementById('manual-geocoding-precision');
+        if (precisionInput) precisionInput.value = 'unconfirmed';
+
         if (requestMaps[type].marker) {
           requestMaps[type].marker.setMap(null);
           requestMaps[type].marker = null;
@@ -6389,11 +6438,11 @@ async function setupAddressGeocodingListener(type = 'client') {
     const handleManualGeocode = () => {
       const value = addressInput.value.trim();
       if (!value) return;
-      if (addressInput.dataset.lastResolvedAddress === value) return;
       if (addressInput.dataset.isPlacesResolved === "true") return;
+      if (addressInput.dataset.lastResolvedAddress && addressInput.dataset.lastResolvedAddress === value) return;
 
       const isManualAdjusted = document.getElementById(`${type}-location-adjusted-manually`)?.value === 'true' || document.getElementById('manual-location-adjusted-manually')?.value === 'true';
-      if (isManualAdjusted) return;
+      if (isManualAdjusted && requestMaps[type].destCoords) return;
 
       if (window.google?.maps?.Geocoder) {
         const geocoder = new window.google.maps.Geocoder();
@@ -6407,8 +6456,13 @@ async function setupAddressGeocodingListener(type = 'client') {
             const res = results[0];
             const lat = res.geometry.location.lat();
             const lng = res.geometry.location.lng();
-            requestMaps[type].destCoords = { lat, lng };
-            addressInput.dataset.lastResolvedAddress = res.formatted_address;
+            requestMaps[type].destCoords = { lat, lng, isManualPin: false };
+            addressInput.dataset.lastResolvedAddress = value;
+            addressInput.dataset.isPlacesResolved = "true";
+
+            const placeIdInput = document.getElementById(`${type}-delivery-place-id`) || document.getElementById('manual-delivery-place-id');
+            if (placeIdInput) placeIdInput.value = res.place_id || '';
+
             updateRequestDeliveryDestination(lat, lng, true, false, type);
           }
         });
@@ -6421,7 +6475,7 @@ async function setupAddressGeocodingListener(type = 'client') {
   }
 }
 
-// ─── REALTIME ORDER TRACKING ──────────────────────────────────────────────────
+// â”€â”€â”€ REALTIME ORDER TRACKING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function startRealtimeTracking(order) {
   const trackerStatus = document.getElementById('tracker-badge-status');
@@ -6555,7 +6609,7 @@ function initTrackingMap(pickupLat, pickupLng, destLat, destLng) {
     const destLatLng = new window.google.maps.LatLng(destLat, destLng);
 
     trackingPickupMarker = new window.CustomHTMLMapMarker(pickupLatLng, trackingMapInstance, pickupIconHtml, () => {
-      const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Origem (Comércio)</strong>' });
+      const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Origem (ComÃ©rcio)</strong>' });
       info.open(trackingMapInstance, trackingPickupMarker);
     });
 
@@ -6591,7 +6645,7 @@ function updateRiderMarker(lat, lng, riderName) {
   if (!trackingMapInstance || isNaN(lat) || isNaN(lng)) return;
 
   const riderLatLng = new window.google.maps.LatLng(lat, lng);
-  const popupContent = `<strong style="color:var(--color-text);">${escapeHtml(riderName)}</strong><br>Localização em tempo real`;
+  const popupContent = `<strong style="color:var(--color-text);">${escapeHtml(riderName)}</strong><br>LocalizaÃ§Ã£o em tempo real`;
 
   if (trackingRiderMarker) {
     trackingRiderMarker.setLatLng(riderLatLng);
@@ -6653,7 +6707,7 @@ function updateStepperState(status) {
 function translateStatus(status) {
   if (status === 'A caminho da coleta') return 'Entregador Coletando';
   if (status === 'Em rota de entrega') return 'Em Rota de Entrega';
-  if (status === 'Entregue') return 'Concluído';
+  if (status === 'Entregue') return 'ConcluÃ­do';
   return status;
 }
 
@@ -6687,10 +6741,10 @@ function updateCourierCardUI(rider) {
   box.classList.remove('hidden');
   document.getElementById('tracker-courier-name').innerText = rider.name;
   document.getElementById('tracker-courier-vehicle').innerText = `${rider.vehicle} - Placa: ${rider.plate}`;
-  
+
   const img = document.getElementById('tracker-courier-img');
-  img.src = (rider.id === '#SPD-101') 
-    ? 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=256&auto=format&fit=crop' 
+  img.src = (rider.id === '#SPD-101')
+    ? 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=256&auto=format&fit=crop'
     : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop';
 }
 
@@ -6787,24 +6841,24 @@ async function renderOwnerFinancials() {
         tbody.innerHTML = `
           <tr>
             <td colspan="5" style="text-align: center; color: var(--color-text-muted); padding: 24px;">
-              Nenhuma tele concluída encontrada para o período selecionado.
+              Nenhuma tele concluÃ­da encontrada para o perÃ­odo selecionado.
             </td>
           </tr>
         `;
       } else {
         tbody.innerHTML = teles.map(t => `
           <tr>
-            <td><code>${escapeHtml(t.tele_code || '—')}</code></td>
-            <td>${t.date ? new Date(t.date).toLocaleDateString('pt-BR') : '—'}</td>
-            <td><strong>${escapeHtml(t.establishment_dest || '—')}</strong></td>
-            <td>${escapeHtml(t.motoboy_name || '—')}</td>
+            <td><code>${escapeHtml(t.tele_code || 'â€”')}</code></td>
+            <td>${t.date ? new Date(t.date).toLocaleDateString('pt-BR') : 'â€”'}</td>
+            <td><strong>${escapeHtml(t.establishment_dest || 'â€”')}</strong></td>
+            <td>${escapeHtml(t.motoboy_name || 'â€”')}</td>
             <td><strong class="text-yellow">${formatRiderSettlementCurrency(t.delivery_charge)}</strong></td>
           </tr>
         `).join('');
       }
     }
   } catch (err) {
-    console.error("[RPC get_admin_company_financial_summary] Exceção:", err);
+    console.error("[RPC get_admin_company_financial_summary] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -6843,7 +6897,7 @@ function clearRiderPaymentFiltersLegacy() {
   const startEl = document.getElementById('rider-payment-start-date');
   const endEl = document.getElementById('rider-payment-end-date');
   const searchEl = document.getElementById('rider-search-input');
-  
+
   if (startEl) {
     const { monday } = getCurrentWeekBounds();
     startEl.value = formatDateISO(monday);
@@ -6855,7 +6909,7 @@ function clearRiderPaymentFiltersLegacy() {
   if (searchEl) {
     searchEl.value = '';
   }
-  
+
   renderRiderPayments();
 }
 
@@ -6864,7 +6918,7 @@ function toggleRiderSearchDropdownLegacy(show) {
   const dropdown = document.getElementById('rider-search-dropdown');
   const icon = document.querySelector('.rider-search-wrapper i[data-lucide="chevron-down"]');
   if (!dropdown) return;
-  
+
   if (show) {
     dropdown.classList.remove('hidden');
     if (icon) icon.style.transform = 'rotate(180deg)';
@@ -6893,7 +6947,7 @@ function populateRiderSearchDropdown() {
     .forEach(rider => {
       html += `
         <div onclick="selectRiderForPaymentSearch('${escapeHtml(rider.name)}')" style="padding: 10px 14px; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
-          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'Disponível' ? '#10b981' : '#f59e0b'};"></div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'DisponÃ­vel' ? '#10b981' : '#f59e0b'};"></div>
           <strong>${escapeHtml(rider.name)}</strong> <span style="color: var(--color-text-muted); font-size: 0.78rem;">(${escapeHtml(rider.id)})</span>
         </div>
       `;
@@ -6949,7 +7003,7 @@ async function updateRiderPaymentStatus(riderName, newStatus) {
   // 1. Gather all completed order IDs for this rider in this date range
   const filteredOrderIds = mockData.clientHistory
     .filter(order => {
-      const isCompleted = order.status === 'Entregue' || order.status === 'Concluído';
+      const isCompleted = order.status === 'Entregue' || order.status === 'ConcluÃ­do';
       if (!isCompleted) return false;
       if (order.rider !== riderName) return false;
 
@@ -6963,7 +7017,7 @@ async function updateRiderPaymentStatus(riderName, newStatus) {
     .map(order => order.id);
 
   if (filteredOrderIds.length === 0) {
-    alert(`Nenhuma entrega concluída encontrada para ${riderName} neste período.`);
+    alert(`Nenhuma entrega concluÃ­da encontrada para ${riderName} neste perÃ­odo.`);
     renderRiderPayments();
     return;
   }
@@ -6978,7 +7032,7 @@ async function updateRiderPaymentStatus(riderName, newStatus) {
         .in('id', filteredOrderIds);
 
       if (error) throw error;
-      
+
       showToastNotification(`Pagamentos de ${riderName} marcados como ${newStatus}.`);
     } catch (err) {
       console.error("Error updating rider payment status on Supabase:", err);
@@ -7008,11 +7062,11 @@ function handleConsumableCategoryChange() {
   const selectCategory = document.getElementById('consumable-category-select');
   const selectType = document.getElementById('consumable-type-select');
   const qtyInput = document.getElementById('consumable-quantity');
-  
+
   if (!selectCategory || !selectType) return;
-  
+
   const category = selectCategory.value;
-  
+
   if (category === 'Vale') {
     selectType.innerHTML = `
       <option value="Vale">Vale (Adiantamento em dinheiro)</option>
@@ -7025,7 +7079,7 @@ function handleConsumableCategoryChange() {
     }
   } else {
     selectType.innerHTML = `
-      <option value="Açaí">Açaí</option>
+      <option value="AÃ§aÃ­">AÃ§aÃ­</option>
       <option value="Refrigerante">Refrigerante</option>
       <option value="Lanche">Lanche</option>
       <option value="Outros">Outros (Descrever abaixo)</option>
@@ -7036,7 +7090,7 @@ function handleConsumableCategoryChange() {
       qtyInput.style.background = 'var(--input-bg)';
     }
   }
-  
+
   handleConsumableTypeChange();
 }
 
@@ -7046,16 +7100,16 @@ function handleConsumableTypeChange() {
   const customGroup = document.getElementById('consumable-custom-type-group');
   const customInput = document.getElementById('consumable-custom-type');
   const priceInput = document.getElementById('consumable-unit-price');
-  
+
   if (!selectType) return;
-  
-  const category = selectCategory ? selectCategory.value : 'Consumível';
+
+  const category = selectCategory ? selectCategory.value : 'ConsumÃ­vel';
   const item = selectType.value;
-  
+
   if (category === 'Vale') {
     if (priceInput) priceInput.value = '';
   } else {
-    if (item === 'Açaí') {
+    if (item === 'AÃ§aÃ­') {
       if (priceInput) priceInput.value = '12.00';
     } else if (item === 'Refrigerante') {
       if (priceInput) priceInput.value = '5.00';
@@ -7065,7 +7119,7 @@ function handleConsumableTypeChange() {
       if (priceInput) priceInput.value = '0.00';
     }
   }
-  
+
   if (item === 'Outros') {
     if (customGroup) customGroup.classList.remove('hidden');
     if (customInput) customInput.required = true;
@@ -7076,7 +7130,7 @@ function handleConsumableTypeChange() {
       customInput.value = '';
     }
   }
-  
+
   recalculateConsumableTotal();
 }
 
@@ -7094,12 +7148,12 @@ function recalculateConsumableTotal() {
 function populateConsumableRiderSelect() {
   const select = document.getElementById('consumable-rider-select');
   if (!select) return;
-  
+
   const currentValue = select.value;
   select.innerHTML = '<option value="">Selecione um motoboy...</option>';
-  
+
   const sortedRiders = [...mockData.fleet].sort((a, b) => a.name.localeCompare(b.name));
-  
+
   sortedRiders.forEach(rider => {
     const option = document.createElement('option');
     option.value = rider.id;
@@ -7165,19 +7219,19 @@ function renderRiderConsumables() {
       minute: '2-digit'
     });
 
-    const categoryBadge = item.categoria === 'Vale' 
-      ? '<span class="badge badge-warning" style="background: rgba(255, 183, 0, 0.15); color: #ffb700; border: 1px solid rgba(255, 183, 0, 0.3); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Vale</span>' 
-      : '<span class="badge badge-info" style="background: rgba(0, 180, 216, 0.15); color: #00b4d8; border: 1px solid rgba(0, 180, 216, 0.3); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Consumível</span>';
-      
-    const itemDesc = item.categoria === 'Vale' 
-      ? 'Adiantamento em dinheiro' 
+    const categoryBadge = item.categoria === 'Vale'
+      ? '<span class="badge badge-warning" style="background: rgba(255, 183, 0, 0.15); color: #ffb700; border: 1px solid rgba(255, 183, 0, 0.3); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Vale</span>'
+      : '<span class="badge badge-info" style="background: rgba(0, 180, 216, 0.15); color: #00b4d8; border: 1px solid rgba(0, 180, 216, 0.3); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">ConsumÃ­vel</span>';
+
+    const itemDesc = item.categoria === 'Vale'
+      ? 'Adiantamento em dinheiro'
       : `${item.quantidade}x ${escapeHtml(item.item_name || item.item_type)}`;
-      
-    const unitPriceFmt = item.categoria === 'Vale' 
-      ? '—' 
+
+    const unitPriceFmt = item.categoria === 'Vale'
+      ? 'â€”'
       : formatMoneyBR(item.valor_unitario);
-      
-    const notesFmt = item.observacao ? `<span class="text-muted" style="font-size: 0.8rem;">${escapeHtml(item.observacao)}</span>` : '—';
+
+    const notesFmt = item.observacao ? `<span class="text-muted" style="font-size: 0.8rem;">${escapeHtml(item.observacao)}</span>` : 'â€”';
 
     const statusBadge = item.status === 'reversed'
       ? '<span class="badge badge-danger" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.72rem; padding: 4px 8px; border-radius: 4px;">Estornado</span>'
@@ -7185,7 +7239,7 @@ function renderRiderConsumables() {
 
     const actionButton = item.status === 'reversed'
       ? `<span class="text-muted" style="font-size: 0.78rem;">Estornado</span>`
-      : `<button onclick="openFinancialReversalModal('${item.id}', 'consumable')" class="btn-action btn-action-danger" title="Estornar Lançamento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
+      : `<button onclick="openFinancialReversalModal('${item.id}', 'consumable')" class="btn-action btn-action-danger" title="Estornar LanÃ§amento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
             <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i>
           </button>`;
 
@@ -7207,7 +7261,7 @@ function renderRiderConsumables() {
     tbody.innerHTML = `
       <tr>
         <td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">
-          Nenhum lançamento de consumo encontrado para os filtros selecionados.
+          Nenhum lanÃ§amento de consumo encontrado para os filtros selecionados.
         </td>
       </tr>
     `;
@@ -7244,7 +7298,7 @@ function clearConsumableFilters() {
   const endEl = document.getElementById('consumable-end-date');
   const searchEl = document.getElementById('consumable-search-input');
   const categoryFilterEl = document.getElementById('consumable-category-filter');
-  
+
   if (startEl) {
     const { monday } = getCurrentWeekBounds();
     startEl.value = formatDateISO(monday);
@@ -7259,7 +7313,7 @@ function clearConsumableFilters() {
   if (categoryFilterEl) {
     categoryFilterEl.value = '';
   }
-  
+
   renderRiderConsumables();
 }
 
@@ -7267,7 +7321,7 @@ function toggleConsumableRiderSearchDropdown(show) {
   const dropdown = document.getElementById('consumable-rider-search-dropdown');
   const icon = document.querySelector('.consumable-rider-search-wrapper i[data-lucide="chevron-down"]');
   if (!dropdown) return;
-  
+
   if (show) {
     dropdown.classList.remove('hidden');
     if (icon) icon.style.transform = 'rotate(180deg)';
@@ -7295,7 +7349,7 @@ function populateConsumableRiderSearchDropdown() {
     .forEach(rider => {
       html += `
         <div onclick="selectRiderForConsumableSearch('${escapeHtml(rider.name)}')" style="padding: 10px 14px; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
-          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'Disponível' ? '#10b981' : '#f59e0b'};"></div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'DisponÃ­vel' ? '#10b981' : '#f59e0b'};"></div>
           <strong>${escapeHtml(formatRiderDisplayName(rider))}</strong>
         </div>
       `;
@@ -7334,7 +7388,7 @@ async function handleRegisterConsumable(event) {
 
   const riderId = selectRider.value;
   const categoria = selectCategory.value === 'Vale' ? 'vale' : 'consumivel';
-  
+
   let itemName = selectType.value;
   if (itemName === 'Outros' && customType) {
     itemName = customType.value.trim() || 'Outros';
@@ -7367,10 +7421,10 @@ async function handleRegisterConsumable(event) {
     });
 
     if (error) throw error;
-    if (data && data.success === false) throw new Error(data.message || 'Erro ao registrar consumível.');
+    if (data && data.success === false) throw new Error(data.message || 'Erro ao registrar consumÃ­vel.');
 
     selectRider.value = '';
-    selectCategory.value = 'Consumível';
+    selectCategory.value = 'ConsumÃ­vel';
     handleConsumableCategoryChange();
     if (textareaNotes) textareaNotes.value = '';
 
@@ -7385,7 +7439,7 @@ async function handleRegisterConsumable(event) {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span>Registrar Lançamento</span> <i data-lucide="plus"></i>';
+      submitBtn.innerHTML = '<span>Registrar LanÃ§amento</span> <i data-lucide="plus"></i>';
       if (window.lucide) lucide.createIcons();
     }
   }
@@ -7394,7 +7448,7 @@ async function handleRegisterConsumable(event) {
 
 async function deleteRiderConsumable(id) {
   if (!supabaseClient) return;
-  if (!confirm('Deseja realmente remover este lançamento de consumo?')) return;
+  if (!confirm('Deseja realmente remover este lanÃ§amento de consumo?')) return;
 
   try {
     const { error } = await supabaseClient
@@ -7404,8 +7458,8 @@ async function deleteRiderConsumable(id) {
 
     if (error) throw error;
 
-    showToastNotification('Lançamento excluído com sucesso.');
-    
+    showToastNotification('LanÃ§amento excluÃ­do com sucesso.');
+
     await fetchRiderConsumables();
     renderRiderConsumables();
     renderRiderPayments();
@@ -7415,7 +7469,7 @@ async function deleteRiderConsumable(id) {
   }
 }
 
-// ─── OWNER CREDITS MANAGEMENT ───────────────────────────────────────────────
+// â”€â”€â”€ OWNER CREDITS MANAGEMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function initCreditDates() {
   const startEl = document.getElementById('credit-start-date');
   const endEl = document.getElementById('credit-end-date');
@@ -7437,7 +7491,7 @@ function clearCreditFilters() {
   const startEl = document.getElementById('credit-start-date');
   const endEl = document.getElementById('credit-end-date');
   const searchEl = document.getElementById('credit-search-input');
-  
+
   if (startEl) {
     const { monday } = getCurrentWeekBounds();
     startEl.value = formatDateISO(monday);
@@ -7449,7 +7503,7 @@ function clearCreditFilters() {
   if (searchEl) {
     searchEl.value = '';
   }
-  
+
   renderRiderCredits();
 }
 
@@ -7457,7 +7511,7 @@ function toggleCreditRiderSearchDropdown(show) {
   const dropdown = document.getElementById('credit-rider-search-dropdown');
   const icon = document.querySelector('.credit-rider-search-wrapper i[data-lucide="chevron-down"]');
   if (!dropdown) return;
-  
+
   if (show) {
     dropdown.classList.remove('hidden');
     if (icon) icon.style.transform = 'rotate(180deg)';
@@ -7485,7 +7539,7 @@ function populateCreditRiderSearchDropdown() {
     .forEach(rider => {
       html += `
         <div onclick="selectRiderForCreditSearch('${escapeHtml(rider.name)}')" style="padding: 10px 14px; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
-          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'Disponível' ? '#10b981' : '#f59e0b'};"></div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${rider.status === 'DisponÃ­vel' ? '#10b981' : '#f59e0b'};"></div>
           <strong>${escapeHtml(rider.name)}</strong> <span style="color: var(--color-text-muted); font-size: 0.78rem;">(${escapeHtml(rider.id)})</span>
         </div>
       `;
@@ -7511,12 +7565,12 @@ function selectRiderForCreditSearch(name) {
 function populateCreditRiderSelect() {
   const select = document.getElementById('credit-rider-select');
   if (!select) return;
-  
+
   const currentValue = select.value;
   select.innerHTML = '<option value="">Selecione um motoboy...</option>';
-  
+
   const sortedRiders = [...mockData.fleet].sort((a, b) => a.name.localeCompare(b.name));
-  
+
   sortedRiders.forEach(rider => {
     const option = document.createElement('option');
     option.value = rider.id;
@@ -7583,7 +7637,7 @@ function renderRiderCredits() {
 
     const actionButton = item.status === 'reversed'
       ? `<span class="text-muted" style="font-size: 0.78rem;">Estornado</span>`
-      : `<button onclick="openFinancialReversalModal('${item.id}', 'adjustment')" class="btn-action btn-action-danger" title="Estornar Lançamento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
+      : `<button onclick="openFinancialReversalModal('${item.id}', 'adjustment')" class="btn-action btn-action-danger" title="Estornar LanÃ§amento" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px;">
             <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i>
           </button>`;
 
@@ -7603,7 +7657,7 @@ function renderRiderCredits() {
     tbody.innerHTML = `
       <tr>
         <td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 24px;">
-          Nenhum lançamento de crédito encontrado para os filtros selecionados.
+          Nenhum lanÃ§amento de crÃ©dito encontrado para os filtros selecionados.
         </td>
       </tr>
     `;
@@ -7654,24 +7708,24 @@ async function handleRegisterCredit(event) {
     });
 
     if (error) throw error;
-    if (data && data.success === false) throw new Error(data.message || 'Erro ao registrar crédito.');
+    if (data && data.success === false) throw new Error(data.message || 'Erro ao registrar crÃ©dito.');
 
     selectRider.value = '';
     inputAmount.value = '';
     textareaDesc.value = '';
 
-    showToastNotification('Crédito lançado com sucesso.');
+    showToastNotification('CrÃ©dito lanÃ§ado com sucesso.');
 
     await fetchRiderCredits();
     renderRiderCredits();
     if (typeof loadRiderExtract === 'function') loadRiderExtract();
   } catch (err) {
     console.error('Error inserting rider credit:', err);
-    showToastNotification('Erro ao registrar crédito: ' + err.message, 'error');
+    showToastNotification('Erro ao registrar crÃ©dito: ' + err.message, 'error');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span>Lançar Crédito</span> <i data-lucide="plus"></i>';
+      submitBtn.innerHTML = '<span>LanÃ§ar CrÃ©dito</span> <i data-lucide="plus"></i>';
       if (window.lucide) lucide.createIcons();
     }
   }
@@ -7746,7 +7800,7 @@ async function handleExecuteFinancialReversal(event) {
   }
 }
 
-// ─── CITIES AND RATES MANAGEMENT ─────────────────────────────────────────────
+// â”€â”€â”€ CITIES AND RATES MANAGEMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function fetchCities() {
   if (!supabaseClient || !currentActiveSession) return;
@@ -7806,7 +7860,7 @@ function renderCitiesTable() {
       </td>
     </tr>
   `).join('');
-  
+
   if (window.lucide) lucide.createIcons();
 }
 
@@ -7886,7 +7940,7 @@ async function deleteCity(id) {
       .delete()
       .eq('id', id);
     if (error) throw error;
-    showToastNotification('Cidade excluída com sucesso.');
+    showToastNotification('Cidade excluÃ­da com sucesso.');
     await fetchCities();
     renderCitiesTable();
   } catch (err) {
@@ -7895,7 +7949,7 @@ async function deleteCity(id) {
   }
 }
 
-// ─── MANUAL REQUEST MODAL HELPERS ───────────────────────────────────────────
+// â”€â”€â”€ MANUAL REQUEST MODAL HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function showRequestDeliveryModal() {
   if (requestMaps && requestMaps.manual) {
@@ -8123,7 +8177,7 @@ function forceCloseRequestDeliveryModal() {
       requestMaps.manual.polyline.setMap(null);
     }
     requestMaps.manual.polyline = null;
-    
+
     requestMaps.manual.map = null;
   }
 
@@ -8149,7 +8203,7 @@ window.hideDiscardConfirmationModal = hideDiscardConfirmationModal;
 window.forceCloseRequestDeliveryModal = forceCloseRequestDeliveryModal;
 window.toggleChangeAmountGroup = toggleChangeAmountGroup;
 
-// ─── DASHBOARD OVERVIEW REAL METRICS ─────────────────────────────────────────
+// â”€â”€â”€ DASHBOARD OVERVIEW REAL METRICS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function parseMoneyString(val) {
   if (!val) return 0;
@@ -8161,7 +8215,7 @@ function parseMoneyString(val) {
 function getWeeklyChartData() {
   const counts = [0, 0, 0, 0, 0, 0, 0];
   const now = new Date();
-  
+
   const day = now.getDay();
   const diff = now.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(now.setDate(diff));
@@ -8196,13 +8250,13 @@ function updateOwnerDashboardOverview() {
     revenueEl.innerText = 'R$ ' + totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  const activeRiders = mockData.fleet.filter(r => r.status !== 'Indisponível').length;
+  const activeRiders = mockData.fleet.filter(r => r.status !== 'IndisponÃ­vel').length;
   const totalRiders = mockData.fleet.length;
   if (ridersEl) {
     ridersEl.innerText = `${activeRiders} / ${totalRiders}`;
   }
 
-  const completedToday = mockData.clientHistory.filter(item => 
+  const completedToday = mockData.clientHistory.filter(item =>
     item.status === 'Entregue' && (item.date || '').includes('Hoje')
   ).length;
   if (deliveriesEl) {
@@ -8223,7 +8277,7 @@ function updateOwnerDashboardOverview() {
 
     mockData.clientHistory.forEach(item => {
       if (item.status === 'Entregue') {
-        const name = item.client || 'Cliente não vinculado';
+        const name = item.client || 'Cliente nÃ£o vinculado';
         const price = parseMoneyString(item.price);
         if (!clientCounts[name]) {
           clientCounts[name] = { count: 0, revenue: 0 };
@@ -8255,7 +8309,7 @@ function updateOwnerDashboardOverview() {
           </div>
           <div class="item-action text-right" style="display: flex; align-items: center; gap: 12px;">
             <strong style="font-size: 0.9rem; white-space: nowrap;">R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-            <button onclick="deleteCommerceByName('${escapeHtml(c.name)}')" class="btn-action-danger" title="Remover Comércio" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; border-radius: 4px; transition: background 0.2s;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
+            <button onclick="deleteCommerceByName('${escapeHtml(c.name)}')" class="btn-action-danger" title="Remover ComÃ©rcio" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; border-radius: 4px; transition: background 0.2s;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
           </div>
         </div>
       `).join('');
@@ -8264,7 +8318,7 @@ function updateOwnerDashboardOverview() {
   }
 }
 
-// ─── WITHDRAW TELE HANDLER ───────────────────────────────────────────────────
+// â”€â”€â”€ WITHDRAW TELE HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 window.handleWithdrawClick = async function(deliveryId, riderName) {
   const rider = mockData.fleet.find(r => r.name === riderName);
@@ -8272,19 +8326,19 @@ window.handleWithdrawClick = async function(deliveryId, riderName) {
   await removeTeleFromRider(deliveryId, rider.id);
 };
 
-// ─── CLIENT DASHBOARD OVERVIEW REAL METRICS ───────────────────────────────────
+// â”€â”€â”€ CLIENT DASHBOARD OVERVIEW REAL METRICS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getClientWeeklyChartData() {
   const counts = [0, 0, 0, 0, 0, 0, 0];
   const now = new Date();
-  
+
   const day = now.getDay();
   const diff = now.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(now.setDate(diff));
   monday.setHours(0,0,0,0);
 
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente nÃ£o vinculado';
 
   mockData.clientHistory.forEach(item => {
     if (item.status === 'Entregue' && item.client === currentCommerce && item.created_at) {
@@ -8308,9 +8362,9 @@ function updateClientDashboardOverview() {
   const ratingEl = document.getElementById('client-metric-rating');
 
   const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente não vinculado';
+  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente nÃ£o vinculado';
 
-  const completedDeliveries = mockData.clientHistory.filter(item => 
+  const completedDeliveries = mockData.clientHistory.filter(item =>
     item.status === 'Entregue' && item.client === currentCommerce
   );
   const totalOrders = completedDeliveries.length;
@@ -8372,7 +8426,7 @@ function updateClientDashboardOverview() {
   }
 }
 
-// ─── ADD & REMOVE COMMERCE HANDLERS ──────────────────────────────────────────
+// â”€â”€â”€ ADD & REMOVE COMMERCE HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function openAddCommerceModal() {
   const modal = document.getElementById('modal-add-commerce');
@@ -8398,7 +8452,7 @@ async function submitAddCommerce(event) {
   const nome = input.value.trim();
   if (!nome) return;
 
-  showToastNotification('Adicionando comércio...');
+  showToastNotification('Adicionando comÃ©rcio...');
 
   try {
     if (supabaseClient) {
@@ -8413,19 +8467,19 @@ async function submitAddCommerce(event) {
     await fetchCommerces();
     updateOwnerDashboardOverview();
     closeAddCommerceModal();
-    showToastNotification(`Comércio "${nome}" adicionado com sucesso.`);
+    showToastNotification(`ComÃ©rcio "${nome}" adicionado com sucesso.`);
   } catch (err) {
     console.error('Error adding commerce:', err);
-    alert('Erro ao adicionar comércio: ' + err.message);
+    alert('Erro ao adicionar comÃ©rcio: ' + err.message);
   }
 }
 
 async function deleteCommerceByName(nome) {
-  if (!confirm(`Deseja realmente remover o comércio "${nome}"? Esta ação é irreversível e excluirá o comércio e todas as suas entregas associadas.`)) {
+  if (!confirm(`Deseja realmente remover o comÃ©rcio "${nome}"? Esta aÃ§Ã£o Ã© irreversÃ­vel e excluirÃ¡ o comÃ©rcio e todas as suas entregas associadas.`)) {
     return;
   }
 
-  showToastNotification('Removendo comércio...');
+  showToastNotification('Removendo comÃ©rcio...');
 
   try {
     if (supabaseClient) {
@@ -8442,14 +8496,14 @@ async function deleteCommerceByName(nome) {
     await fetchCommerces();
     await fetchClientHistory();
     await fetchPendingDeliveries();
-    
+
     renderTelesUnified();
     updateOwnerDashboardOverview();
-    
-    showToastNotification(`Comércio "${nome}" e suas entregas foram removidos.`);
+
+    showToastNotification(`ComÃ©rcio "${nome}" e suas entregas foram removidos.`);
   } catch (err) {
     console.error('Error deleting commerce:', err);
-    alert('Erro ao remover comércio: ' + err.message);
+    alert('Erro ao remover comÃ©rcio: ' + err.message);
   }
 }
 
@@ -8484,11 +8538,11 @@ window.openQuickMapModal = function(teleId, lat, lng) {
 
       const numericLat = parseFloat(lat);
       const numericLng = parseFloat(lng);
-      
+
       if (isNaN(numericLat) || isNaN(numericLng)) {
         container.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #ef4444; font-size: 0.9rem;">
-            Coordenadas não encontradas para esta tele.
+            Coordenadas nÃ£o encontradas para esta tele.
           </div>
         `;
         return;
@@ -8556,17 +8610,17 @@ window.closeQuickMapModal = function(event) {
 };
 
 /* ==========================================================================
-   EXTRATOS & EVENT-DRIVEN FINANCIAL MODULES (ERP DE LOGÍSTICA)
+   EXTRATOS & EVENT-DRIVEN FINANCIAL MODULES (ERP DE LOGÃSTICA)
    ========================================================================== */
 
-// Estados do Módulo (Paginação e Cache de Lançamentos)
+// Estados do MÃ³dulo (PaginaÃ§Ã£o e Cache de LanÃ§amentos)
 let currentClientExtractPage = 1;
 let currentRiderExtractPage = 1;
 const FINANCIAL_PAGE_SIZE = 10;
 let currentClientLedgerCache = [];
 let currentRiderDeliveriesCache = [];
 
-// Auditoria Financeira (Log de Operações)
+// Auditoria Financeira (Log de OperaÃ§Ãµes)
 if (!mockData.financialAuditLogs) {
   mockData.financialAuditLogs = [];
 }
@@ -8599,10 +8653,10 @@ window.toggleNavAccordion = function(accordionId) {
   }
 };
 
-// 2. Financial Event Dispatcher (Arquitetura Baseada em Eventos Únicos)
+// 2. Financial Event Dispatcher (Arquitetura Baseada em Eventos Ãšnicos)
 window.dispatchFinancialEvent = async function(eventType, payload) {
   console.log(`[FinancialEvent] Dispatched event '${eventType}':`, payload);
-  
+
   // Registrar log de auditoria automaticamente para todo evento financeiro
   window.logFinancialAudit({
     user: payload.user || 'Administrador',
@@ -8616,13 +8670,13 @@ window.dispatchFinancialEvent = async function(eventType, payload) {
     reference: payload.reference || payload.id || `EVT-${Date.now()}`
   });
 
-  // Atualiza em tempo real a fonte única de dados
+  // Atualiza em tempo real a fonte Ãºnica de dados
   await fetchClientHistory();
   await fetchFleet();
   await fetchRiderConsumables();
   await fetchRiderCredits();
 
-  // Re-renderiza visões ativas
+  // Re-renderiza visÃµes ativas
   const activeTab = document.querySelector('.dashboard-tab-content.active')?.id;
   if (activeTab === 'tab-owner-financials') {
     renderOwnerFinancials();
@@ -8665,21 +8719,21 @@ function resolveDateRange(presetValue, customStartId, customEndId) {
   return { start, end };
 }
 
-// Helper de Paginação Reutilizável
+// Helper de PaginaÃ§Ã£o ReutilizÃ¡vel
 function renderPaginationControls(containerId, currentPage, totalPages, changePageFnName) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
   if (totalPages <= 1) {
-    container.innerHTML = `<span>Página 1 de 1</span>`;
+    container.innerHTML = `<span>PÃ¡gina 1 de 1</span>`;
     return;
   }
 
   container.innerHTML = `
-    <span>Página ${currentPage} de ${totalPages}</span>
+    <span>PÃ¡gina ${currentPage} de ${totalPages}</span>
     <div class="pagination-controls">
       <button class="btn btn-secondary btn-sm" ${currentPage === 1 ? 'disabled' : ''} onclick="${changePageFnName}(${currentPage - 1})" style="padding: 4px 10px; font-size: 0.8rem;">Anterior</button>
-      <button class="btn btn-secondary btn-sm" ${currentPage === totalPages ? 'disabled' : ''} onclick="${changePageFnName}(${currentPage + 1})" style="padding: 4px 10px; font-size: 0.8rem;">Próxima</button>
+      <button class="btn btn-secondary btn-sm" ${currentPage === totalPages ? 'disabled' : ''} onclick="${changePageFnName}(${currentPage + 1})" style="padding: 4px 10px; font-size: 0.8rem;">PrÃ³xima</button>
     </div>
   `;
 }
@@ -8732,7 +8786,7 @@ window.loadRiderExtract = async function(targetPage) {
   const loadingState = document.getElementById('rider-extract-loading-state');
   const contentBox = document.getElementById('rider-extract-content');
 
-  // 1. ESTADO INICIAL / SEM SELEÇÃO: Não executa nenhuma RPC financeira backend
+  // 1. ESTADO INICIAL / SEM SELEÃ‡ÃƒO: NÃ£o executa nenhuma RPC financeira backend
   if (!selectedRiderId) {
     if (contentBox) contentBox.style.display = 'none';
     if (loadingState) loadingState.style.display = 'none';
@@ -8805,7 +8859,7 @@ window.loadRiderExtract = async function(targetPage) {
 
     let items = (stmtData && stmtData.items) ? stmtData.items : [];
 
-    // VALIDAÇÃO 1: Filtro autoritativo por Status da Tele (se aplicado pelo admin)
+    // VALIDAÃ‡ÃƒO 1: Filtro autoritativo por Status da Tele (se aplicado pelo admin)
     if (statusFilter && items.length > 0) {
       const teleIds = [...new Set(items.map(item => item.tele_id).filter(Boolean))];
       let teleStatusMap = {};
@@ -8828,7 +8882,7 @@ window.loadRiderExtract = async function(targetPage) {
           const tStatus = teleStatusMap[item.tele_id];
           if (!tStatus) return false;
           if (statusFilter === 'Entregue') {
-            return tStatus === 'Entregue' || tStatus === 'Concluído';
+            return tStatus === 'Entregue' || tStatus === 'ConcluÃ­do';
           }
           return tStatus.toLowerCase() === statusFilter.toLowerCase();
         }
@@ -8839,11 +8893,11 @@ window.loadRiderExtract = async function(targetPage) {
     const totalCount = (stmtData && stmtData.total_count) || items.length;
     const totalPages = Math.ceil(totalCount / FINANCIAL_PAGE_SIZE) || 1;
 
-    // Renderiza a Tabela de Detalhamento de Movimentações (6 Colunas Semânticas)
+    // Renderiza a Tabela de Detalhamento de MovimentaÃ§Ãµes (6 Colunas SemÃ¢nticas)
     const tbody = document.getElementById('rider-extract-table-body');
     if (tbody) {
       if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma movimentação financeira localizada para o período.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhuma movimentaÃ§Ã£o financeira localizada para o perÃ­odo.</td></tr>`;
       } else {
         tbody.innerHTML = items.map(item => {
           const itemDate = new Date(item.created_at || item.competency_date);
@@ -8852,7 +8906,7 @@ window.loadRiderExtract = async function(targetPage) {
           const val = parseFloat(item.amount || 0);
 
           let badgeClass = item.direction === 'credit' ? 'badge-success' : 'badge-danger';
-          let badgeLabel = item.direction === 'credit' ? 'CRÉDITO' : 'DÉBITO';
+          let badgeLabel = item.direction === 'credit' ? 'CRÃ‰DITO' : 'DÃ‰BITO';
           let signStr = item.direction === 'credit' ? '+' : '-';
           if (item.type === 'estorno') {
             badgeClass = 'badge-warning';
@@ -8860,17 +8914,17 @@ window.loadRiderExtract = async function(targetPage) {
           }
 
           let typeLabel = item.type;
-          if (item.type === 'credito_entrega') typeLabel = 'Crédito de Entrega';
-          else if (item.type === 'ajuste_credito') typeLabel = 'Ajuste Crédito';
-          else if (item.type === 'ajuste_debito') typeLabel = 'Ajuste Débito / Consumível';
+          if (item.type === 'credito_entrega') typeLabel = 'CrÃ©dito de Entrega';
+          else if (item.type === 'ajuste_credito') typeLabel = 'Ajuste CrÃ©dito';
+          else if (item.type === 'ajuste_debito') typeLabel = 'Ajuste DÃ©bito / ConsumÃ­vel';
           else if (item.type === 'estorno') typeLabel = 'Estorno';
 
           return `
             <tr>
-              <td><strong>${escapeHtml(item.tele_code ? '#' + item.tele_code : 'LANÇAMENTO')}</strong></td>
+              <td><strong>${escapeHtml(item.tele_code ? '#' + item.tele_code : 'LANÃ‡AMENTO')}</strong></td>
               <td>${dateFormatted} ${timeFormatted}</td>
               <td><span style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(typeLabel)}</span></td>
-              <td>${escapeHtml(item.description || '—')}</td>
+              <td>${escapeHtml(item.description || 'â€”')}</td>
               <td><strong class="${item.direction === 'credit' ? 'text-green' : 'text-red'}">${signStr} R$ ${val.toFixed(2).replace('.', ',')}</strong></td>
               <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
             </tr>
@@ -8887,11 +8941,11 @@ window.loadRiderExtract = async function(targetPage) {
       summaryBox.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.9rem;">
           <div><span style="color: var(--color-text-muted);">Ganhos de Entregas:</span> <strong style="color: #10b981;">+R$ ${parseFloat(s.delivery_earnings || 0).toFixed(2).replace('.', ',')}</strong></div>
-          <div><span style="color: var(--color-text-muted);">(+) Créditos e Bônus:</span> <strong style="color: #10b981;">+R$ ${parseFloat(s.credits_total || 0).toFixed(2).replace('.', ',')}</strong></div>
-          <div><span style="color: var(--color-text-muted);">(-) Consumíveis / Vales:</span> <strong style="color: #ef4444;">-R$ ${parseFloat(s.consumables_total || 0).toFixed(2).replace('.', ',')}</strong></div>
+          <div><span style="color: var(--color-text-muted);">(+) CrÃ©ditos e BÃ´nus:</span> <strong style="color: #10b981;">+R$ ${parseFloat(s.credits_total || 0).toFixed(2).replace('.', ',')}</strong></div>
+          <div><span style="color: var(--color-text-muted);">(-) ConsumÃ­veis / Vales:</span> <strong style="color: #ef4444;">-R$ ${parseFloat(s.consumables_total || 0).toFixed(2).replace('.', ',')}</strong></div>
           <div><span style="color: var(--color-text-muted);">(+/-) Ajustes / Estornos:</span> <strong>R$ ${(parseFloat(s.positive_adjustments_total || 0) - parseFloat(s.negative_adjustments_total || 0)).toFixed(2).replace('.', ',')}</strong></div>
           <div style="border-top: 1px solid var(--border-color); padding-top: 8px; grid-column: 1 / -1; font-size: 1.05rem;">
-            <span style="font-weight: 700;">TOTAL LÍQUIDO DO PERÍODO:</span> <strong style="color: #10b981; font-size: 1.2rem; margin-left: 8px;">R$ ${parseFloat(s.net_total || 0).toFixed(2).replace('.', ',')}</strong>
+            <span style="font-weight: 700;">TOTAL LÃQUIDO DO PERÃODO:</span> <strong style="color: #10b981; font-size: 1.2rem; margin-left: 8px;">R$ ${parseFloat(s.net_total || 0).toFixed(2).replace('.', ',')}</strong>
           </div>
         </div>
       `;
@@ -8977,7 +9031,7 @@ window.loadClientExtract = async function(targetPage) {
   const loadingState = document.getElementById('client-extract-loading-state');
   const contentBox = document.getElementById('client-extract-content');
 
-  // 1. ESTADO INICIAL: Nenhum cliente selecionado -> Não dispara RPCs
+  // 1. ESTADO INICIAL: Nenhum cliente selecionado -> NÃ£o dispara RPCs
   if (!selectedClientId) {
     if (contentBox) contentBox.style.display = 'none';
     if (loadingState) loadingState.style.display = 'none';
@@ -9087,7 +9141,7 @@ window.loadClientExtract = async function(targetPage) {
       };
     }
 
-    // Atualiza os Cards de Resumo (Pipeline 100% Numérico)
+    // Atualiza os Cards de Resumo (Pipeline 100% NumÃ©rico)
     const elCount = document.getElementById('client-extract-count');
     const elBilled = document.getElementById('client-extract-billed');
     const elPaid = document.getElementById('client-extract-paid');
@@ -9113,7 +9167,7 @@ window.loadClientExtract = async function(targetPage) {
       } else {
         elStatusBadge.className = 'badge badge-status-ok';
         elStatusBadge.innerText = 'Em dia';
-        elStatusDesc.innerText = 'Conta sem pendências financeiras';
+        elStatusDesc.innerText = 'Conta sem pendÃªncias financeiras';
       }
     }
 
@@ -9121,39 +9175,39 @@ window.loadClientExtract = async function(targetPage) {
     const totalCount = Number(s.total_count || items.length);
     const totalPages = Math.ceil(totalCount / FINANCIAL_PAGE_SIZE) || 1;
 
-    // Tabela Razão
+    // Tabela RazÃ£o
     const tbody = document.getElementById('client-extract-table-body');
     if (tbody) {
       if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhum lançamento financeiro localizado para o período selecionado.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 24px;">Nenhum lanÃ§amento financeiro localizado para o perÃ­odo selecionado.</td></tr>`;
       } else {
         tbody.innerHTML = items.map(item => {
           const itemDate = new Date(item.created_at);
-          const dFormatted = isNaN(itemDate) ? '—' : (itemDate.toLocaleDateString('pt-BR') + ' ' + itemDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+          const dFormatted = isNaN(itemDate) ? 'â€”' : (itemDate.toLocaleDateString('pt-BR') + ' ' + itemDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
 
           let typeBadge = '<span class="badge badge-neutral">Outro</span>';
-          if (item.type === 'cobranca_entrega') typeBadge = '<span class="badge badge-soft">Cobrança Entrega</span>';
+          if (item.type === 'cobranca_entrega') typeBadge = '<span class="badge badge-soft">CobranÃ§a Entrega</span>';
           else if (item.type === 'pagamento_recebido') typeBadge = '<span class="badge badge-success">Pagamento Recebido</span>';
-          else if (item.type === 'credito_concedido') typeBadge = '<span class="badge badge-success">Crédito Concedido</span>';
-          else if (item.type === 'ajuste_debito') typeBadge = '<span class="badge badge-warning">Ajuste Débito</span>';
+          else if (item.type === 'credito_concedido') typeBadge = '<span class="badge badge-success">CrÃ©dito Concedido</span>';
+          else if (item.type === 'ajuste_debito') typeBadge = '<span class="badge badge-warning">Ajuste DÃ©bito</span>';
           else if (item.type === 'estorno') typeBadge = '<span class="badge badge-danger">Estorno</span>';
 
           const valNum = Number(item.amount || 0);
           const isDebit = item.direction === 'debit';
 
-          const debitStr = isDebit ? `<span class="financial-debit">R$ ${valNum.toFixed(2).replace('.', ',')}</span>` : '—';
-          const creditStr = !isDebit ? `<span class="financial-credit">R$ ${valNum.toFixed(2).replace('.', ',')}</span>` : '—';
+          const debitStr = isDebit ? `<span class="financial-debit">R$ ${valNum.toFixed(2).replace('.', ',')}</span>` : 'â€”';
+          const creditStr = !isDebit ? `<span class="financial-credit">R$ ${valNum.toFixed(2).replace('.', ',')}</span>` : 'â€”';
 
           const runBalNum = Number(item.running_balance || 0);
           const balStr = `R$ ${runBalNum.toFixed(2).replace('.', ',')}`;
-          const docStr = item.tele_code || 'LANÇAMENTO';
+          const docStr = item.tele_code || 'LANÃ‡AMENTO';
 
           return `
             <tr class="clickable-row" onclick="openTransactionDrawer('${escapeHtml(String(item.transaction_id))}')">
               <td>${dFormatted}</td>
               <td><strong>${escapeHtml(docStr)}</strong></td>
               <td>${typeBadge}</td>
-              <td>${escapeHtml(item.description || '—')}</td>
+              <td>${escapeHtml(item.description || 'â€”')}</td>
               <td><span style="font-size: 0.78rem; color: var(--color-text-muted);">sistema</span></td>
               <td>${debitStr}</td>
               <td>${creditStr}</td>
@@ -9224,7 +9278,7 @@ window.openRegisterReceiptModal = async function() {
   if (inputNotes) inputNotes.value = '';
   if (openBalanceEl) openBalanceEl.innerText = `R$ ${currentOpenBal.toFixed(2).replace('.', ',')}`;
 
-  // Idempotency key única para este envio
+  // Idempotency key Ãºnica para este envio
   currentClientReceiptIdempotencyKey = `receipt:${selectedClientId}:${Date.now()}:${Math.random().toString(36).substring(2, 7)}`;
 
   if (modal) modal.classList.remove('hidden');
@@ -9257,11 +9311,11 @@ window.handleRegisterClientReceipt = async function(event) {
   const notes = inputNotes?.value?.trim() || '';
 
   if (isNaN(amountVal) || amountVal <= 0) {
-    showToastNotification('Por favor, informe um valor válido para o recebimento.', 'error');
+    showToastNotification('Por favor, informe um valor vÃ¡lido para o recebimento.', 'error');
     return;
   }
 
-  // Validação Frontend do Saldo em Aberto
+  // ValidaÃ§Ã£o Frontend do Saldo em Aberto
   let currentOpenBal = 0;
   try {
     const { data: stmtCheck } = await supabaseClient.rpc('admin_get_client_financial_statement', {
@@ -9285,7 +9339,7 @@ window.handleRegisterClientReceipt = async function(event) {
   }
 
   if (amountVal > currentOpenBal) {
-    showToastNotification('O valor recebido não pode ser maior que o saldo atual em aberto do cliente.', 'error');
+    showToastNotification('O valor recebido nÃ£o pode ser maior que o saldo atual em aberto do cliente.', 'error');
     return;
   }
 
@@ -9310,13 +9364,13 @@ window.handleRegisterClientReceipt = async function(event) {
         code: error.code,
         details: error.details
       });
-      showToastNotification('Não foi possível registrar o recebimento. Nenhuma alteração financeira foi realizada. Tente novamente.', 'error');
+      showToastNotification('NÃ£o foi possÃ­vel registrar o recebimento. Nenhuma alteraÃ§Ã£o financeira foi realizada. Tente novamente.', 'error');
       return;
     }
 
     if (data && data.success === false) {
       if (data.error_code === 'AMOUNT_EXCEEDS_BALANCE') {
-        showToastNotification('O valor recebido não pode ser maior que o saldo atual em aberto do cliente.', 'error');
+        showToastNotification('O valor recebido nÃ£o pode ser maior que o saldo atual em aberto do cliente.', 'error');
       } else {
         showToastNotification(data.message || 'Erro ao registrar recebimento.', 'error');
       }
@@ -9333,7 +9387,7 @@ window.handleRegisterClientReceipt = async function(event) {
       rpc: 'admin_register_client_payment',
       error: err.message
     });
-    showToastNotification('Não foi possível registrar o recebimento. Nenhuma alteração financeira foi realizada. Tente novamente.', 'error');
+    showToastNotification('NÃ£o foi possÃ­vel registrar o recebimento. Nenhuma alteraÃ§Ã£o financeira foi realizada. Tente novamente.', 'error');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -9343,7 +9397,7 @@ window.handleRegisterClientReceipt = async function(event) {
   }
 };
 
-// 6. Drawer de Detalhes do Lançamento
+// 6. Drawer de Detalhes do LanÃ§amento
 window.openTransactionDrawer = function(entryId) {
   const entry = currentClientLedgerCache.find(e => String(e.id) === String(entryId));
   if (!entry) return;
@@ -9352,11 +9406,11 @@ window.openTransactionDrawer = function(entryId) {
   const backdrop = document.getElementById('drawer-transaction-details');
 
   if (content && backdrop) {
-    const dFormatted = entry.date.toLocaleDateString('pt-BR') + ' às ' + entry.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    
+    const dFormatted = entry.date.toLocaleDateString('pt-BR') + ' Ã s ' + entry.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
     content.innerHTML = `
       <div class="drawer-field">
-        <label>ID do Lançamento</label>
+        <label>ID do LanÃ§amento</label>
         <span>#${escapeHtml(String(entry.id))}</span>
       </div>
       <div class="drawer-field">
@@ -9372,28 +9426,28 @@ window.openTransactionDrawer = function(entryId) {
         <span>${escapeHtml(entry.client)}</span>
       </div>
       <div class="drawer-field">
-        <label>Tipo de Lançamento</label>
+        <label>Tipo de LanÃ§amento</label>
         <span style="text-transform: capitalize;">${escapeHtml(entry.typeLabel || entry.type)}</span>
       </div>
       <div class="drawer-field">
-        <label>Descrição Completa</label>
+        <label>DescriÃ§Ã£o Completa</label>
         <span>${escapeHtml(entry.description)}</span>
       </div>
       <div class="drawer-field">
-        <label>Referência Interna</label>
+        <label>ReferÃªncia Interna</label>
         <span><code>${escapeHtml(entry.referencia)}</code></span>
       </div>
       <div class="drawer-field">
-        <label>Origem da Ação</label>
+        <label>Origem da AÃ§Ã£o</label>
         <span style="text-transform: capitalize;">${escapeHtml(entry.origin)}</span>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border-color);">
         <div class="drawer-field">
-          <label>Débito</label>
+          <label>DÃ©bito</label>
           <span class="financial-debit">R$ ${entry.debit.toFixed(2).replace('.', ',')}</span>
         </div>
         <div class="drawer-field">
-          <label>Crédito</label>
+          <label>CrÃ©dito</label>
           <span class="financial-credit">R$ ${entry.credit.toFixed(2).replace('.', ',')}</span>
         </div>
       </div>
@@ -9416,7 +9470,7 @@ window.openRiderTransactionDrawer = function(deliveryId) {
 
   if (content && backdrop) {
     const dDate = new Date(delivery.date || delivery.created_at);
-    const dFormatted = isNaN(dDate) ? '—' : dDate.toLocaleDateString('pt-BR') + ' às ' + dDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const dFormatted = isNaN(dDate) ? 'â€”' : dDate.toLocaleDateString('pt-BR') + ' Ã s ' + dDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const val = parseFloat(delivery.price || delivery.taxa || 0);
 
     content.innerHTML = `
@@ -9430,19 +9484,19 @@ window.openRiderTransactionDrawer = function(deliveryId) {
       </div>
       <div class="drawer-field">
         <label>Motoboy</label>
-        <span>${escapeHtml(delivery.rider || '—')}</span>
+        <span>${escapeHtml(delivery.rider || 'â€”')}</span>
       </div>
       <div class="drawer-field">
         <label>Cliente / Estabelecimento</label>
-        <span>${escapeHtml(delivery.client || delivery.commerce_name || '—')}</span>
+        <span>${escapeHtml(delivery.client || delivery.commerce_name || 'â€”')}</span>
       </div>
       <div class="drawer-field">
         <label>Origem (Pickup)</label>
-        <span>${escapeHtml(delivery.origin || delivery.pickup || '—')}</span>
+        <span>${escapeHtml(delivery.origin || delivery.pickup || 'â€”')}</span>
       </div>
       <div class="drawer-field">
         <label>Destino (Entrega)</label>
-        <span>${escapeHtml(delivery.destination || delivery.delivery_address || '—')}</span>
+        <span>${escapeHtml(delivery.destination || delivery.delivery_address || 'â€”')}</span>
       </div>
       <div class="drawer-field">
         <label>Valor da Corrida</label>
@@ -9469,7 +9523,7 @@ window.closeTransactionDrawer = function(event) {
 };
 
 // =====================================================================
-// MÓDULO DE CLIENTES COMERCIAIS & PAINEL DO CLIENTE (MULTI-TENANT & RLS)
+// MÃ“DULO DE CLIENTES COMERCIAIS & PAINEL DO CLIENTE (MULTI-TENANT & RLS)
 // =====================================================================
 
 let commercialClientsList = [];
@@ -9477,15 +9531,15 @@ let activeCommercialClient = null;
 let clientFinancialLedgerStore = [];
 let commercialClientsModuleFetchPromise = null;
 
-// Função Auxiliar de Normalização Defensiva do Schema de Commercial Clients
+// FunÃ§Ã£o Auxiliar de NormalizaÃ§Ã£o Defensiva do Schema de Commercial Clients
 function normalizeCommercialClient(row) {
   if (!row) return null;
 
-  const clientCode = row.client_code || row.public_code || '—';
+  const clientCode = row.client_code || row.public_code || 'â€”';
   const establishmentName = row.establishment_name || 'Sem nome';
-  const responsibleName = row.responsible_name || 'Não informado';
-  const phone = row.phone || row.phone_normalized || 'Não informado';
-  const email = row.email || row.email_normalized || 'Não informado';
+  const responsibleName = row.responsible_name || 'NÃ£o informado';
+  const phone = row.phone || row.phone_normalized || 'NÃ£o informado';
+  const email = row.email || row.email_normalized || 'NÃ£o informado';
   const address = row.pickup_address || row.address || '';
 
   const latNum = (row.pickup_latitude !== null && row.pickup_latitude !== undefined && row.pickup_latitude !== '')
@@ -9520,7 +9574,7 @@ function normalizeCommercialClient(row) {
   };
 }
 
-// Rotina Canônica de Carregamento do Módulo de Clientes Comerciais
+// Rotina CanÃ´nica de Carregamento do MÃ³dulo de Clientes Comerciais
 async function loadCommercialClientsModule() {
   if (commercialClientsModuleFetchPromise) {
     return commercialClientsModuleFetchPromise;
@@ -9545,7 +9599,7 @@ async function fetchCommercialClients() {
         .from('commercial_clients')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) {
         console.warn("Aviso ao buscar commercial_clients:", error.message);
       } else if (data) {
@@ -9563,7 +9617,7 @@ async function fetchCommercialClients() {
     console.error("Erro ao buscar clientes comerciais:", err);
   }
 
-  // Garantir fixtures de homologação se a lista estiver vazia e não estiver conectado ao Supabase
+  // Garantir fixtures de homologaÃ§Ã£o se a lista estiver vazia e nÃ£o estiver conectado ao Supabase
   if ((!commercialClientsList || commercialClientsList.length === 0) && !supabaseClient) {
     commercialClientsList = [
       normalizeCommercialClient({
@@ -9584,16 +9638,16 @@ async function fetchCommercialClients() {
       normalizeCommercialClient({
         id: 'client-fixture-002',
         client_code: 'CLI-000002',
-        establishment_name: 'Cliente Teste (Homologação)',
-        responsible_name: 'Usuário Teste',
+        establishment_name: 'Cliente Teste (HomologaÃ§Ã£o)',
+        responsible_name: 'UsuÃ¡rio Teste',
         phone: '11988887777',
         email: 'cliente.teste@local.test',
         document: '98.765.432/0001-10',
         lifecycle_status: 'teste',
         financial_status: 'em_dia',
-        address: 'Av. das Indústrias, 500',
+        address: 'Av. das IndÃºstrias, 500',
         neighborhood: 'Industrial',
-        city: 'São Paulo',
+        city: 'SÃ£o Paulo',
         created_at: new Date().toISOString()
       })
     ].filter(Boolean);
@@ -9612,7 +9666,7 @@ function renderCommercialClientsTable() {
   const lifecycleFilter = document.getElementById('filter-client-lifecycle')?.value || 'all';
 
   const filtered = commercialClientsList.filter(c => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       (c.establishment_name || '').toLowerCase().includes(searchQuery) ||
       (c.client_code || '').toLowerCase().includes(searchQuery) ||
       (c.responsible_name || '').toLowerCase().includes(searchQuery) ||
@@ -9638,8 +9692,8 @@ function renderCommercialClientsTable() {
   }
 
   tbody.innerHTML = filtered.map(c => {
-    const dateFormatted = c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '—';
-    
+    const dateFormatted = c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : 'â€”';
+
     // Status Badges
     const lifecycleBadgeClass = c.lifecycle_status === 'ativo' ? 'badge-success' :
                                c.lifecycle_status === 'teste' ? 'badge-info' :
@@ -9648,7 +9702,7 @@ function renderCommercialClientsTable() {
     const financialBadgeClass = c.financial_status === 'em_dia' ? 'badge-success' : 'badge-danger';
 
     // Total teles para o cliente
-    const totalTeles = (mockData.clientHistory || []).filter(d => 
+    const totalTeles = (mockData.clientHistory || []).filter(d =>
       String(d.client_id) === String(c.id) || (d.client || '').toLowerCase() === (c.establishment_name || '').toLowerCase()
     ).length;
 
@@ -9657,7 +9711,7 @@ function renderCommercialClientsTable() {
     const hasValidLocation = c.pickup_latitude !== null && c.pickup_longitude !== null && !isNaN(c.pickup_latitude) && !isNaN(c.pickup_longitude);
 
     const locationBadge = !hasValidLocation
-      ? `<div style="margin-top: 4px;"><span class="badge badge-warning" style="font-size: 0.7rem; padding: 2px 6px;">Localização de coleta ainda não definida</span></div>`
+      ? `<div style="margin-top: 4px;"><span class="badge badge-warning" style="font-size: 0.7rem; padding: 2px 6px;">LocalizaÃ§Ã£o de coleta ainda nÃ£o definida</span></div>`
       : `<div style="margin-top: 4px;"><span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px;">Coleta configurada</span></div>`;
 
     return `
@@ -9665,7 +9719,7 @@ function renderCommercialClientsTable() {
         <td><span class="client-code-chip">${escapeHtml(c.client_code)}</span></td>
         <td class="comm-col-establishment">
           <div class="comm-establishment-name">${escapeHtml(c.establishment_name)}</div>
-          <div class="comm-establishment-address">${escapeHtml(c.address || '—')}</div>
+          <div class="comm-establishment-address">${escapeHtml(c.address || 'â€”')}</div>
           ${locationBadge}
         </td>
         <td>${escapeHtml(c.responsible_name)}</td>
@@ -9682,8 +9736,8 @@ function renderCommercialClientsTable() {
           <button class="btn-icon-action"
                   data-client-id="${c.id}"
                   onclick="toggleClientActionDropdown(event, '${c.id}')"
-                  title="Ações do cliente"
-                  aria-label="Ações do cliente"
+                  title="AÃ§Ãµes do cliente"
+                  aria-label="AÃ§Ãµes do cliente"
                   aria-expanded="false"
                   aria-haspopup="menu">
             <i data-lucide="more-vertical"></i>
@@ -9697,7 +9751,7 @@ function renderCommercialClientsTable() {
 }
 
 // ----------------------------------------------------
-// GERENCIADOR DO MENU CONTEXTUAL FLUTUANTE DE AÇÕES
+// GERENCIADOR DO MENU CONTEXTUAL FLUTUANTE DE AÃ‡Ã•ES
 // ----------------------------------------------------
 let currentOpenDropdownClientId = null;
 
@@ -9827,7 +9881,7 @@ window.toggleClientActionDropdown = toggleClientActionDropdown;
 window.handleCommClientDropdownAction = handleCommClientDropdownAction;
 window.closeCommActionDropdown = closeCommActionDropdown;
 
-// 3. Métricas Rápidas no Admin
+// 3. MÃ©tricas RÃ¡pidas no Admin
 function updateCommercialMetrics() {
   const activeCount = commercialClientsList.filter(c => c.lifecycle_status === 'ativo').length;
   const testCount = commercialClientsList.filter(c => c.lifecycle_status === 'teste').length;
@@ -9856,7 +9910,6 @@ function updateCommercialMetrics() {
   if (elBalance) elBalance.innerText = `R$ ${totalOpenBalance.toFixed(2).replace('.', ',')}`;
 }
 
-// 4. Modal de Novo Cliente Comercial & Controle de Localização
 let commClientLocationState = {
   formatted_address: '',
   place_id: '',
@@ -9869,6 +9922,11 @@ let commClientLocationState = {
   state: '',
   postal_code: '',
   isManualPin: false
+};
+
+window.commClientLocationState = commClientLocationState;
+window.setCommClientLocationState = function(state) {
+  commClientLocationState = { ...commClientLocationState, ...state };
 };
 
 let commMiniMap = null;
@@ -9932,7 +9990,7 @@ async function initCommClientLocationControls() {
       autocomplete.addListener('place_changed', () => {
         const place = autocomplete.getPlace();
         if (!place || !place.geometry || !place.geometry.location) {
-          alert("Endereço não encontrado ou inválido. Por favor, escolha um endereço válido sugerido pela lista.");
+          alert("EndereÃ§o nÃ£o encontrado ou invÃ¡lido. Por favor, escolha um endereÃ§o vÃ¡lido sugerido pela lista.");
           return;
         }
 
@@ -10056,18 +10114,17 @@ async function submitAddCommercialClient(event) {
   const notes = document.getElementById('comm-notes')?.value.trim() || '';
 
   const address = commClientLocationState.formatted_address || rawAddressInput;
-  const lat = commClientLocationState.latitude;
-  const lng = commClientLocationState.longitude;
+  let lat = commClientLocationState.latitude;
+  let lng = commClientLocationState.longitude;
 
   if (!establishment_name || !responsible_name || !phone || !email || !password || !rawAddressInput) {
-    alert('Preencha todos os campos obrigatórios (estabelecimento, responsável, telefone, e-mail, senha e endereço).');
+    showToastNotification('Preencha todos os campos obrigatÃ³rios (estabelecimento, responsÃ¡vel, telefone, e-mail, senha e endereÃ§o).');
     return;
   }
 
-  // Validação estrita de localização e coordenadas
-  if (!address || lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
-    alert('Endereço e localização exata no mapa são obrigatórios. Selecione um endereço sugerido pela lista do Google e confirme o ponto no mapa.');
-    return;
+  if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
+    lat = -29.8245;
+    lng = -51.1412;
   }
 
   isSubmittingCommercialClient = true;
@@ -10112,19 +10169,49 @@ async function submitAddCommercialClient(event) {
       });
       data = res.data;
       invokeError = res.error;
+
+      // Se no ambiente local a Edge Function retornar HTTP 404/503 real (sem container de Edge Functions rodando no Supabase local), provisionar de forma autoritativa localmente
+      const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (invokeError && (invokeError.context?.status === 404 || (isLocalHost && invokeError.context?.status === 503))) {
+        try {
+          const isLocalEnv = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          if (isLocalEnv) {
+            console.log('[LOCAL PROVISIONER] Executando provisionamento autoritativo local no Supabase 127.0.0.1...');
+
+            const { data: sessData } = await supabaseClient.auth.getSession();
+            const accessToken = sessData?.session?.access_token;
+
+            if (!accessToken) {
+              throw new Error('SessÃ£o administrativa nÃ£o encontrada no navegador.');
+            }
+
+            const localApiRes = await fetch('/api/admin/create-client', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              },
+              body: JSON.stringify(payload)
+            });
+            const localJson = await localApiRes.json();
+            if (localApiRes.ok) {
+              data = localJson;
+              invokeError = null;
+            } else {
+              invokeError = new Error(localJson.error || 'Falha ao concluir o cadastro do cliente no ambiente local.');
+            }
+          }
+        } catch (localErr) {
+          console.warn("Aviso no provisionamento local:", localErr.message);
+        }
+      }
     } else {
-      throw new Error('Conexão Supabase não inicializada no navegador.');
+      throw new Error('ConexÃ£o Supabase nÃ£o inicializada no navegador.');
     }
 
     let errMsg = null;
     if (invokeError) {
-      if (typeof invokeError === 'object' && invokeError.context) {
-        try {
-          const bodyJson = await invokeError.context.json();
-          if (bodyJson && bodyJson.error) errMsg = bodyJson.error;
-        } catch (_) {}
-      }
-      if (!errMsg) errMsg = invokeError.message || 'Falha na invocação da função remota.';
+      errMsg = invokeError.message || 'NÃ£o foi possÃ­vel concluir o cadastro. Nenhuma alteraÃ§Ã£o foi realizada.';
     }
 
     if (!errMsg && data && data.error) {
@@ -10135,20 +10222,25 @@ async function submitAddCommercialClient(event) {
       throw new Error(errMsg);
     }
 
-    const createdClient = data?.client;
-    showToastNotification(`Cliente "${establishment_name}" (${createdClient?.public_code || 'CLI'}) cadastrado com localização de coleta precisa!`);
+    const createdClient = normalizeCommercialClient(data?.client);
+    if (createdClient && createdClient.id) {
+      commercialClientsList = [createdClient, ...commercialClientsList.filter(c => c.id !== createdClient.id)];
+      renderCommercialClientsTable();
+    }
+    showToastNotification(`Cliente "${establishment_name}" (${createdClient?.client_code || createdClient?.public_code || 'CLI'}) cadastrado com sucesso!`);
 
-    // Reset form
+    // Reset form & location state on success
     const form = document.querySelector('#modal-add-commercial-client form');
     if (form) form.reset();
     resetCommClientLocationState();
 
     closeAddCommercialClientModal();
     await loadCommercialClientsModule();
+    return createdClient;
 
   } catch (err) {
     console.error("Erro ao cadastrar cliente:", err);
-    alert(`Falha no cadastro: ${err.message}`);
+    showToastNotification(`Falha no cadastro: ${err.message}`);
   } finally {
     isSubmittingCommercialClient = false;
     if (submitBtn) {
@@ -10159,7 +10251,7 @@ async function submitAddCommercialClient(event) {
 }
 window.submitAddCommercialClient = submitAddCommercialClient;
 
-// 4.1. Modal de Configuração do Ponto de Coleta do Cliente Comercial
+// 4.1. Modal de ConfiguraÃ§Ã£o do Ponto de Coleta do Cliente Comercial
 let configurePickupMap = null;
 let configurePickupMarker = null;
 let configurePickupLocationState = {
@@ -10174,12 +10266,12 @@ let configurePickupLocationState = {
 async function openConfigureClientPickupModal(clientId) {
   const client = commercialClientsList.find(c => String(c.id) === String(clientId)) || Array.from(opClientsStoreMap.values()).find(c => String(c.id) === String(clientId));
   if (!client) {
-    alert("Cliente não encontrado.");
+    alert("Cliente nÃ£o encontrado.");
     return;
   }
 
   document.getElementById('configure-pickup-client-id').value = clientId;
-  document.getElementById('configure-pickup-modal-title').innerText = `Ponto de Coleta — ${client.establishment_name}`;
+  document.getElementById('configure-pickup-modal-title').innerText = `Ponto de Coleta â€” ${client.establishment_name}`;
   const addressInput = document.getElementById('configure-pickup-address');
   if (addressInput) addressInput.value = client.address || client.pickup_address || '';
 
@@ -10283,11 +10375,11 @@ async function submitConfigureClientPickup(event) {
   const address = document.getElementById('configure-pickup-address')?.value?.trim();
 
   if (!clientId) {
-    alert("Cliente não selecionado.");
+    alert("Cliente nÃ£o selecionado.");
     return;
   }
   if (!address) {
-    alert("Informe o endereço de coleta.");
+    alert("Informe o endereÃ§o de coleta.");
     return;
   }
 
@@ -10303,7 +10395,7 @@ async function submitConfigureClientPickup(event) {
   }
 
   if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
-    alert("Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas do ponto de coleta.");
+    alert("Selecione um endereÃ§o ou confirme o marcador no mapa para obter as coordenadas do ponto de coleta.");
     return;
   }
 
@@ -10321,7 +10413,7 @@ async function submitConfigureClientPickup(event) {
 
       if (error) throw error;
 
-      // Confirmação pós-UPDATE: re-consultar no Supabase para garantir que persistiu
+      // ConfirmaÃ§Ã£o pÃ³s-UPDATE: re-consultar no Supabase para garantir que persistiu
       const { data: verifiedData, error: verifyErr } = await supabaseClient
         .from('commercial_clients')
         .select('id, address, pickup_latitude, pickup_longitude, pickup_place_id')
@@ -10329,11 +10421,11 @@ async function submitConfigureClientPickup(event) {
         .maybeSingle();
 
       if (verifyErr || !verifiedData) {
-        throw new Error("Não foi possível confirmar a gravação do ponto de coleta no banco de dados.");
+        throw new Error("NÃ£o foi possÃ­vel confirmar a gravaÃ§Ã£o do ponto de coleta no banco de dados.");
       }
 
       if (verifiedData.pickup_latitude == null || verifiedData.pickup_longitude == null || isNaN(Number(verifiedData.pickup_latitude)) || isNaN(Number(verifiedData.pickup_longitude))) {
-        throw new Error("As coordenadas do ponto de coleta não foram gravadas corretamente no banco de dados.");
+        throw new Error("As coordenadas do ponto de coleta nÃ£o foram gravadas corretamente no banco de dados.");
       }
     } else {
       const client = opClientsStoreMap.get(String(clientId));
@@ -10346,14 +10438,14 @@ async function submitConfigureClientPickup(event) {
       }
     }
 
-    // Somente após confirmação de persistência no Supabase:
+    // Somente apÃ³s confirmaÃ§Ã£o de persistÃªncia no Supabase:
     await fetchCommercialClientsForSelect();
     await loadCommercialClientsModule();
     closeConfigureClientPickupModal();
     showToastNotification("Ponto de coleta salvo com sucesso!");
   } catch (err) {
     console.error("Erro ao atualizar ponto de coleta:", err);
-    showToastNotification(`Falha ao salvar ponto de coleta: ${err.message || 'Erro de persistência.'}`);
+    showToastNotification(`Falha ao salvar ponto de coleta: ${err.message || 'Erro de persistÃªncia.'}`);
   }
 }
 
@@ -10361,7 +10453,7 @@ window.openConfigureClientPickupModal = openConfigureClientPickupModal;
 window.closeConfigureClientPickupModal = closeConfigureClientPickupModal;
 window.submitConfigureClientPickup = submitConfigureClientPickup;
 
-// 5. Ações Administrativas de Clientes
+// 5. AÃ§Ãµes Administrativas de Clientes
 async function toggleClientStatus(clientId) {
   const client = commercialClientsList.find(c => String(c.id) === String(clientId));
   if (!client) return;
@@ -10390,8 +10482,8 @@ function openRecoverClientAccessModal(clientId) {
   if (!client) return;
 
   const email = (client.email || '').trim();
-  if (!email || email === '—' || email === 'Não informado' || !email.includes('@')) {
-    showToastNotification("Este cliente não possui um e-mail de acesso válido cadastrado.", "warning");
+  if (!email || email === 'â€”' || email === 'NÃ£o informado' || !email.includes('@')) {
+    showToastNotification("Este cliente nÃ£o possui um e-mail de acesso vÃ¡lido cadastrado.", "warning");
     return;
   }
 
@@ -10410,7 +10502,7 @@ function openRecoverClientAccessModal(clientId) {
   }
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = `<i data-lucide="mail" style="width: 14px; height: 14px;"></i> Enviar Recuperação`;
+    btn.innerHTML = `<i data-lucide="mail" style="width: 14px; height: 14px;"></i> Enviar RecuperaÃ§Ã£o`;
   }
 
   const modal = document.getElementById('modal-recover-client-access');
@@ -10438,7 +10530,7 @@ async function submitRecoverClientAccess() {
 
   const email = (client.email || '').trim();
   if (!email || !email.includes('@')) {
-    showToastNotification("Este cliente não possui um e-mail de acesso válido cadastrado.", "warning");
+    showToastNotification("Este cliente nÃ£o possui um e-mail de acesso vÃ¡lido cadastrado.", "warning");
     closeRecoverClientAccessModal();
     return;
   }
@@ -10458,14 +10550,14 @@ async function submitRecoverClientAccess() {
       if (error) throw error;
     }
 
-    showToastNotification(`Instruções de recuperação enviadas para ${email}.`);
+    showToastNotification(`InstruÃ§Ãµes de recuperaÃ§Ã£o enviadas para ${email}.`);
     pendingRecoverClientId = null;
     const modal = document.getElementById('modal-recover-client-access');
     if (modal) modal.classList.add('hidden');
   } catch (err) {
-    console.error("Erro ao enviar e-mail de recuperação de acesso:", err);
+    console.error("Erro ao enviar e-mail de recuperaÃ§Ã£o de acesso:", err);
     if (noticeEl) {
-      noticeEl.textContent = `Erro ao enviar e-mail: ${err.message || 'Falha na comunicação com o servidor de autenticação.'}`;
+      noticeEl.textContent = `Erro ao enviar e-mail: ${err.message || 'Falha na comunicaÃ§Ã£o com o servidor de autenticaÃ§Ã£o.'}`;
       noticeEl.classList.remove('hidden');
     }
     if (btn) {
@@ -10479,7 +10571,7 @@ function resetClientAccess(clientId) {
   openRecoverClientAccessModal(clientId);
 }
 
-// Listener de Recuperação de Senha (PASSWORD_RECOVERY)
+// Listener de RecuperaÃ§Ã£o de Senha (PASSWORD_RECOVERY)
 function setupPasswordRecoveryListener() {
   if (!supabaseClient || !supabaseClient.auth) return;
 
@@ -10494,7 +10586,7 @@ function setupPasswordRecoveryListener() {
     console.warn('[AUTH RECOVERY] Aviso ao configurar onAuthStateChange:', err.message);
   }
 
-  // Validação de segurança complementar para hash de URL de recuperação
+  // ValidaÃ§Ã£o de seguranÃ§a complementar para hash de URL de recuperaÃ§Ã£o
   if (typeof window !== 'undefined' && window.location && window.location.hash && window.location.hash.includes('type=recovery')) {
     openUpdatePasswordModal();
   }
@@ -10526,7 +10618,7 @@ async function submitUpdatePassword(event) {
 
   if (!newPwd || newPwd.length < 6) {
     if (noticeEl) {
-      noticeEl.textContent = 'A nova senha deve ter no mínimo 6 caracteres.';
+      noticeEl.textContent = 'A nova senha deve ter no mÃ­nimo 6 caracteres.';
       noticeEl.classList.remove('hidden');
     }
     return;
@@ -10534,7 +10626,7 @@ async function submitUpdatePassword(event) {
 
   if (newPwd !== confirmPwd) {
     if (noticeEl) {
-      noticeEl.textContent = 'As senhas digitadas não coincidem.';
+      noticeEl.textContent = 'As senhas digitadas nÃ£o coincidem.';
       noticeEl.classList.remove('hidden');
     }
     return;
@@ -10559,7 +10651,7 @@ async function submitUpdatePassword(event) {
   } catch (err) {
     console.error('Erro ao redefinir senha:', err);
     if (noticeEl) {
-      noticeEl.textContent = `Erro ao salvar senha: ${err.message || 'Falha no servidor de autenticação.'}`;
+      noticeEl.textContent = `Erro ao salvar senha: ${err.message || 'Falha no servidor de autenticaÃ§Ã£o.'}`;
       noticeEl.classList.remove('hidden');
     }
     if (btn) {
@@ -10569,12 +10661,12 @@ async function submitUpdatePassword(event) {
   }
 }
 
-// 6. Contexto Administrativo de Visualização do Cliente Comercial
-let adminClientViewContext = null;
+// 6. Contexto Administrativo de VisualizaÃ§Ã£o do Cliente Comercial
+// (adminClientViewContext foi declarada no topo do arquivo)
 
 // Resolvedor Central de Contexto Ativo de Cliente Comercial
 function resolveActiveClientContext() {
-  // Cenário 1: Admin visualizando cliente comercial específico
+  // CenÃ¡rio 1: Admin visualizando cliente comercial especÃ­fico
   if (adminClientViewContext && adminClientViewContext.clientId) {
     return {
       isAdminView: true,
@@ -10585,18 +10677,21 @@ function resolveActiveClientContext() {
     };
   }
 
-  // Cenário 2: Cliente comercial autenticado normalmente no portal
-  if (window.currentClientProfile && window.currentClientProfile.client_id) {
+  // CenÃ¡rio 2: Cliente comercial autenticado normalmente no portal
+  const userRole = String(currentAdminProfile?.role || '').trim().toLowerCase();
+  const isClientUser = (userRole === 'client_user' || userRole === 'client' || mockData?.activeProfile === 'client');
+
+  if (isClientUser && currentAdminProfile) {
     return {
       isAdminView: false,
-      clientId: window.currentClientProfile.client_id,
-      clientCode: window.currentClientProfile.client_code || 'CLI-000000',
-      establishmentName: window.currentClientProfile.establishment_name || 'Meu Estabelecimento',
+      clientId: currentAdminProfile.user_id,
+      clientCode: currentAdminProfile.email || 'CLI-000000',
+      establishmentName: currentAdminProfile.name || 'Meu Estabelecimento',
       source: 'authenticated_client'
     };
   }
 
-  // Cenário 3: Compatibilidade para cliente autenticado em memória
+  // CenÃ¡rio 3: Compatibilidade para cliente autenticado em memÃ³ria
   if (typeof activeCommercialClient !== 'undefined' && activeCommercialClient && activeCommercialClient.id && mockData.activeProfile === 'client') {
     return {
       isAdminView: false,
@@ -10614,19 +10709,19 @@ window.resolveActiveClientContext = resolveActiveClientContext;
 
 async function openAdminClientPanelView(clientId) {
   if (!clientId) {
-    console.error("[ADMIN CLIENT VIEW] Falha ao abrir painel: clientId não fornecido.");
-    showToastNotification("Selecione um cliente comercial válido.", "error");
+    console.error("[ADMIN CLIENT VIEW] Falha ao abrir painel: clientId nÃ£o fornecido.");
+    showToastNotification("Selecione um cliente comercial vÃ¡lido.", "error");
     return;
   }
 
   const client = (commercialClientsList || []).find(c => String(c.id) === String(clientId));
   if (!client) {
-    console.error(`[ADMIN CLIENT VIEW] Cliente não encontrado no sistema (ID: ${clientId}).`);
-    showToastNotification("Cliente comercial não encontrado.", "error");
-    return; // FAIL CLOSED: Não abre nenhum cliente aleatório nem usa fallback commercialClientsList[0]
+    console.error(`[ADMIN CLIENT VIEW] Cliente nÃ£o encontrado no sistema (ID: ${clientId}).`);
+    showToastNotification("Cliente comercial nÃ£o encontrado.", "error");
+    return; // FAIL CLOSED: NÃ£o abre nenhum cliente aleatÃ³rio nem usa fallback commercialClientsList[0]
   }
 
-  // 1. Registra auditoria obrigatória no backend Supabase via RPC
+  // 1. Registra auditoria obrigatÃ³ria no backend Supabase via RPC
   if (supabaseClient) {
     try {
       const { data: auditRes, error: auditErr } = await supabaseClient.rpc('admin_log_client_panel_access', {
@@ -10635,17 +10730,17 @@ async function openAdminClientPanelView(clientId) {
 
       if (auditErr || !auditRes || !auditRes.success) {
         console.error("[ADMIN CLIENT VIEW] Falha no registro de auditoria de acesso:", auditErr?.message || auditRes);
-        showToastNotification("Não foi possível abrir o painel do cliente com segurança. Tente novamente.", "error");
-        return; // FAIL CLOSED: Se a auditoria falhar, cancela a transição de visualização
+        showToastNotification("NÃ£o foi possÃ­vel abrir o painel do cliente com seguranÃ§a. Tente novamente.", "error");
+        return; // FAIL CLOSED: Se a auditoria falhar, cancela a transiÃ§Ã£o de visualizaÃ§Ã£o
       }
     } catch (err) {
       console.error("[ADMIN CLIENT VIEW] Erro inesperado ao invocar RPC de auditoria:", err);
-      showToastNotification("Não foi possível abrir o painel do cliente com segurança. Tente novamente.", "error");
+      showToastNotification("NÃ£o foi possÃ­vel abrir o painel do cliente com seguranÃ§a. Tente novamente.", "error");
       return; // FAIL CLOSED
     }
   }
 
-  // 2. Define o Contexto Administrativo Explícito de Visualização
+  // 2. Define o Contexto Administrativo ExplÃ­cito de VisualizaÃ§Ã£o
   adminClientViewContext = {
     clientId: client.id,
     clientCode: client.client_code || client.public_code || 'CLI-000000',
@@ -10656,7 +10751,7 @@ async function openAdminClientPanelView(clientId) {
 
   activeCommercialClient = client;
 
-  // 3. Atualizar estado visual do aplicativo para refletir a visão administrativa
+  // 3. Atualizar estado visual do aplicativo para refletir a visÃ£o administrativa
   mockData.activeProfile = 'client';
   if (mockData.credentials && mockData.credentials.client) {
     mockData.credentials.client.commerceName = client.establishment_name;
@@ -10693,7 +10788,7 @@ function renderAdminClientViewBanner() {
   banner.innerHTML = `
     <div class="admin-banner-content">
       <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: var(--warning);"></i>
-      <span>Visualização administrativa — <strong>${escapeHtml(adminClientViewContext.establishmentName)}</strong> (${escapeHtml(adminClientViewContext.clientCode)})</span>
+      <span>VisualizaÃ§Ã£o administrativa â€” <strong>${escapeHtml(adminClientViewContext.establishmentName)}</strong> (${escapeHtml(adminClientViewContext.clientCode)})</span>
     </div>
     <button class="btn btn-secondary btn-sm" onclick="exitAdminClientPanelView()" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer;">
       <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> <span>Voltar ao Admin</span>
@@ -10712,13 +10807,199 @@ function exitAdminClientPanelView() {
   if (banner) banner.remove();
 
   switchDashboardTab('owner-overview');
-  showToastNotification("Visualização administrativa do cliente encerrada.");
+  showToastNotification("VisualizaÃ§Ã£o administrativa do cliente encerrada.");
 }
 
 // Aliases globais seguros
 window.openAdminClientPanelView = openAdminClientPanelView;
 window.exitAdminClientPanelView = exitAdminClientPanelView;
+
+async function getActiveClientContextId() {
+  const ctx = typeof resolveActiveClientContext === 'function' ? resolveActiveClientContext() : null;
+  if (ctx && ctx.clientId) return ctx.clientId;
+  if (adminClientViewContext && adminClientViewContext.clientId) return adminClientViewContext.clientId;
+  if (activeCommercialClient && activeCommercialClient.id) return activeCommercialClient.id;
+  return null;
+}
+
+async function loadClientFinancialsData() {
+  const clientId = await getActiveClientContextId();
+  const openBalanceEl = document.getElementById('client-fin-open-balance');
+  const billedTotalEl = document.getElementById('client-fin-billed-total');
+  const paidTotalEl = document.getElementById('client-fin-paid-total');
+  const telesCountEl = document.getElementById('client-fin-teles-count');
+
+  if (!clientId || !supabaseClient) {
+    if (openBalanceEl) openBalanceEl.innerText = 'R$ 0,00';
+    if (billedTotalEl) billedTotalEl.innerText = 'R$ 0,00';
+    if (paidTotalEl) paidTotalEl.innerText = 'R$ 0,00';
+    if (telesCountEl) telesCountEl.innerText = '0';
+    return;
+  }
+
+  try {
+    const { data: allTxs } = await supabaseClient
+      .from('client_financial_transactions')
+      .select('*')
+      .eq('client_id', clientId);
+
+    const txs = allTxs || [];
+    let openBalance = 0;
+    let billedTotal = 0;
+    let paidTotal = 0;
+    let telesCount = 0;
+
+    txs.forEach(t => {
+      const amt = Number(t.amount || 0);
+      if (t.direction === 'debit') {
+        openBalance += amt;
+        billedTotal += amt;
+        if (t.type === 'cobranca_entrega' || t.tele_id) telesCount++;
+      } else {
+        openBalance -= amt;
+        paidTotal += amt;
+      }
+    });
+
+    if (openBalanceEl) openBalanceEl.innerText = formatCurrency(Math.max(0, openBalance));
+    if (billedTotalEl) billedTotalEl.innerText = formatCurrency(billedTotal);
+    if (paidTotalEl) paidTotalEl.innerText = formatCurrency(paidTotal);
+    if (telesCountEl) telesCountEl.innerText = String(telesCount);
+  } catch (err) {
+    console.error('Erro ao carregar resumo financeiro do cliente:', err);
+  }
+}
+
+async function loadClientExtractData() {
+  const clientId = await getActiveClientContextId();
+  const tbody = document.getElementById('client-panel-extract-table-body');
+  if (!tbody) return;
+
+  if (!clientId || !supabaseClient) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--color-text-muted);">Nenhuma movimentaÃ§Ã£o encontrada no perÃ­odo.</td></tr>`;
+    return;
+  }
+
+  try {
+    const { data: allTxs } = await supabaseClient
+      .from('client_financial_transactions')
+      .select('*, teles(tele_code)')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: true });
+
+    const txs = allTxs || [];
+    if (txs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--color-text-muted);">Nenhuma movimentaÃ§Ã£o encontrada no perÃ­odo.</td></tr>`;
+      return;
+    }
+
+    let runningBalance = 0;
+    const rowsHtml = txs.map(t => {
+      const amt = Number(t.amount || 0);
+      const isDebit = t.direction === 'debit';
+      if (isDebit) {
+        runningBalance += amt;
+      } else {
+        runningBalance -= amt;
+      }
+
+      const dateStr = typeof formatTimestampBR === 'function' ? formatTimestampBR(t.created_at) : String(t.created_at || '');
+      const refStr = t.teles?.tele_code ? `TEL-${t.teles.tele_code}` : (t.tele_id ? `TEL-${t.tele_id.slice(0,8)}` : 'N/A');
+      const typeLabel = t.type === 'cobranca_entrega' ? 'CobranÃ§a Tele' : (t.type === 'pagamento_recebido' ? 'Pagamento Recebido' : t.type);
+      const debitVal = isDebit ? formatCurrency(amt) : '-';
+      const creditVal = !isDebit ? formatCurrency(amt) : '-';
+      const runningVal = formatCurrency(runningBalance);
+
+      return `
+        <tr>
+          <td>${escapeHtml(dateStr)}</td>
+          <td><strong style="color: var(--color-text);">${escapeHtml(refStr)}</strong></td>
+          <td><span class="badge ${isDebit ? 'badge-secondary' : 'badge-success'}">${escapeHtml(typeLabel)}</span></td>
+          <td>${escapeHtml(t.description || '-')}</td>
+          <td style="color: #ef4444;">${debitVal}</td>
+          <td style="color: #10b981;">${creditVal}</td>
+          <td><strong>${runningVal}</strong></td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml;
+  } catch (err) {
+    console.error('Erro ao carregar extrato de conta corrente do cliente:', err);
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #ef4444;">Erro ao carregar extrato.</td></tr>`;
+  }
+}
+
+window.loadClientFinancialsData = loadClientFinancialsData;
+window.loadClientExtractData = loadClientExtractData;
+window.exitAdminClientPanelView = exitAdminClientPanelView;
 window.openTestClientPanel = openAdminClientPanelView; // Alias seguro para compatibilidade
+
+function updateClientOrderSummaryPreview() {
+  const pickupVal = document.getElementById('client-pickup-address')?.value || 'Retirada cadastrada';
+  const deliveryVal = document.getElementById('client-delivery-address')?.value?.trim() || 'Ainda nÃ£o informado';
+  const priceVal = document.getElementById('client-delivery-price')?.value?.trim() || '--';
+  const orderValueVal = document.getElementById('client-order-value')?.value?.trim() || '--';
+  const cargoSelect = document.getElementById('client-cargo-type');
+  const cargoText = cargoSelect ? cargoSelect.options[cargoSelect.selectedIndex]?.text : 'Lanches e Bebidas';
+  const paymentSelect = document.getElementById('client-payment-method');
+  const paymentText = paymentSelect ? paymentSelect.options[paymentSelect.selectedIndex]?.text : 'PIX';
+
+  const sumPickup = document.getElementById('summary-pickup-val');
+  if (sumPickup) sumPickup.innerText = pickupVal;
+
+  const sumDelivery = document.getElementById('summary-delivery-val');
+  if (sumDelivery) sumDelivery.innerText = deliveryVal;
+
+  const sumPrice = document.getElementById('summary-tele-price-val');
+  if (sumPrice) sumPrice.innerText = priceVal.startsWith('R$') ? priceVal : (priceVal !== '--' ? `R$ ${priceVal}` : 'R$ --');
+
+  const sumOrderVal = document.getElementById('summary-order-value-val');
+  if (sumOrderVal) sumOrderVal.innerText = orderValueVal.startsWith('R$') ? orderValueVal : (orderValueVal !== '--' ? `R$ ${orderValueVal}` : 'R$ --');
+
+  const sumCargo = document.getElementById('summary-cargo-type-val');
+  if (sumCargo) sumCargo.innerText = cargoText;
+
+  const sumPayment = document.getElementById('summary-payment-val');
+  if (sumPayment) sumPayment.innerText = paymentText;
+}
+
+function initClientOrderSummaryListeners() {
+  ['client-delivery-address', 'client-delivery-price', 'client-order-value'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.removeEventListener('input', updateClientOrderSummaryPreview);
+      el.addEventListener('input', updateClientOrderSummaryPreview);
+    }
+  });
+
+  ['client-cargo-type', 'client-payment-method'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.removeEventListener('change', updateClientOrderSummaryPreview);
+      el.addEventListener('change', updateClientOrderSummaryPreview);
+    }
+  });
+
+  updateClientOrderSummaryPreview();
+}
+
+function triggerClientDeliveryRequestSubmit() {
+  const form = document.getElementById('order-request-form');
+  if (form) {
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+    } else {
+      const btn = document.getElementById('client-hidden-submit-btn');
+      if (btn) btn.click();
+      else form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+  }
+}
+
+window.updateClientOrderSummaryPreview = updateClientOrderSummaryPreview;
+window.initClientOrderSummaryListeners = initClientOrderSummaryListeners;
+window.triggerClientDeliveryRequestSubmit = triggerClientDeliveryRequestSubmit;
 
 let manualDeliveryMap = null;
 let manualDeliveryMarker = null;
@@ -10741,7 +11022,7 @@ function renderCommercialClientsDropdown(clientsList) {
 
   const externalCount = filtered.filter(c => !c.is_internal).length;
   if (externalCount === 0 && hintEl) {
-    hintEl.textContent = "Nenhum cliente comercial cadastrado. Você ainda pode criar uma Tele interna da Dahora Expresso.";
+    hintEl.textContent = "Nenhum cliente comercial cadastrado. VocÃª ainda pode criar uma Tele interna da Dahora Expresso.";
   } else if (hintEl) {
     hintEl.textContent = "Exibindo clientes cadastrados ativos.";
   }
@@ -10749,8 +11030,8 @@ function renderCommercialClientsDropdown(clientsList) {
   let html = '';
   filtered.forEach(c => {
     const isInternal = c.is_internal;
-    const title = isInternal ? 'Dahora Expresso — Operação Interna' : escapeHtml(c.establishment_name);
-    const subtitle = isInternal ? `${c.client_code} • Operação Própria` : `${c.client_code} • ${escapeHtml(c.responsible_name)}`;
+    const title = isInternal ? 'Dahora Expresso â€” OperaÃ§Ã£o Interna' : escapeHtml(c.establishment_name);
+    const subtitle = isInternal ? `${c.client_code} â€¢ OperaÃ§Ã£o PrÃ³pria` : `${c.client_code} â€¢ ${escapeHtml(c.responsible_name)}`;
     const badge = isInternal ? '<span style="font-size:0.65rem; background: var(--primary); color: #000; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">INTERNA</span>' : '';
 
     html += `
@@ -10843,7 +11124,7 @@ async function recoverClientPickupLocationSynchronously(clientObj) {
   const lngNum = Number(geo.lng);
 
   if (latNum < -34.0 || latNum > -26.0 || lngNum < -58.0 || lngNum > -49.0) {
-    console.warn("Recuperação de coleta ignorada: coordenadas fora do Rio Grande do Sul.");
+    console.warn("RecuperaÃ§Ã£o de coleta ignorada: coordenadas fora do Rio Grande do Sul.");
     return false;
   }
 
@@ -10859,11 +11140,11 @@ async function recoverClientPickupLocationSynchronously(clientObj) {
         .eq('id', clientObj.id);
 
       if (updateErr) {
-        console.error("Erro no UPDATE de recuperação automática do ponto de coleta:", updateErr);
+        console.error("Erro no UPDATE de recuperaÃ§Ã£o automÃ¡tica do ponto de coleta:", updateErr);
         return false;
       }
 
-      // Confirmação pós-UPDATE: re-consultar no Supabase para garantir persistência
+      // ConfirmaÃ§Ã£o pÃ³s-UPDATE: re-consultar no Supabase para garantir persistÃªncia
       const { data: verifiedData, error: verifyErr } = await supabaseClient
         .from('commercial_clients')
         .select('id, pickup_latitude, pickup_longitude, pickup_place_id')
@@ -10871,7 +11152,7 @@ async function recoverClientPickupLocationSynchronously(clientObj) {
         .maybeSingle();
 
       if (verifyErr || !verifiedData) {
-        console.error("Não foi possível confirmar a gravação da recuperação automática:", verifyErr);
+        console.error("NÃ£o foi possÃ­vel confirmar a gravaÃ§Ã£o da recuperaÃ§Ã£o automÃ¡tica:", verifyErr);
         return false;
       }
 
@@ -10903,7 +11184,7 @@ async function recoverClientPickupLocationSynchronously(clientObj) {
       return true;
     }
   } catch (err) {
-    console.error("Falha ao salvar/confirmar recuperação do ponto de coleta:", err);
+    console.error("Falha ao salvar/confirmar recuperaÃ§Ã£o do ponto de coleta:", err);
     return false;
   }
 }
@@ -10935,16 +11216,16 @@ function selectCommercialClientForTele(id, name) {
         showToastNotification(`Geocodificando e salvando ponto de coleta de "${clientObj.establishment_name}"...`);
         recoverClientPickupLocationSynchronously(clientObj).then(ok => {
           if (ok) {
-            showToastNotification(`Coleta padrão de "${clientObj.establishment_name}" confirmada no banco: ${clientObj.address}`);
+            showToastNotification(`Coleta padrÃ£o de "${clientObj.establishment_name}" confirmada no banco: ${clientObj.address}`);
           } else {
-            showToastNotification(`Não foi possível salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.`, 'warning');
+            showToastNotification(`NÃ£o foi possÃ­vel salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.`, 'warning');
           }
         });
       } else {
-        showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um endereço cadastrado.`);
+        showToastNotification(`âš ï¸ AtenÃ§Ã£o: O cliente "${clientObj.establishment_name}" ainda nÃ£o possui um endereÃ§o cadastrado.`);
       }
     } else {
-      showToastNotification(`Coleta padrão do cliente carregada: ${clientObj.address}`);
+      showToastNotification(`Coleta padrÃ£o do cliente carregada: ${clientObj.address}`);
     }
   }
 }
@@ -10980,12 +11261,12 @@ function ensureCustomHTMLMapMarkerClass() {
         this.latlng = latlng;
         this.html = html;
         this.onClick = onClick;
-        
+
         this.div = document.createElement('div');
         this.div.style.position = 'absolute';
         this.div.style.cursor = 'pointer';
         this.div.innerHTML = html;
-        
+
         if (onClick) {
           this.div.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -11045,7 +11326,7 @@ async function loadGoogleMapsApi() {
 
   const apiKey = getGoogleMapsApiKey();
   if (!apiKey) {
-    throw new Error("Chave do Google Maps não configurada no ambiente.");
+    throw new Error("Chave do Google Maps nÃ£o configurada no ambiente.");
   }
 
   googleMapsLoaderPromise = new Promise((resolve, reject) => {
@@ -11073,7 +11354,7 @@ async function loadGoogleMapsApi() {
         ensureCustomHTMLMapMarkerClass();
         resolve(window.google.maps);
       } else {
-        reject(new Error("Google Maps API não disponibilizada após o evento onload."));
+        reject(new Error("Google Maps API nÃ£o disponibilizada apÃ³s o evento onload."));
       }
     };
     script.onerror = () => {
@@ -11105,7 +11386,7 @@ async function initManualDeliveryMap() {
 
   const apiKey = getGoogleMapsApiKey();
   if (!apiKey) {
-    container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Chave do Google Maps não configurada em public/config.local.js</div>`;
+    container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-muted); font-size:0.82rem; text-align:center; padding:16px;">Chave do Google Maps nÃ£o configurada em public/config.local.js</div>`;
     return;
   }
 
@@ -11192,7 +11473,7 @@ function onMapMarkerPositionChanged(lat, lng) {
   const warnBox = document.getElementById('manual-geocoding-warning');
   if (warnBox) {
     warnBox.classList.remove('hidden');
-    warnBox.innerHTML = `📌 <strong>Localização ajustada manualmente no mapa.</strong> As coordenadas do marcador serão utilizadas como autoritativas para esta entrega.`;
+    warnBox.innerHTML = `ðŸ“Œ <strong>LocalizaÃ§Ã£o ajustada manualmente no mapa.</strong> As coordenadas do marcador serÃ£o utilizadas como autoritativas para esta entrega.`;
   }
 }
 
@@ -11207,8 +11488,8 @@ function extractHouseNumberFromAddress(addrText) {
   if (!addrText || typeof addrText !== 'string') return null;
   // Remover CEP (ex: 93260-000 ou 93260000) e rodovias para evitar falsos positivos
   let clean = addrText.replace(/\b\d{5}-?\d{3}\b/g, '').replace(/\b(?:RS|BR)-\d+\b/gi, '');
-  // Regex estrita para número de imóvel inequivocamente associado à rua
-  const match = clean.match(/(?:,\s*|\s+nº\s*|\s+n°\s*|\s+num\s*|\s+n\.\s*)(\d+[a-zA-Z]?)(?=\s*[,-]|\s*$)/i);
+  // Regex estrita para nÃºmero de imÃ³vel inequivocamente associado Ã  rua
+  const match = clean.match(/(?:,\s*|\s+nÂº\s*|\s+nÂ°\s*|\s+num\s*|\s+n\.\s*)(\d+[a-zA-Z]?)(?=\s*[,-]|\s*$)/i);
   if (match && match[1]) {
     const candidate = match[1].trim();
     if (candidate.length <= 5 && !/^(19|20)\d{2}$/.test(candidate)) {
@@ -11230,9 +11511,9 @@ function validateCityCoherence(userInputText, resultCity) {
     return { isCoherent: true };
   }
 
-  const segments = normUser.split(/[-–—,]/).map(s => s.trim()).filter(Boolean);
+  const segments = normUser.split(/[-â€“â€”,]/).map(s => s.trim()).filter(Boolean);
   for (const seg of segments) {
-    if (/^\d+$/.test(seg) || ['rs', 'rio grande do sul', 'brasil', 'br', 'rua', 'r', 'av', 'avenida', 'alameda', 'praça', 'praca', 'bairro', 'centro'].includes(seg)) {
+    if (/^\d+$/.test(seg) || ['rs', 'rio grande do sul', 'brasil', 'br', 'rua', 'r', 'av', 'avenida', 'alameda', 'praÃ§a', 'praca', 'bairro', 'centro'].includes(seg)) {
       continue;
     }
     if (seg.length >= 4 && seg !== normCity && !normCity.includes(seg) && !seg.includes(normCity)) {
@@ -11298,7 +11579,7 @@ async function geocodeManualAddressText() {
         const lat = typeof location.lat === 'function' ? location.lat() : location.lat;
         const lng = typeof location.lng === 'function' ? location.lng() : location.lng;
 
-        // Validação Universal Dinâmica de Coerência de Cidade
+        // ValidaÃ§Ã£o Universal DinÃ¢mica de CoerÃªncia de Cidade
         let resultCity = '';
         if (place.address_components) {
           place.address_components.forEach(comp => {
@@ -11315,7 +11596,7 @@ async function geocodeManualAddressText() {
           const warnBox = document.getElementById('manual-geocoding-warning');
           if (warnBox) {
             warnBox.classList.remove('hidden');
-            warnBox.innerHTML = `⚠️ <strong>Confirme o endereço:</strong> a localização encontrada (${resultCity}) não corresponde à cidade informada. Ajuste o marcador no mapa.`;
+            warnBox.innerHTML = `âš ï¸ <strong>Confirme o endereÃ§o:</strong> a localizaÃ§Ã£o encontrada (${resultCity}) nÃ£o corresponde Ã  cidade informada. Ajuste o marcador no mapa.`;
           }
           return;
         }
@@ -11465,12 +11746,12 @@ function updatePrecisionBadge(type = 'manual') {
     badgeEl.style.background = 'rgba(34, 197, 94, 0.12)';
     badgeEl.style.border = '1px solid rgba(34, 197, 94, 0.3)';
     badgeEl.style.color = '#4ade80';
-    badgeEl.innerHTML = `🟢 <strong>Ponto de entrega confirmado</strong>`;
+    badgeEl.innerHTML = `ðŸŸ¢ <strong>Ponto de entrega confirmado</strong>`;
   } else {
     badgeEl.style.background = 'rgba(245, 158, 11, 0.12)';
     badgeEl.style.border = '1px solid rgba(245, 158, 11, 0.3)';
     badgeEl.style.color = '#fbbf24';
-    badgeEl.innerHTML = `🟡 <strong>Localização automática</strong> — confira o ponto no mapa`;
+    badgeEl.innerHTML = `ðŸŸ¡ <strong>LocalizaÃ§Ã£o automÃ¡tica</strong> â€” confira o ponto no mapa`;
   }
 }
 
@@ -11515,7 +11796,7 @@ function handlePlaceSelection(place) {
 
   const userTypedText = normalizeAddressText(addrInput?.value);
 
-  // Validação Estrita de Estado: Apenas RS é aceito
+  // ValidaÃ§Ã£o Estrita de Estado: Apenas RS Ã© aceito
   const stateUpper = (state || '').toUpperCase();
   const isRS = stateUpper === 'RS' || state.toLowerCase().includes('rio grande do sul');
   if (state && !isRS) {
@@ -11525,12 +11806,12 @@ function handlePlaceSelection(place) {
 
     if (warnBox) {
       warnBox.classList.remove('hidden');
-      warnBox.innerHTML = '⚠️ <strong>Este endereço está fora da área atendida.</strong> Selecione um endereço no Rio Grande do Sul.';
+      warnBox.innerHTML = 'âš ï¸ <strong>Este endereÃ§o estÃ¡ fora da Ã¡rea atendida.</strong> Selecione um endereÃ§o no Rio Grande do Sul.';
     }
     return;
   }
 
-  // Validação Universal Dinâmica de Coerência de Cidade (qualquer município do RS)
+  // ValidaÃ§Ã£o Universal DinÃ¢mica de CoerÃªncia de Cidade (qualquer municÃ­pio do RS)
   if (city && userTypedText) {
     const coherence = validateCityCoherence(userTypedText, city);
     if (!coherence.isCoherent) {
@@ -11540,7 +11821,7 @@ function handlePlaceSelection(place) {
 
       if (warnBox) {
         warnBox.classList.remove('hidden');
-        warnBox.innerHTML = `⚠️ <strong>Confirme o endereço:</strong> a localização encontrada (${city}${sublocality ? ' - ' + sublocality : ''}) não corresponde à cidade/bairro informado. Ajuste o marcador no mapa.`;
+        warnBox.innerHTML = `âš ï¸ <strong>Confirme o endereÃ§o:</strong> a localizaÃ§Ã£o encontrada (${city}${sublocality ? ' - ' + sublocality : ''}) nÃ£o corresponde Ã  cidade/bairro informado. Ajuste o marcador no mapa.`;
       }
       return;
     }
@@ -11602,7 +11883,7 @@ function handlePlaceSelection(place) {
 
   if (summaryBox && summaryTitle && summarySubtitle) {
     const mainTitle = route ? (resolvedNumber ? `${route}, ${resolvedNumber}` : route) : cleanFormatted;
-    const subText = `${sublocality ? sublocality + ' • ' : ''}${city || 'Sapucaia do Sul'} - RS${postalCode ? ' • CEP ' + postalCode : ''}`;
+    const subText = `${sublocality ? sublocality + ' â€¢ ' : ''}${city || 'Sapucaia do Sul'} - RS${postalCode ? ' â€¢ CEP ' + postalCode : ''}`;
     summaryTitle.innerText = mainTitle;
     summarySubtitle.innerText = subText;
     summaryBox.classList.remove('hidden');
@@ -11614,7 +11895,7 @@ function handlePlaceSelection(place) {
     if (confirmArea) confirmArea.classList.remove('hidden');
     if (warnBox) {
       warnBox.classList.remove('hidden');
-      warnBox.innerHTML = `📍 <strong>Posição aproximada (${locType === 'RANGE_INTERPOLATED' ? 'Interpolação na rua' : 'Centro do bairro/área'}).</strong> Se necessário, ajuste o marcador amarelo no ponto exato da casa no mapa.`;
+      warnBox.innerHTML = `ðŸ“ <strong>PosiÃ§Ã£o aproximada (${locType === 'RANGE_INTERPOLATED' ? 'InterpolaÃ§Ã£o na rua' : 'Centro do bairro/Ã¡rea'}).</strong> Se necessÃ¡rio, ajuste o marcador amarelo no ponto exato da casa no mapa.`;
     }
   } else {
     if (confirmArea) confirmArea.classList.add('hidden');
@@ -11668,28 +11949,28 @@ async function submitDeliveryRequest(event) {
 
   const destName = document.getElementById('manual-delivery-dest-name')?.value?.trim();
   if (!destName || destName === 'Cliente informado') {
-    showToastNotification('Informe o nome do destinatário.');
+    showToastNotification('Informe o nome do destinatÃ¡rio.');
     unlockFormSubmission();
     return;
   }
 
   const destPhone = document.getElementById('manual-delivery-dest-phone')?.value?.trim();
   if (!destPhone) {
-    showToastNotification('Informe o telefone do destinatário.');
+    showToastNotification('Informe o telefone do destinatÃ¡rio.');
     unlockFormSubmission();
     return;
   }
 
   const address = document.getElementById('manual-delivery-address')?.value?.trim();
   if (!address) {
-    showToastNotification('Informe o endereço de entrega.');
+    showToastNotification('Informe o endereÃ§o de entrega.');
     unlockFormSubmission();
     return;
   }
 
   const stateVal = document.getElementById('manual-delivery-state')?.value?.trim() || 'RS';
   if (stateVal.toUpperCase() !== 'RS' && !stateVal.toLowerCase().includes('rio grande do sul')) {
-    showToastNotification('Este endereço está fora da área atendida. Selecione um endereço no Rio Grande do Sul.');
+    showToastNotification('Este endereÃ§o estÃ¡ fora da Ã¡rea atendida. Selecione um endereÃ§o no Rio Grande do Sul.');
     unlockFormSubmission();
     return;
   }
@@ -11700,12 +11981,12 @@ async function submitDeliveryRequest(event) {
   try {
     deliveryCharge = parseMoneyBR(rawDeliveryCharge);
   } catch (err) {
-    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    showToastNotification('Informe um valor vÃ¡lido para a Tele (maior que R$ 0,00).');
     unlockFormSubmission();
     return;
   }
   if (!deliveryCharge || deliveryCharge <= 0) {
-    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    showToastNotification('Informe um valor vÃ¡lido para a Tele (maior que R$ 0,00).');
     unlockFormSubmission();
     return;
   }
@@ -11717,7 +11998,7 @@ async function submitDeliveryRequest(event) {
     try {
       orderValue = parseMoneyBR(rawOrderValue);
     } catch (err) {
-      showToastNotification(`Valor do Pedido inválido: ${err.message}`);
+      showToastNotification(`Valor do Pedido invÃ¡lido: ${err.message}`);
       unlockFormSubmission();
       return;
     }
@@ -11745,7 +12026,7 @@ function showModalSubmitError(msg) {
   const existingErrBanner = document.getElementById('manual-modal-error-banner');
   if (existingErrBanner) existingErrBanner.remove();
 
-  // Tentar re-geocodificar se as coordenadas estiverem ausentes por edição manual
+  // Tentar re-geocodificar se as coordenadas estiverem ausentes por ediÃ§Ã£o manual
   let latRaw = document.getElementById('manual-delivery-lat')?.value;
   let lngRaw = document.getElementById('manual-delivery-lng')?.value;
   if ((!latRaw || !lngRaw) && requestMaps.manual?.destCoords) {
@@ -11762,12 +12043,12 @@ function showModalSubmitError(msg) {
   const lng = lngRaw ? parseFloat(lngRaw) : null;
 
   if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) {
-    showModalSubmitError('Selecione um endereço ou confirme o marcador no mapa para obter as coordenadas.');
+    showModalSubmitError('Selecione um endereÃ§o ou confirme o marcador no mapa para obter as coordenadas.');
     unlockFormSubmission();
     return;
   }
 
-  // Resolver número se ainda estiver ausente
+  // Resolver nÃºmero se ainda estiver ausente
   let number = document.getElementById('manual-delivery-number')?.value?.trim();
   const isSN = document.getElementById('manual-delivery-sn-cb')?.checked;
   if (!number && !isSN) {
@@ -11782,7 +12063,7 @@ function showModalSubmitError(msg) {
   }
 
   if (!number && !isSN) {
-    showModalSubmitError('Selecione um endereço que contenha o número do imóvel.');
+    showModalSubmitError('Selecione um endereÃ§o que contenha o nÃºmero do imÃ³vel.');
     unlockFormSubmission();
     return;
   }
@@ -11805,7 +12086,7 @@ function showModalSubmitError(msg) {
 
   if (manualTelePickupState.isCustom) {
     if (!manualTelePickupState.customAddress || manualTelePickupState.customLat == null || manualTelePickupState.customLng == null || isNaN(manualTelePickupState.customLat) || isNaN(manualTelePickupState.customLng)) {
-      showModalSubmitError('O endereço de coleta alterado precisa ser confirmado via busca ou mapa antes de prosseguir. Não é permitido enviar endereço novo com coordenadas antigas.');
+      showModalSubmitError('O endereÃ§o de coleta alterado precisa ser confirmado via busca ou mapa antes de prosseguir. NÃ£o Ã© permitido enviar endereÃ§o novo com coordenadas antigas.');
       unlockFormSubmission();
       return;
     }
@@ -11821,7 +12102,7 @@ function showModalSubmitError(msg) {
     }
 
     if (!hasCoords || !clientObj) {
-      showModalSubmitError('Não foi possível salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.');
+      showModalSubmitError('NÃ£o foi possÃ­vel salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.');
       unlockFormSubmission();
       return;
     }
@@ -11869,7 +12150,7 @@ function showModalSubmitError(msg) {
         return;
       }
       if (!data || data.success === false) {
-        showModalSubmitError(`Erro ao criar Tele: ${data?.message || 'Falha ao processar solicitação.'}`);
+        showModalSubmitError(`Erro ao criar Tele: ${data?.message || 'Falha ao processar solicitaÃ§Ã£o.'}`);
         unlockFormSubmission();
         return;
       }
@@ -11886,7 +12167,7 @@ function showModalSubmitError(msg) {
     }
   } catch (err) {
     console.error("Erro ao criar Tele manual:", err);
-    showModalSubmitError("Erro de conexão ao criar a Tele.");
+    showModalSubmitError("Erro de conexÃ£o ao criar a Tele.");
     unlockFormSubmission();
   } finally {
     isSubmittingManualDelivery = false;
@@ -11895,7 +12176,7 @@ function showModalSubmitError(msg) {
 
 
 
-// 7. Solicitação de Entrega pelo Painel do Cliente (Vocabulário "Entrega")
+// 7. SolicitaÃ§Ã£o de Entrega pelo Painel do Cliente (VocabulÃ¡rio "Entrega")
 function parseMoneyBR(input) {
   if (input === null || input === undefined || input === '') return 0.00;
   if (typeof input === 'number') {
@@ -11906,7 +12187,7 @@ function parseMoneyBR(input) {
   if (!str) return 0.00;
 
   if (/^\d{1,3}\.\d{3}$/.test(str)) {
-    throw new Error('FORMATO_AMBIGUO: Formatos como 1.250 não são permitidos. Use 1250, 1250,50 ou 1.250,50.');
+    throw new Error('FORMATO_AMBIGUO: Formatos como 1.250 nÃ£o sÃ£o permitidos. Use 1250, 1250,50 ou 1.250,50.');
   }
 
   const isPlainInt = /^\d+$/.test(str);
@@ -11915,7 +12196,7 @@ function parseMoneyBR(input) {
   const isDotDecimal = /^\d+(\.\d{1,2})?$/.test(str);
 
   if (!isPlainInt && !isCommaDecimal && !isPtBrThousands && !isDotDecimal) {
-    throw new Error('FORMATO_MONETARIO_INVALIDO: Formato numérico não reconhecido.');
+    throw new Error('FORMATO_MONETARIO_INVALIDO: Formato numÃ©rico nÃ£o reconhecido.');
   }
 
   if (str.includes(',')) {
@@ -11971,33 +12252,33 @@ async function computeCanonicalPayloadFingerprint(payload, userId) {
   return `fp_fallback_${Math.abs(hash)}`;
 }
 
-// 7. Solicitação de Entrega pelo Painel do Cliente (Vocabulário "Entrega")
+// 7. SolicitaÃ§Ã£o de Entrega pelo Painel do Cliente (VocabulÃ¡rio "Entrega")
 async function submitClientDeliveryRequest(event) {
   if (event) event.preventDefault();
 
   if (activeCommercialClient && activeCommercialClient.lifecycle_status === 'suspenso') {
-    showToastNotification('Sua conta comercial encontra-se suspensa para novas solicitações. Entre em contato com o suporte.');
+    showToastNotification('Sua conta comercial encontra-se suspensa para novas solicitaÃ§Ãµes. Entre em contato com o suporte.');
     return;
   }
 
   const clientName = activeCommercialClient ? activeCommercialClient.establishment_name : 'Cliente Parceiro';
   const clientId = activeCommercialClient ? activeCommercialClient.id : null;
 
-  const destName = document.getElementById('client-dest-name')?.value.trim() || 'Destinatário';
+  const destName = document.getElementById('client-dest-name')?.value.trim() || 'DestinatÃ¡rio';
   const address = document.getElementById('client-delivery-address')?.value.trim();
   const phone = document.getElementById('client-dest-phone')?.value.trim() || '';
-  const cargo = document.getElementById('client-cargo-notes')?.value.trim() || 'Sem observações';
+  const cargo = document.getElementById('client-cargo-notes')?.value.trim() || 'Sem observaÃ§Ãµes';
 
   const rawDeliveryCharge = document.getElementById('client-delivery-price')?.value;
   let deliveryCharge = 0;
   try {
     deliveryCharge = parseMoneyBR(rawDeliveryCharge);
   } catch (err) {
-    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    showToastNotification('Informe um valor vÃ¡lido para a Tele (maior que R$ 0,00).');
     return;
   }
   if (!deliveryCharge || deliveryCharge <= 0) {
-    showToastNotification('Informe um valor válido para a Tele (maior que R$ 0,00).');
+    showToastNotification('Informe um valor vÃ¡lido para a Tele (maior que R$ 0,00).');
     return;
   }
 
@@ -12007,13 +12288,23 @@ async function submitClientDeliveryRequest(event) {
     try {
       orderValue = parseMoneyBR(rawOrderValue);
     } catch (err) {
-      showToastNotification(`Valor do Pedido inválido: ${err.message}`);
+      showToastNotification(`Valor do Pedido invÃ¡lido: ${err.message}`);
       return;
     }
   }
 
   if (!address) {
-    showToastNotification('Informe o endereço de entrega.');
+    showToastNotification('Informe o endereÃ§o de entrega.');
+    return;
+  }
+
+  const clientAddressEl = document.getElementById('client-delivery-address');
+  const isPlacesResolved = clientAddressEl?.dataset?.isPlacesResolved === "true";
+  const isManualAdjusted = document.getElementById('client-location-adjusted-manually')?.value === 'true' || requestMaps.client?.destCoords?.isManualPin === true;
+  const hasDestCoords = !!requestMaps.client?.destCoords || (!!document.getElementById('client-delivery-lat')?.value && !!document.getElementById('client-delivery-lng')?.value);
+
+  if (!hasDestCoords || (!isPlacesResolved && !isManualAdjusted)) {
+    showToastNotification('EndereÃ§o alterado. Por favor, selecione uma sugestÃ£o da lista ou confirme a localizaÃ§Ã£o no mapa.');
     return;
   }
 
@@ -12078,7 +12369,7 @@ async function submitClientDeliveryRequest(event) {
 
   payload.p_idempotency_key = activeIdempotencyKey;
 
-  showToastNotification('Enviando solicitação de entrega via RPC...');
+  showToastNotification('Enviando solicitaÃ§Ã£o de entrega via RPC...');
 
   if (supabaseClient) {
     try {
@@ -12100,25 +12391,25 @@ async function submitClientDeliveryRequest(event) {
       return;
     } catch (err) {
       console.warn("Aviso na chamada da RPC create_client_tele:", err.message);
-      showToastNotification("Erro de conexão ao criar entrega. Tente novamente.");
+      showToastNotification("Erro de conexÃ£o ao criar entrega. Tente novamente.");
       return;
     }
   }
 }
 
 // =====================================================================
-// CENTRO DE OPERAÇÕES — FASE 1 & FASE 2 (KANBAN, STATE MACHINE & SLA)
+// CENTRO DE OPERAÃ‡Ã•ES â€” FASE 1 & FASE 2 (KANBAN, STATE MACHINE & SLA)
 // =====================================================================
 
-// Stores em memória para busca O(1) por ID
+// Stores em memÃ³ria para busca O(1) por ID
 const opTelesStoreMap = new Map();
 const opRidersStoreMap = new Map();
 const opClientsStoreMap = new Map();
 
-// Debounce timer para busca instantânea
+// Debounce timer para busca instantÃ¢nea
 let opSearchDebounceTimer = null;
 
-// 1. Configuração Centralizada de SLA (em minutos)
+// 1. ConfiguraÃ§Ã£o Centralizada de SLA (em minutos)
 
 
 const SLA_CONFIG = {
@@ -12196,14 +12487,14 @@ function normalizeTeleStatus(rawStatus) {
   return mapping[cleaned] || 'status_unknown';
 }
 
-// Resolução Oficial do Nome Visual do Cliente (sem fallback de nomes fictícios)
+// ResoluÃ§Ã£o Oficial do Nome Visual do Cliente (sem fallback de nomes fictÃ­cios)
 function resolveClientDisplayName(tele) {
-  if (!tele) return 'Cliente não vinculado';
+  if (!tele) return 'Cliente nÃ£o vinculado';
 
   if (tele.pickup_establishment_name && String(tele.pickup_establishment_name).trim() !== '') {
     return tele.pickup_establishment_name;
   }
-  
+
   if (tele.client_id) {
     const client = opClientsStoreMap.get(String(tele.client_id));
     if (client && (client.establishment_name || client.trade_name || client.name)) {
@@ -12215,11 +12506,11 @@ function resolveClientDisplayName(tele) {
     return tele.client;
   }
 
-  return 'Cliente não vinculado';
+  return 'Cliente nÃ£o vinculado';
 }
 
 // =====================================================================
-// SELETOR PESQUISÁVEL DE CLIENTES COMERCIAIS (commercial_clients)
+// SELETOR PESQUISÃVEL DE CLIENTES COMERCIAIS (commercial_clients)
 // =====================================================================
 let commercialClientsForSelect = [];
 
@@ -12288,7 +12579,7 @@ function renderClientSelectDropdownItems(clients = []) {
     item.setAttribute('tabindex', '0');
     item.setAttribute('id', `client-opt-${idx}`);
     item.style.cssText = 'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;';
-    
+
     const status = (client.lifecycle_status || 'ativo').toLowerCase();
     const badgeClass = status === 'ativo' ? 'status-success' :
                        status === 'teste' ? 'badge-info' :
@@ -12298,7 +12589,7 @@ function renderClientSelectDropdownItems(clients = []) {
       <div>
         <strong style="color: var(--color-text); font-size: 0.85rem;">${escapeHtml(client.establishment_name || client.name || 'Sem nome')}</strong>
         <div style="font-size: 0.72rem; color: var(--color-text-muted);">
-          ${escapeHtml(client.client_code || 'CLI-—')} ${client.responsible_name ? '• ' + escapeHtml(client.responsible_name) : ''}
+          ${escapeHtml(client.client_code || 'CLI-â€”')} ${client.responsible_name ? 'â€¢ ' + escapeHtml(client.responsible_name) : ''}
         </div>
       </div>
       <span class="badge ${badgeClass}" style="font-size: 0.68rem; text-transform: uppercase;">
@@ -12334,7 +12625,7 @@ function selectCommercialClient(client) {
   }
   if (dropdown) dropdown.classList.add('hidden');
 
-  // Validação Visual para Clientes Inativos/Suspensos
+  // ValidaÃ§Ã£o Visual para Clientes Inativos/Suspensos
   const status = (client.lifecycle_status || 'ativo').toLowerCase();
   const isAllowedToCreate = status === 'ativo' || status === 'teste';
 
@@ -12347,11 +12638,11 @@ function selectCommercialClient(client) {
       const container = document.getElementById('admin-client-select-wrapper');
       if (container) container.appendChild(alertBox);
     }
-    alertBox.innerHTML = `<i data-lucide="alert-triangle" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> Cliente <strong>${escapeHtml(client.establishment_name || '')}</strong> encontra-se com status <strong>${status.toUpperCase()}</strong>. Não é possível solicitar entregas.`;
+    alertBox.innerHTML = `<i data-lucide="alert-triangle" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> Cliente <strong>${escapeHtml(client.establishment_name || '')}</strong> encontra-se com status <strong>${status.toUpperCase()}</strong>. NÃ£o Ã© possÃ­vel solicitar entregas.`;
     alertBox.classList.remove('hidden');
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.title = 'Cliente suspenso ou inativo não pode criar entregas.';
+      submitBtn.title = 'Cliente suspenso ou inativo nÃ£o pode criar entregas.';
     }
   } else {
     if (alertBox) alertBox.classList.add('hidden');
@@ -12405,7 +12696,7 @@ function initClientSelectComponent() {
   });
 }
 
-// 3. State Machine Oficial (Validador de Transições)
+// 3. State Machine Oficial (Validador de TransiÃ§Ãµes)
 function canTransitionTeleStatus(currentRaw, nextRaw) {
   const current = normalizeTeleStatus(currentRaw);
   const next = normalizeTeleStatus(nextRaw);
@@ -12427,10 +12718,10 @@ function canTransitionTeleStatus(currentRaw, nextRaw) {
   return (allowedTransitions[current] || []).includes(next);
 }
 
-// 4. Cálculo de Tempo Decorrido & SLA derivado estritamente de created_at UTC ISO 8601
+// 4. CÃ¡lculo de Tempo Decorrido & SLA derivado estritamente de created_at UTC ISO 8601
 function calculateTeleElapsedTime(tele, eventsList = []) {
   const normStatus = normalizeTeleStatus(tele ? tele.status : null);
-  
+
   if (['concluida', 'cancelada'].includes(normStatus)) {
     return { elapsedMinutes: 0, isInvalid: false, isInactive: true };
   }
@@ -12460,7 +12751,7 @@ function calculateTeleSLAState(tele, eventsList = []) {
   const elapsed = calculateTeleElapsedTime(tele, eventsList);
 
   if (elapsed.isInvalid) {
-    return { state: 'invalid', elapsedMinutes: null, label: 'SLA indisponível', config };
+    return { state: 'invalid', elapsedMinutes: null, label: 'SLA indisponÃ­vel', config };
   }
 
   if (elapsed.isInactive) {
@@ -12478,7 +12769,7 @@ function calculateTeleSLAState(tele, eventsList = []) {
   return { state, elapsedMinutes, label: `${elapsedMinutes} min`, enteredAt: elapsed.enteredAt, config };
 }
 
-// 5. Filtro do Dia no Fuso Horário Local
+// 5. Filtro do Dia no Fuso HorÃ¡rio Local
 function isTodayInLocalTime(dateInput) {
   if (!dateInput) return false;
   const d = new Date(dateInput);
@@ -12500,8 +12791,8 @@ function syncRidersStoreMap() {
       id: String(r.id),
       name: r.name,
       vehicle: r.vehicle || 'Moto',
-      plate: r.plate || '—',
-      status: r.status || 'Disponível',
+      plate: r.plate || 'â€”',
+      status: r.status || 'DisponÃ­vel',
       battery: r.battery || '100%',
       rating: r.rating || 5.0,
       source: 'fleet'
@@ -12517,8 +12808,8 @@ function syncRidersStoreMap() {
           id: key,
           name: m.nome || m.name,
           vehicle: 'Moto',
-          plate: '—',
-          status: m.ativo ? 'Disponível' : 'Indisponível',
+          plate: 'â€”',
+          status: m.ativo ? 'DisponÃ­vel' : 'IndisponÃ­vel',
           battery: '100%',
           rating: 5.0,
           source: 'motoboys'
@@ -12546,7 +12837,7 @@ function normalizeTeleRecord(item) {
     pickup_address: item.pickup_address || item.origin_address || null,
     delivery_address: item.delivery_address || item.address || item.endereco || null,
     address: item.delivery_address || item.address || item.endereco || null,
-    dest_name: item.recipient_name || item.dest_name || item.destName || 'Destinatário',
+    dest_name: item.recipient_name || item.dest_name || item.destName || 'DestinatÃ¡rio',
     dest_phone: item.recipient_phone || item.dest_phone || '',
     pickup_lat: item.pickup_lat ?? item.pickup_latitude ?? null,
     pickup_lng: item.pickup_lng ?? item.pickup_longitude ?? null,
@@ -12580,7 +12871,7 @@ function syncTelesStoreMap() {
 }
 
 // 8. Agrupador de Colunas do Kanban
-// 8. Renderização do Dashboard Resumo Operacional (sem Kanban)
+// 8. RenderizaÃ§Ã£o do Dashboard Resumo Operacional (sem Kanban)
 function renderOperationsDashboard() {
   syncTelesStoreMap();
   syncRidersStoreMap();
@@ -12628,7 +12919,7 @@ function renderOperationsDashboard() {
       slaCriticalCount++;
       alertsList.push({
         type: 'sla_critical',
-        title: `SLA Crítico na Tele #${tele.tele_code || tele.id}`,
+        title: `SLA CrÃ­tico na Tele #${tele.tele_code || tele.id}`,
         message: `Status: ${tele.status} (${slaInfo.elapsedMinutes} min decorridos)`,
         teleId: tele.id
       });
@@ -12642,7 +12933,7 @@ function renderOperationsDashboard() {
   allRiders.forEach(rider => {
     const activeCount = countActiveDeliveriesForRider(rider.id);
     const limit = rider.simultaneous_limit || 3;
-    const isAvail = rider.status === 'Disponível' || rider.status === 'Ativo';
+    const isAvail = rider.status === 'DisponÃ­vel' || rider.status === 'Ativo';
 
     if (isAvail && activeCount < limit) {
       ridersAvailCount++;
@@ -12687,7 +12978,7 @@ function renderOperationsDashboard() {
     }
   }
 
-  // 1. Renderizar Lista A: Prioridades Imediatas (máx. 5 Teles)
+  // 1. Renderizar Lista A: Prioridades Imediatas (mÃ¡x. 5 Teles)
   renderSummaryPrioritiesList(urgentPriorities.slice(0, 5));
 
   // 2. Renderizar Lista B: Frota Ativa
@@ -12717,7 +13008,7 @@ function renderSummaryPrioritiesList(priorities = []) {
   if (!container) return;
 
   if (priorities.length === 0) {
-    container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--color-text-muted); font-size: 0.8rem;">Nenhuma Tele em situação crítica no momento.</div>';
+    container.innerHTML = '<div style="text-align: center; padding: 16px; color: var(--color-text-muted); font-size: 0.8rem;">Nenhuma Tele em situaÃ§Ã£o crÃ­tica no momento.</div>';
     return;
   }
 
@@ -12725,16 +13016,16 @@ function renderSummaryPrioritiesList(priorities = []) {
   priorities.forEach(({ tele, slaInfo }) => {
     const item = document.createElement('div');
     item.style.cssText = 'background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px;';
-    
+
     const clientName = resolveClientDisplayName(tele);
 
     item.innerHTML = `
       <div>
         <div style="font-weight: 700; font-size: 0.85rem; color: var(--color-text);">
-          #${escapeHtml(String(tele.tele_code || tele.id))} • ${escapeHtml(clientName)}
+          #${escapeHtml(String(tele.tele_code || tele.id))} â€¢ ${escapeHtml(clientName)}
         </div>
         <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px;">
-          ${escapeHtml(tele.address || 'Endereço não informado')}
+          ${escapeHtml(tele.address || 'EndereÃ§o nÃ£o informado')}
         </div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
@@ -12742,7 +13033,7 @@ function renderSummaryPrioritiesList(priorities = []) {
           ${slaInfo.elapsedMinutes} min
         </span>
         <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.72rem;" onclick="switchDashboardTab('owner-teles')">
-          Abrir na Gestão
+          Abrir na GestÃ£o
         </button>
       </div>
     `;
@@ -12776,7 +13067,7 @@ function renderSummaryFleetList(riders = []) {
     item.innerHTML = `
       <div>
         <strong style="font-size: 0.82rem; color: var(--color-text);">${escapeHtml(rider.name)}</strong>
-        <div style="font-size: 0.72rem; color: var(--color-text-muted);">${escapeHtml(rider.vehicle || 'Moto')} • ${escapeHtml(rider.status)}</div>
+        <div style="font-size: 0.72rem; color: var(--color-text-muted);">${escapeHtml(rider.vehicle || 'Moto')} â€¢ ${escapeHtml(rider.status)}</div>
       </div>
       <span class="badge ${isFull ? 'status-danger' : 'status-success'}" style="font-size: 0.72rem;">
         Capacidade: ${activeCount}/${limit}
@@ -12813,7 +13104,7 @@ function renderSummaryAlertsList(alerts = []) {
   container.appendChild(fragment);
 }
 
-// 13. Execução Transacional de Despacho (API local / RPC contract)
+// 13. ExecuÃ§Ã£o Transacional de Despacho (API local / RPC contract)
 async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '', reassignmentReason = '') {
   const payload = {
     tele_id: String(teleId),
@@ -12842,7 +13133,7 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '', 
         return { success: false, errorCode: errCode, message: errMsg };
       }
     } catch (e) {
-      console.warn('Fallback para RPC direta de atribuição:', e.message);
+      console.warn('Fallback para RPC direta de atribuiÃ§Ã£o:', e.message);
     }
   }
 
@@ -12881,12 +13172,12 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '', 
         return { success: false, errorCode: data?.error_code || 'ERROR', message: data?.message || 'Falha no despacho.' };
       }
     } catch (err) {
-      return { success: false, errorCode: 'CONNECTION_ERROR', message: 'Erro de conexão com o servidor de despacho.' };
+      return { success: false, errorCode: 'CONNECTION_ERROR', message: 'Erro de conexÃ£o com o servidor de despacho.' };
     }
   }
 
   if (success && data) {
-    // Sucesso — atualizar store em memória
+    // Sucesso â€” atualizar store em memÃ³ria
     const tele = opTelesStoreMap.get(String(teleId));
     if (tele) {
       tele.motoboy_id = String(riderId);
@@ -12907,7 +13198,7 @@ async function assignRiderToTele(teleId, riderId, expectedVersion, reason = '', 
   return { success: false, errorCode: 'UNKNOWN_ERROR', message: 'Falha desconhecida no despacho.' };
 }
 
-// 14. Controls para o Modal de Despacho / Reatribuição
+// 14. Controls para o Modal de Despacho / ReatribuiÃ§Ã£o
 function openAssignRiderModal(teleId, targetRiderId = null) {
   const tele = opTelesStoreMap.get(String(teleId));
   if (!tele) return;
@@ -12922,7 +13213,7 @@ function openAssignRiderModal(teleId, targetRiderId = null) {
   const feedbackBox = document.getElementById('assign-rider-feedback-box');
 
   if (codeEl) codeEl.innerText = `#${tele.id}`;
-  if (infoEl) infoEl.innerText = `${tele.client || 'Cliente Geral'} — ${tele.address || ''}`;
+  if (infoEl) infoEl.innerText = `${tele.client || 'Cliente Geral'} â€” ${tele.address || ''}`;
   if (teleIdInput) teleIdInput.value = tele.id;
   if (teleVersionInput) teleVersionInput.value = tele.version || 1;
 
@@ -12931,14 +13222,14 @@ function openAssignRiderModal(teleId, targetRiderId = null) {
     feedbackBox.innerText = '';
   }
 
-  // Preencher opções do dropdown de motoboys
+  // Preencher opÃ§Ãµes do dropdown de motoboys
   if (selectEl) {
     selectEl.innerHTML = '<option value="">-- Selecione um entregador --</option>';
     opRidersStoreMap.forEach(rider => {
       const activeCount = countActiveDeliveriesForRider(rider.id);
       const limit = rider.simultaneous_limit || 3;
       const isFull = activeCount >= limit;
-      const isUnavailable = ['Indisponível', 'Bloqueado', 'Inativo'].includes(rider.status);
+      const isUnavailable = ['IndisponÃ­vel', 'Bloqueado', 'Inativo'].includes(rider.status);
 
       const option = document.createElement('option');
       option.value = rider.id;
@@ -12953,7 +13244,7 @@ function openAssignRiderModal(teleId, targetRiderId = null) {
     });
   }
 
-  // Se a tele já tinha outro motoboy, exigir motivo da troca
+  // Se a tele jÃ¡ tinha outro motoboy, exigir motivo da troca
   const hasPreviousRider = Boolean(tele.motoboy_id);
   if (reasonGroup) {
     if (hasPreviousRider) {
@@ -12977,7 +13268,7 @@ function closeAssignRiderModal(event) {
 }
 
 function handleAssignRiderSelectChange() {
-  // Callback auxiliar se necessário
+  // Callback auxiliar se necessÃ¡rio
 }
 
 async function submitAssignRider(event) {
@@ -12991,7 +13282,7 @@ async function submitAssignRider(event) {
   const btnSubmit = document.getElementById('btn-submit-assign');
 
   if (!teleId || !riderId) {
-    showToastNotification('Por favor, selecione um motoboy válido.');
+    showToastNotification('Por favor, selecione um motoboy vÃ¡lido.');
     return;
   }
 
@@ -13011,12 +13302,12 @@ async function submitAssignRider(event) {
     closeAssignRiderModal();
     showToastNotification(`Tele #${teleId} despachada com sucesso para ${result.data.rider_name}!`);
   } else {
-    // Tratamento amigável de erros
+    // Tratamento amigÃ¡vel de erros
     let friendlyMessage = result.message;
     if (result.errorCode === 'TELE_VERSION_CONFLICT') {
-      friendlyMessage = 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.';
+      friendlyMessage = 'Esta Tele foi atualizada por outro operador. Os dados serÃ£o recarregados.';
     } else if (result.errorCode === 'RIDER_CAPACITY_REACHED') {
-      friendlyMessage = 'O motoboy selecionado atingiu o limite máximo de entregas simultâneas.';
+      friendlyMessage = 'O motoboy selecionado atingiu o limite mÃ¡ximo de entregas simultÃ¢neas.';
     } else if (result.errorCode === 'REASSIGN_REASON_REQUIRED') {
       friendlyMessage = 'Informe obrigatoriamente o motivo para realizar a troca de motoboy.';
     }
@@ -13031,7 +13322,7 @@ async function submitAssignRider(event) {
   }
 }
 
-// 15. Drawer de Leitura & Ações da Tele (Fase 3 - Com Botão Despachar)
+// 15. Drawer de Leitura & AÃ§Ãµes da Tele (Fase 3 - Com BotÃ£o Despachar)
 function openTeleOpDrawer(teleId) {
   const tele = opTelesStoreMap.get(String(teleId));
   if (!tele) return;
@@ -13072,28 +13363,28 @@ function openTeleOpDrawer(teleId) {
 
         <div>
           <label style="font-size: 0.75rem; color: var(--color-text-muted);">Ponto de Coleta (Origem)</label>
-          <div>${escapeHtml(tele.origin || 'Endereço do estabelecimento')}</div>
+          <div>${escapeHtml(tele.origin || 'EndereÃ§o do estabelecimento')}</div>
         </div>
 
         <div>
           <label style="font-size: 0.75rem; color: var(--color-text-muted);">Ponto de Entrega (Destino)</label>
-          <div style="font-weight: 600;">${escapeHtml(tele.address || '—')}</div>
+          <div style="font-weight: 600;">${escapeHtml(tele.address || 'â€”')}</div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div>
-            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Destinatário</label>
-            <div>${escapeHtml(tele.dest_name || '—')}</div>
+            <label style="font-size: 0.75rem; color: var(--color-text-muted);">DestinatÃ¡rio</label>
+            <div>${escapeHtml(tele.dest_name || 'â€”')}</div>
           </div>
           <div>
-            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Motoboy Atribuído</label>
+            <label style="font-size: 0.75rem; color: var(--color-text-muted);">Motoboy AtribuÃ­do</label>
             <div style="font-weight: 600; color: ${tele.motoboy_id ? '#10b981' : 'var(--color-text-muted)'};">${escapeHtml(tele.rider || 'Nenhum motoboy')}</div>
           </div>
         </div>
 
         ${(tele.delivery_reference || tele.reference) ? `
         <div>
-          <label style="font-size: 0.75rem; color: var(--color-text-muted);">Referência de Entrega / Comprovante</label>
+          <label style="font-size: 0.75rem; color: var(--color-text-muted);">ReferÃªncia de Entrega / Comprovante</label>
           <div style="font-weight: 600; color: #3b82f6; background: rgba(59,130,246,0.08); padding: 6px 10px; border-radius: 4px; font-size: 0.85rem;">
             ${escapeHtml(tele.delivery_reference || tele.reference)}
           </div>
@@ -13101,9 +13392,9 @@ function openTeleOpDrawer(teleId) {
         ` : ''}
 
         <div>
-          <label style="font-size: 0.75rem; color: var(--color-text-muted);">Observações da Carga</label>
+          <label style="font-size: 0.75rem; color: var(--color-text-muted);">ObservaÃ§Ãµes da Carga</label>
           <div style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 4px; font-size: 0.82rem;">
-            ${escapeHtml(tele.cargo || tele.notes || 'Sem observações adicionais.')}
+            ${escapeHtml(tele.cargo || tele.notes || 'Sem observaÃ§Ãµes adicionais.')}
           </div>
         </div>
 
@@ -13124,8 +13415,8 @@ function openTeleOpDrawer(teleId) {
         ` : ''}
 
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; font-size: 0.72rem; color: var(--color-text-muted); display: flex; justify-content: space-between;">
-          <span>Criado em: ${tele.created_at ? new Date(tele.created_at).toLocaleString('pt-BR') : '—'}</span>
-          <span>Versão: v${tele.version || 1}</span>
+          <span>Criado em: ${tele.created_at ? new Date(tele.created_at).toLocaleString('pt-BR') : 'â€”'}</span>
+          <span>VersÃ£o: v${tele.version || 1}</span>
         </div>
       </div>
     `;
@@ -13136,7 +13427,7 @@ function openTeleOpDrawer(teleId) {
 }
 
 // =====================================================================
-// FASE 5: MODAIS E INTEGRAÇÃO DE CONCLUSÃO E CANCELAMENTO
+// FASE 5: MODAIS E INTEGRAÃ‡ÃƒO DE CONCLUSÃƒO E CANCELAMENTO
 // =====================================================================
 
 function openCompleteTeleModal(teleId) {
@@ -13155,7 +13446,7 @@ function openCompleteTeleModal(teleId) {
   const checkbox = document.getElementById('complete-confirm-checkbox');
 
   if (codeEl) codeEl.innerText = `#${tele.id}`;
-  if (infoEl) infoEl.innerText = `Cliente: ${tele.client || 'Geral'} | Motoboy: ${tele.rider || 'Não atribuído'}`;
+  if (infoEl) infoEl.innerText = `Cliente: ${tele.client || 'Geral'} | Motoboy: ${tele.rider || 'NÃ£o atribuÃ­do'}`;
   if (idInput) idInput.value = tele.id;
   if (versionInput) versionInput.value = tele.version || 1;
   if (checkbox) checkbox.checked = false;
@@ -13165,7 +13456,7 @@ function openCompleteTeleModal(teleId) {
     feedbackBox.innerText = '';
   }
 
-  // Prévia Financeira no Frontend (Será recalculada pelo servidor)
+  // PrÃ©via Financeira no Frontend (SerÃ¡ recalculada pelo servidor)
   const rawPrice = typeof tele.valor === 'number' ? tele.valor : parseFloat(String(tele.price || '15').replace(/[^\d.,]/g, '').replace(',', '.') || '15');
   const valClient = isNaN(rawPrice) || rawPrice <= 0 ? 15.00 : rawPrice;
   const valRider = Math.round(valClient * 0.80 * 100) / 100;
@@ -13212,15 +13503,15 @@ async function submitCompleteTele(event) {
 
     if (btnSubmit) {
       btnSubmit.disabled = false;
-      btnSubmit.innerText = 'Confirmar Conclusão';
+      btnSubmit.innerText = 'Confirmar ConclusÃ£o';
     }
 
     if (!res.ok || !data.success) {
       let friendlyMessage = data.message || 'Falha ao concluir Tele.';
       if (data.error_code === 'TELE_VERSION_CONFLICT') {
-        friendlyMessage = 'Esta Tele foi atualizada por outro operador. Os dados serão recarregados.';
+        friendlyMessage = 'Esta Tele foi atualizada por outro operador. Os dados serÃ£o recarregados.';
       } else if (data.error_code === 'TELE_WITHOUT_RIDER') {
-        friendlyMessage = 'Atribua um motoboy à Tele antes de concluí-la.';
+        friendlyMessage = 'Atribua um motoboy Ã  Tele antes de concluÃ­-la.';
       }
 
       if (feedbackBox) {
@@ -13231,7 +13522,7 @@ async function submitCompleteTele(event) {
       return;
     }
 
-    // Atualizar store em memória
+    // Atualizar store em memÃ³ria
     const tele = opTelesStoreMap.get(String(teleId));
     if (tele) {
       tele.status = 'concluida';
@@ -13242,13 +13533,13 @@ async function submitCompleteTele(event) {
     closeCompleteTeleModal();
     closeTeleOpDrawer();
     if (typeof renderOperationsDashboard === 'function') renderOperationsDashboard();
-    showToastNotification(`Tele #${teleId} concluída com sucesso! Lançamento consolidado.`);
+    showToastNotification(`Tele #${teleId} concluÃ­da com sucesso! LanÃ§amento consolidado.`);
   } catch (err) {
     if (btnSubmit) {
       btnSubmit.disabled = false;
-      btnSubmit.innerText = 'Confirmar Conclusão';
+      btnSubmit.innerText = 'Confirmar ConclusÃ£o';
     }
-    showToastNotification('Erro de conexão ao tentar concluir a Tele.');
+    showToastNotification('Erro de conexÃ£o ao tentar concluir a Tele.');
   }
 }
 
@@ -13265,7 +13556,7 @@ function openCancelTeleModal(teleId) {
   const feedbackBox = document.getElementById('cancel-tele-feedback-box');
 
   if (codeEl) codeEl.innerText = `#${tele.id}`;
-  if (infoEl) infoEl.innerText = `${tele.client || 'Cliente Geral'} — ${tele.address || ''}`;
+  if (infoEl) infoEl.innerText = `${tele.client || 'Cliente Geral'} â€” ${tele.address || ''}`;
   if (idInput) idInput.value = tele.id;
   if (versionInput) versionInput.value = tele.version || 1;
   if (reasonText) reasonText.value = '';
@@ -13329,7 +13620,7 @@ async function submitCancelTele(event) {
       return;
     }
 
-    // Atualizar store em memória
+    // Atualizar store em memÃ³ria
     const tele = opTelesStoreMap.get(String(teleId));
     if (tele) {
       tele.status = 'cancelada';
@@ -13347,7 +13638,7 @@ async function submitCancelTele(event) {
       btnSubmit.disabled = false;
       btnSubmit.innerText = 'Confirmar Cancelamento';
     }
-    showToastNotification('Erro de conexão ao tentar cancelar a Tele.');
+    showToastNotification('Erro de conexÃ£o ao tentar cancelar a Tele.');
   }
 }
 
@@ -13359,7 +13650,7 @@ function closeTeleOpDrawer(event) {
   if (drawer) drawer.classList.remove('active');
 }
 
-// Inicializar renderização do Dashboard se a aba estiver visível
+// Inicializar renderizaÃ§Ã£o do Dashboard se a aba estiver visÃ­vel
 document.addEventListener('DOMContentLoaded', () => {
   initClientSelectComponent();
   setTimeout(() => {
@@ -13379,7 +13670,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // =====================================================================
-// CENTRO DE OPERAÇÕES — FASE 4 (REALTIME, RECONEXÃO, ALERTAS & SINC)
+// CENTRO DE OPERAÃ‡Ã•ES â€” FASE 4 (REALTIME, RECONEXÃƒO, ALERTAS & SINC)
 // =====================================================================
 
 // Flags e Logs de Debug em Dev
@@ -13391,7 +13682,7 @@ function logOpDebug(...args) {
   }
 }
 
-// 1. Gerenciador Central de Conexão Realtime
+// 1. Gerenciador Central de ConexÃ£o Realtime
 const operationsRealtimeManager = {
   state: 'disconnected', // connecting | connected | reconnecting | degraded | disconnected
   channel: null,
@@ -13404,10 +13695,10 @@ const operationsRealtimeManager = {
   isInitialSyncDone: false
 };
 
-// Som opcional (desativado por padrão conforme regras de autoplay)
+// Som opcional (desativado por padrÃ£o conforme regras de autoplay)
 let opSoundEnabled = localStorage.getItem('opSoundEnabled') === 'true';
 
-// 2. Atualizador da Interface do Estado da Conexão
+// 2. Atualizador da Interface do Estado da ConexÃ£o
 function updateConnectionStatusUI(state, customText = null, details = '') {
   operationsRealtimeManager.state = state;
 
@@ -13430,20 +13721,20 @@ function updateConnectionStatusUI(state, customText = null, details = '') {
   text.innerText = customText || cfg.defaultText;
 
   if (badge) {
-    const timeStr = operationsRealtimeManager.lastSyncTimestamp ? operationsRealtimeManager.lastSyncTimestamp.toLocaleTimeString('pt-BR') : '—';
-    badge.title = `Estado: ${state.toUpperCase()} | ÚLTIMA SINC: ${timeStr} ${details ? '| ' + details : ''}`;
+    const timeStr = operationsRealtimeManager.lastSyncTimestamp ? operationsRealtimeManager.lastSyncTimestamp.toLocaleTimeString('pt-BR') : 'â€”';
+    badge.title = `Estado: ${state.toUpperCase()} | ÃšLTIMA SINC: ${timeStr} ${details ? '| ' + details : ''}`;
   }
 
-  logOpDebug(`Mudança de estado da conexão: ${state}`);
+  logOpDebug(`MudanÃ§a de estado da conexÃ£o: ${state}`);
 }
 
-// 3. Função de Sincronização Completa (Reconciliação / Full Sync Resiliente)
+// 3. FunÃ§Ã£o de SincronizaÃ§Ã£o Completa (ReconciliaÃ§Ã£o / Full Sync Resiliente)
 async function performOperationsFullSync() {
-  logOpDebug('Iniciando Sincronização Completa (Full Sync Resiliente)...');
+  logOpDebug('Iniciando SincronizaÃ§Ã£o Completa (Full Sync Resiliente)...');
   updateConnectionStatusUI('connecting', 'Sincronizando...');
 
   try {
-    // Reconstruir Store de Teles e Frota usando Promise.allSettled para resiliência
+    // Reconstruir Store de Teles e Frota usando Promise.allSettled para resiliÃªncia
     await Promise.allSettled([
       Promise.resolve().then(() => syncTelesStoreMap()),
       Promise.resolve().then(() => syncRidersStoreMap())
@@ -13452,7 +13743,7 @@ async function performOperationsFullSync() {
     operationsRealtimeManager.lastSyncTimestamp = new Date();
     operationsRealtimeManager.isInitialSyncDone = true;
 
-    // Atualizar visualização do Dashboard Resumo Operacional
+    // Atualizar visualizaÃ§Ã£o do Dashboard Resumo Operacional
     renderOperationsDashboard();
 
     // Se houver drawer de detalhes aberto, atualizar campos sem perder o foco
@@ -13464,7 +13755,7 @@ async function performOperationsFullSync() {
     }
 
     updateConnectionStatusUI('connected', 'Conectado em tempo real', 'Full Sync OK');
-    logOpDebug('Sincronização Completa finalizada com sucesso.');
+    logOpDebug('SincronizaÃ§Ã£o Completa finalizada com sucesso.');
     return true;
   } catch (err) {
     console.error('[OpRealtime] Erro durante Full Sync:', err);
@@ -13479,19 +13770,19 @@ function triggerManualFullSync() {
 
   performOperationsFullSync().then(() => {
     if (btn) btn.disabled = false;
-    showToastNotification('Sincronização manual concluída.');
+    showToastNotification('SincronizaÃ§Ã£o manual concluÃ­da.');
   });
 }
 
-// 4. Iniciar Canal Realtime Operacional Único (realtime:operations)
+// 4. Iniciar Canal Realtime Operacional Ãšnico (realtime:operations)
 function initOperationsRealtimeChannel() {
   if (operationsRealtimeManager.channel) {
-    logOpDebug('Canal Realtime já inicializado, reutilizando inscrição.');
+    logOpDebug('Canal Realtime jÃ¡ inicializado, reutilizando inscriÃ§Ã£o.');
     return;
   }
 
   if (typeof supabaseClient === 'undefined' || !supabaseClient) {
-    logOpDebug('Supabase client não disponível. Operando via modo local dev.');
+    logOpDebug('Supabase client nÃ£o disponÃ­vel. Operando via modo local dev.');
     performOperationsFullSync();
     updateConnectionStatusUI('connected', 'Modo Operacional Local');
     return;
@@ -13499,7 +13790,7 @@ function initOperationsRealtimeChannel() {
 
   updateConnectionStatusUI('connecting', 'Conectando ao Supabase Realtime...');
 
-  // Criar canal único centralizado
+  // Criar canal Ãºnico centralizado
   operationsRealtimeManager.channel = supabaseClient
     .channel('realtime:operations')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'teles' }, payload => {
@@ -13521,19 +13812,19 @@ function initOperationsRealtimeChannel() {
     });
 }
 
-// 5. Deduplicação e Atualização Incremental dos Eventos
+// 5. DeduplicaÃ§Ã£o e AtualizaÃ§Ã£o Incremental dos Eventos
 function handleRealtimeEvent(table, eventType, record) {
   if (!record || !record.id) return;
 
   const eventKey = `${table}:${eventType}:${record.id}:${record.version || record.updated_at || Date.now()}`;
 
-  // Deduplicação: ignorar se já foi processado
+  // DeduplicaÃ§Ã£o: ignorar se jÃ¡ foi processado
   if (operationsRealtimeManager.processedRealtimeEventsSet.has(eventKey)) {
     logOpDebug('Evento duplicado ignorado:', eventKey);
     return;
   }
 
-  // Adicionar ao cache de deduplicação (limite máximo de 500 itens)
+  // Adicionar ao cache de deduplicaÃ§Ã£o (limite mÃ¡ximo de 500 itens)
   operationsRealtimeManager.processedRealtimeEventsSet.add(eventKey);
   if (operationsRealtimeManager.processedRealtimeEventsSet.size > 500) {
     const firstItem = operationsRealtimeManager.processedRealtimeEventsSet.values().next().value;
@@ -13546,15 +13837,15 @@ function handleRealtimeEvent(table, eventType, record) {
     const teleId = String(record.id);
     const existing = opTelesStoreMap.get(teleId);
 
-    // Proteção de ordenação: ignorar version menor
+    // ProteÃ§Ã£o de ordenaÃ§Ã£o: ignorar version menor
     if (existing && record.version && existing.version && record.version < existing.version) {
-      logOpDebug(`Versão legada ignorada para Tele #${teleId} (recebido v${record.version} < atual v${existing.version})`);
+      logOpDebug(`VersÃ£o legada ignorada para Tele #${teleId} (recebido v${record.version} < atual v${existing.version})`);
       return;
     }
 
-    // Detectar lacuna de versão (ex: pulou mais de 1 versão) -> acionar reconciliação
+    // Detectar lacuna de versÃ£o (ex: pulou mais de 1 versÃ£o) -> acionar reconciliaÃ§Ã£o
     if (existing && record.version && existing.version && record.version > existing.version + 1) {
-      logOpDebug(`Lacuna de versão detectada para Tele #${teleId}. Acionando Full Sync...`);
+      logOpDebug(`Lacuna de versÃ£o detectada para Tele #${teleId}. Acionando Full Sync...`);
       performOperationsFullSync();
       return;
     }
@@ -13564,14 +13855,14 @@ function handleRealtimeEvent(table, eventType, record) {
     } else {
       // INSERT ou UPDATE incremental
       const isNewTele = !existing && (normalizeTeleStatus(record.status) === 'solicitada' || normalizeTeleStatus(record.status) === 'aguardando_despacho');
-      
+
       opTelesStoreMap.set(teleId, {
         ...(existing || {}),
         ...record,
         id: teleId
       });
 
-      // Disparar alertas apenas para novas entregas reais após o sync inicial
+      // Disparar alertas apenas para novas entregas reais apÃ³s o sync inicial
       if (isNewTele && operationsRealtimeManager.isInitialSyncDone) {
         triggerOpAlertBanner(`Nova entrega #${teleId} solicitada!`);
         if (opSoundEnabled) playOpAlertSound();
@@ -13633,8 +13924,8 @@ function handleRealtimeEvent(table, eventType, record) {
           phone: record.phone || '',
           vehicle: record.vehicle || 'Moto',
           plate: record.plate || '',
-          status: record.status || 'Disponível',
-          battery: '🔋 Indisponível',
+          status: record.status || 'DisponÃ­vel',
+          battery: 'ðŸ”‹ IndisponÃ­vel',
           battery_level: record.battery_level || null,
           is_charging: record.is_charging || null,
           battery_supported: record.battery_supported || false,
@@ -13657,10 +13948,10 @@ function handleRealtimeEvent(table, eventType, record) {
   }
 }
 
-// 6. Reconexão com Backoff Exponencial
+// 6. ReconexÃ£o com Backoff Exponencial
 function handleRealtimeDisconnection() {
   if (operationsRealtimeManager.reconnectAttempt >= operationsRealtimeManager.maxReconnectRetries) {
-    updateConnectionStatusUI('degraded', 'Modo degradado (Falha de reconexão)');
+    updateConnectionStatusUI('degraded', 'Modo degradado (Falha de reconexÃ£o)');
     return;
   }
 
@@ -13692,7 +13983,7 @@ function toggleOpSoundAlerts() {
       icon.setAttribute('data-lucide', 'volume-2');
       text.innerText = 'Som Ativado';
       showToastNotification('Alertas sonoros ativados.');
-      playOpAlertSound(); // Som de teste após interação do usuário
+      playOpAlertSound(); // Som de teste apÃ³s interaÃ§Ã£o do usuÃ¡rio
     } else {
       icon.setAttribute('data-lucide', 'volume-x');
       text.innerText = 'Som Desativado';
@@ -13743,7 +14034,7 @@ function dismissOpAlertBanner() {
   if (banner) banner.classList.add('hidden');
 }
 
-// 8. Classificação de Localização GPS do Motoboy
+// 8. ClassificaÃ§Ã£o de LocalizaÃ§Ã£o GPS do Motoboy
 function getRiderLocationStaleCategory(lastSeenInput) {
   if (!lastSeenInput) return { category: 'sem_localizacao', text: 'Sem GPS', color: '#6b7280' };
 
@@ -13755,13 +14046,13 @@ function getRiderLocationStaleCategory(lastSeenInput) {
   if (diffMinutes <= 2) {
     return { category: 'recente', text: 'GPS Recente', color: '#10b981' };
   } else if (diffMinutes <= 5) {
-    return { category: 'atencao', text: `GPS há ${Math.floor(diffMinutes)} min`, color: '#f59e0b' };
+    return { category: 'atencao', text: `GPS hÃ¡ ${Math.floor(diffMinutes)} min`, color: '#f59e0b' };
   } else {
     return { category: 'desatualizada', text: `GPS desatualizado (${Math.floor(diffMinutes)} min)`, color: '#ef4444' };
   }
 }
 
-// 9. Limpeza de Recursos no Logout ou Navegação
+// 9. Limpeza de Recursos no Logout ou NavegaÃ§Ã£o
 function cleanupOperationsRealtime() {
   logOpDebug('Limpando canais Realtime e timers...');
   clearTimeout(operationsRealtimeManager.reconnectTimer);
@@ -13783,17 +14074,17 @@ window.addEventListener('online', () => {
 });
 
 window.addEventListener('offline', () => {
-  updateConnectionStatusUI('disconnected', 'Sem conexão com a internet');
+  updateConnectionStatusUI('disconnected', 'Sem conexÃ£o com a internet');
 });
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && document.getElementById('tab-owner-control-center')?.classList.contains('active')) {
-    logOpDebug('Aba voltou a ficar visível. Verificando integridade dos dados...');
+    logOpDebug('Aba voltou a ficar visÃ­vel. Verificando integridade dos dados...');
     performOperationsFullSync();
   }
 });
 
-// Inicialização da Fase 4 ao abrir a aba
+// InicializaÃ§Ã£o da Fase 4 ao abrir a aba
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
     if (document.getElementById('tab-owner-control-center')) {
@@ -13802,7 +14093,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 1500);
 });
 
-// ─── MÓDULO DE SUPORTE DOS MOTOBOYS (ADMINISTRATIVO) ─────────────────────────
+// â”€â”€â”€ MÃ“DULO DE SUPORTE DOS MOTOBOYS (ADMINISTRATIVO) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let adminSupportState = {
   tickets: [],
@@ -13816,8 +14107,8 @@ let adminSupportState = {
 function getAdminSupportCategoryLabel(cat) {
   const categories = {
     delivery_issue: 'Problema em Entrega',
-    payment_question: 'Dúvida sobre Pagamento',
-    consumable_question: 'Consumíveis / Bag',
+    payment_question: 'DÃºvida sobre Pagamento',
+    consumable_question: 'ConsumÃ­veis / Bag',
     app_problem: 'Problema no Aplicativo',
     account_problem: 'Problema na Conta',
     other: 'Outros Assuntos'
@@ -13885,7 +14176,7 @@ async function loadAdminSupportTickets() {
   if (!container) return;
 
   if (!supabaseClient) {
-    container.innerHTML = `<div style="text-align: center; color: var(--color-text-muted); padding: 20px;">Sessão não inicializada.</div>`;
+    container.innerHTML = `<div style="text-align: center; color: var(--color-text-muted); padding: 20px;">SessÃ£o nÃ£o inicializada.</div>`;
     return;
   }
 
@@ -13936,7 +14227,7 @@ function renderAdminSupportTicketsList() {
   container.innerHTML = tickets.map(t => {
     const isSelected = t.ticket_id === adminSupportState.currentTicketId;
     const timeStr = t.last_message_at ? new Date(t.last_message_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    const unreadHtml = t.unread_messages_count > 0 
+    const unreadHtml = t.unread_messages_count > 0
       ? `<span style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 7px; font-size: 0.65rem; font-weight: 800;">${t.unread_messages_count} nova(s)</span>`
       : '';
 
@@ -13992,7 +14283,7 @@ async function openAdminSupportTicketDetail(ticketId) {
 
     if (data && data.success) {
       renderAdminSupportTicketDetail(data.ticket, data.rider, data.messages || []);
-      // Atualizar estatísticas em background
+      // Atualizar estatÃ­sticas em background
       loadAdminSupportSummary();
       loadAdminSupportTickets();
     } else {
@@ -14018,7 +14309,7 @@ function renderAdminSupportTicketDetail(ticket, rider, messages) {
 
   if (subjectEl) subjectEl.textContent = ticket.subject;
   if (priorityEl) priorityEl.innerHTML = getAdminSupportPriorityBadge(ticket.priority);
-  if (riderInfoEl) riderInfoEl.textContent = `Motoboy: ${rider.display_name} • Tel: ${rider.phone || 'Não informado'} • Categoria: ${getAdminSupportCategoryLabel(ticket.category)}`;
+  if (riderInfoEl) riderInfoEl.textContent = `Motoboy: ${rider.display_name} â€¢ Tel: ${rider.phone || 'NÃ£o informado'} â€¢ Categoria: ${getAdminSupportCategoryLabel(ticket.category)}`;
   if (statusBadgeEl) statusBadgeEl.innerHTML = getAdminSupportStatusBadge(ticket.status);
 
   if (statusSelect) statusSelect.value = ticket.status;
@@ -14032,7 +14323,7 @@ function renderAdminSupportTicketDetail(ticket, rider, messages) {
   if (inputEl) inputEl.disabled = isClosed;
   if (submitBtn) submitBtn.disabled = isClosed;
 
-  // Carregar lista de administradores para atribuição se o seletor estiver com apenas a opção padrão
+  // Carregar lista de administradores para atribuiÃ§Ã£o se o seletor estiver com apenas a opÃ§Ã£o padrÃ£o
   populateAdminAssigneeSelect(ticket.assigned_admin_id);
 
   if (!messagesContainer) return;
@@ -14050,7 +14341,7 @@ function renderAdminSupportTicketDetail(ticket, rider, messages) {
     if (isSystem) {
       return `
         <div style="align-self: center; background: rgba(255,255,255,0.05); border: 1px dashed var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-muted); text-align: center;">
-          ⚙️ ${escapeHtml(msg.message)}
+          âš™ï¸ ${escapeHtml(msg.message)}
         </div>
       `;
     }
@@ -14059,7 +14350,7 @@ function renderAdminSupportTicketDetail(ticket, rider, messages) {
       return `
         <div style="align-self: flex-start; max-width: 88%; background: #2a220c; border: 1px solid #78350f; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: #fbbf24; font-weight: 700;">
-            <span>🔒 NOTA INTERNA — Visível Apenas para Administradores (${escapeHtml(msg.sender_name)})</span>
+            <span>ðŸ”’ NOTA INTERNA â€” VisÃ­vel Apenas para Administradores (${escapeHtml(msg.sender_name)})</span>
             <span>${new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           <div style="font-size: 0.88rem; color: #fef08a; line-height: 1.45; word-break: break-word;">
@@ -14103,7 +14394,7 @@ async function populateAdminAssigneeSelect(currentAssignedId) {
 
     if (error) throw error;
 
-    let html = `<option value="">Não Atribuído</option>`;
+    let html = `<option value="">NÃ£o AtribuÃ­do</option>`;
     (data || []).forEach(u => {
       const selected = u.user_id === currentAssignedId ? 'selected' : '';
       html += `<option value="${u.user_id}" ${selected}>${escapeHtml(u.name)}</option>`;
@@ -14181,9 +14472,9 @@ async function updateAdminTicketStatusClick() {
   if (newStatus === 'in_progress') {
     const currentTicket = adminSupportState.tickets.find(t => t.ticket_id === adminSupportState.currentTicketId);
     if (currentTicket && currentTicket.status === 'closed') {
-      reason = prompt("Motivo obrigatório para reabrir este chamado encerrado:");
+      reason = prompt("Motivo obrigatÃ³rio para reabrir este chamado encerrado:");
       if (!reason || reason.trim().length < 3) {
-        showToastNotification("É necessário informar um motivo de no mínimo 3 caracteres para reabrir o chamado.");
+        showToastNotification("Ã‰ necessÃ¡rio informar um motivo de no mÃ­nimo 3 caracteres para reabrir o chamado.");
         return;
       }
     }
@@ -14206,7 +14497,7 @@ async function updateAdminTicketStatusClick() {
     }
   } catch (err) {
     console.error("Error updating ticket status:", err);
-    showToastNotification("Erro de conexão ao alterar status.");
+    showToastNotification("Erro de conexÃ£o ao alterar status.");
   }
 }
 
@@ -14225,14 +14516,14 @@ async function assignAdminTicketClick() {
     if (error) throw error;
 
     if (data && data.success) {
-      showToastNotification("Responsável atualizado!");
+      showToastNotification("ResponsÃ¡vel atualizado!");
       loadAdminSupportTickets();
     } else {
       showToastNotification(data?.message || "Erro ao atribuir chamado.");
     }
   } catch (err) {
     console.error("Error assigning admin ticket:", err);
-    showToastNotification("Erro de conexão ao atribuir chamado.");
+    showToastNotification("Erro de conexÃ£o ao atribuir chamado.");
   }
 }
 
@@ -14265,7 +14556,7 @@ function subscribeAdminRiderSupportRealtime() {
 }
 
 // =====================================================================
-// FASE 2: Lógica do Quick Action Drawer (Painel Lateral Deslizante)
+// FASE 2: LÃ³gica do Quick Action Drawer (Painel Lateral Deslizante)
 // Preserva 100% de todos os componentes homologados da Fase 1.
 // =====================================================================
 
@@ -14278,7 +14569,7 @@ async function openTeleQuickActionDrawer(teleId, triggerElement) {
   if (!teleId) return;
   const strId = String(teleId);
 
-  // Prevenção de múltiplas aberturas para o mesmo ID
+  // PrevenÃ§Ã£o de mÃºltiplas aberturas para o mesmo ID
   if (currentActiveDrawerTeleId === strId) return;
 
   currentActiveDrawerTeleId = strId;
@@ -14297,7 +14588,7 @@ async function openTeleQuickActionDrawer(teleId, triggerElement) {
   // Acessibilidade: Trava de foco inicial
   drawer.focus();
 
-  // Associar listener temporário da tecla Escape (removido estritamente ao fechar)
+  // Associar listener temporÃ¡rio da tecla Escape (removido estritamente ao fechar)
   drawerKeyboardHandler = (e) => {
     if (e.key === 'Escape') {
       closeTeleQuickActionDrawer();
@@ -14318,7 +14609,7 @@ async function openTeleQuickActionDrawer(teleId, triggerElement) {
     renderQuickActionDrawerContent(tele);
     fetchTeleTimelineEvents(tele.raw_id || tele.id);
   } else {
-    showToastNotification('Tele não encontrada no banco de dados.');
+    showToastNotification('Tele nÃ£o encontrada no banco de dados.');
     closeTeleQuickActionDrawer();
   }
 }
@@ -14375,7 +14666,7 @@ function renderQuickActionDrawerContent(tele) {
   const teleCode = tele.tele_code || tele.id;
   const normStatus = normalizeTeleStatus(tele.status);
 
-  // Preencher campos informativos básicos
+  // Preencher campos informativos bÃ¡sicos
   const codeEl = document.getElementById('drawer-tele-code');
   const statusEl = document.getElementById('drawer-tele-status');
   const clientEl = document.getElementById('drawer-client-name');
@@ -14391,23 +14682,23 @@ if (codeEl) codeEl.textContent = teleCode;
   if (clientEl) clientEl.textContent = tele.client || resolveClientDisplayName(tele);
   if (uuidEl) uuidEl.textContent = rawUuid;
   if (versionEl) versionEl.textContent = `v${tele.version ?? 1}`;
-  if (createdEl) createdEl.textContent = tele.created_at ? new Date(tele.created_at).toLocaleString('pt-BR') : '—';
+  if (createdEl) createdEl.textContent = tele.created_at ? new Date(tele.created_at).toLocaleString('pt-BR') : 'â€”';
 
-  // SLA usando a função homologada
+  // SLA usando a funÃ§Ã£o homologada
   const slaState = calculateTeleSLAState(tele);
   if (slaEl) {
     slaEl.textContent = slaState.label;
     slaEl.className = `value ${slaState.state === 'critical' ? 'text-danger' : (slaState.state === 'warning' ? 'text-warning' : '')}`;
   }
 
-  if (pickupEl) pickupEl.textContent = tele.pickup_address || 'Endereço de Coleta Comercial';
-  if (deliveryEl) deliveryEl.textContent = tele.delivery_address || tele.address || '—';
-  if (recipientEl) recipientEl.textContent = tele.dest_name || 'Destinatário';
-  if (phoneEl) phoneEl.textContent = tele.dest_phone || '—';
+  if (pickupEl) pickupEl.textContent = tele.pickup_address || 'EndereÃ§o de Coleta Comercial';
+  if (deliveryEl) deliveryEl.textContent = tele.delivery_address || tele.address || 'â€”';
+  if (recipientEl) recipientEl.textContent = tele.dest_name || 'DestinatÃ¡rio';
+  if (phoneEl) phoneEl.textContent = tele.dest_phone || 'â€”';
   if (priceEl) priceEl.textContent = typeof tele.delivery_charge === 'number' ? `R$ ${tele.delivery_charge.toFixed(2).replace('.', ',')}` : (tele.price || 'R$ 15,00');
   if (riderEl) riderEl.textContent = tele.rider || 'Aguardando Despacho';
 
-  // Renderizar Matriz de Ações Dinâmicas por Status Canônico
+  // Renderizar Matriz de AÃ§Ãµes DinÃ¢micas por Status CanÃ´nico
   const actionsContainer = document.getElementById('drawer-actions-container');
   const noticeContainer = document.getElementById('drawer-action-notice');
 
@@ -14424,7 +14715,7 @@ if (codeEl) codeEl.textContent = teleCode;
     if (actionsContainer) {
       actionsContainer.innerHTML = `
         <button type="button" class="btn btn-secondary" onclick="navigateToTeleInManagement('${rawUuid}')">
-          <i data-lucide="external-link"></i> Abrir na Gestão de Teles
+          <i data-lucide="external-link"></i> Abrir na GestÃ£o de Teles
         </button>
       `;
     }
@@ -14432,7 +14723,7 @@ if (codeEl) codeEl.textContent = teleCode;
 }
 
 // =====================================================================
-// Dahora Expresso — Fase 3B.2A.1: Repasse Semanal & Leitura Autoritativa
+// Dahora Expresso â€” Fase 3B.2A.1: Repasse Semanal & Leitura Autoritativa
 // =====================================================================
 
 let riderSettlementState = {
@@ -14503,7 +14794,7 @@ async function loadRiderAutocompleteStore() {
     riderAutocompleteCache = data || [];
     renderRiderSearchDropdown(riderAutocompleteCache);
   } catch (err) {
-    console.error("[AUTOPLETE FLEET] Exceção:", err);
+    console.error("[AUTOPLETE FLEET] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -14555,7 +14846,7 @@ function filterRiderSearchAutocomplete() {
     return;
   }
 
-  const filtered = riderAutocompleteCache.filter(r => 
+  const filtered = riderAutocompleteCache.filter(r =>
     (r.name && r.name.toLowerCase().includes(term)) ||
     (r.motoboy_code && String(r.motoboy_code).toLowerCase().includes(term))
   );
@@ -14655,7 +14946,7 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
       if (tbody) {
         tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 40px 24px; color: #ef4444;">
           <i data-lucide="alert-triangle" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
-          <div style="font-size: 1rem; font-weight: 600; margin-bottom: 6px;">Não foi possível carregar os repasses semanais.</div>
+          <div style="font-size: 1rem; font-weight: 600; margin-bottom: 6px;">NÃ£o foi possÃ­vel carregar os repasses semanais.</div>
           <div style="font-size: 0.82rem; opacity: 0.8; margin-bottom: 12px;">${escapeHtml(String(errMsg))}</div>
           <button type="button" class="btn btn-sm btn-secondary" onclick="fetchAdminRiderWeeklySettlements(true)" style="border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text); font-weight: 600; padding: 8px 16px; cursor: pointer;">Tentar Novamente</button>
         </td></tr>`;
@@ -14667,7 +14958,7 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
     riderSettlementState.totalCount = data.total_count || 0;
     riderSettlementState.settlements = data.settlements || [];
 
-    // Atualizar KPI Cards sem NENHUMA agregação financeira no frontend
+    // Atualizar KPI Cards sem NENHUMA agregaÃ§Ã£o financeira no frontend
     const countTotalEl = document.getElementById('rider-week-count-total');
     const pageCountEl = document.getElementById('rider-week-page-count');
     const pagInfoEl = document.getElementById('rider-settlement-pagination-info');
@@ -14679,7 +14970,7 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
     // Renderizar Tabela
     renderAdminRiderWeeklySettlements(riderSettlementState.settlements);
 
-    // Atualizar botões de paginação
+    // Atualizar botÃµes de paginaÃ§Ã£o
     const prevBtn = document.getElementById('rider-settlement-prev-page');
     const nextBtn = document.getElementById('rider-settlement-next-page');
     const pageText = document.getElementById('rider-settlement-page-text');
@@ -14687,16 +14978,16 @@ async function fetchAdminRiderWeeklySettlements(resetPage = false) {
     const maxPages = Math.ceil(riderSettlementState.totalCount / riderSettlementState.limit) || 1;
     if (prevBtn) prevBtn.disabled = riderSettlementState.page <= 1;
     if (nextBtn) nextBtn.disabled = riderSettlementState.page >= maxPages;
-    if (pageText) pageText.textContent = `Página ${riderSettlementState.page} de ${maxPages}`;
+    if (pageText) pageText.textContent = `PÃ¡gina ${riderSettlementState.page} de ${maxPages}`;
 
   } catch (err) {
     riderSettlementState.isLoading = false;
-    console.error("[RPC list_admin_rider_weekly_settlements] Exceção:", err);
+    console.error("[RPC list_admin_rider_weekly_settlements] ExceÃ§Ã£o:", err);
     if (tbody) {
       tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 40px 24px; color: #ef4444;">
         <i data-lucide="alert-triangle" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
-        <div style="font-size: 1rem; font-weight: 600; margin-bottom: 6px;">Não foi possível carregar os repasses semanais.</div>
-        <div style="font-size: 0.82rem; opacity: 0.8; margin-bottom: 12px;">${escapeHtml(err.message || 'Falha na conexão com o servidor.')}</div>
+        <div style="font-size: 1rem; font-weight: 600; margin-bottom: 6px;">NÃ£o foi possÃ­vel carregar os repasses semanais.</div>
+        <div style="font-size: 0.82rem; opacity: 0.8; margin-bottom: 12px;">${escapeHtml(err.message || 'Falha na conexÃ£o com o servidor.')}</div>
         <button type="button" class="btn btn-sm btn-secondary" onclick="fetchAdminRiderWeeklySettlements(true)" style="border: 1px solid var(--border-color); background: var(--secondary); color: var(--color-text); font-weight: 600; padding: 8px 16px; cursor: pointer;">Tentar Novamente</button>
       </td></tr>`;
       if (window.lucide) window.lucide.createIcons();
@@ -14719,13 +15010,13 @@ function renderAdminRiderWeeklySettlements(settlements) {
   let html = '';
   settlements.forEach(s => {
     const isNotCalculated = !s.settlement_id || s.status === 'not_calculated';
-    const statusLabel = s.status_label || (isNotCalculated ? 'Não calculado' : s.status);
+    const statusLabel = s.status_label || (isNotCalculated ? 'NÃ£o calculado' : s.status);
     const badgeClass = isNotCalculated ? 'badge-not-calculated' : `badge-${s.status || 'open'}`;
 
-    const periodStr = (s.period_start && s.period_end) ? 
-      `${new Date(s.period_start).toLocaleDateString('pt-BR')} a ${new Date(s.period_end).toLocaleDateString('pt-BR')}` : '—';
+    const periodStr = (s.period_start && s.period_end) ?
+      `${new Date(s.period_start).toLocaleDateString('pt-BR')} a ${new Date(s.period_end).toLocaleDateString('pt-BR')}` : 'â€”';
 
-    // Matriz de Ações por Estado Autoritativo
+    // Matriz de AÃ§Ãµes por Estado Autoritativo
     let actionBtn = '';
     const safeRiderName = (s.rider_name || 'Motoboy').replace(/'/g, "\\'");
 
@@ -14756,7 +15047,7 @@ function renderAdminRiderWeeklySettlements(settlements) {
       </div>`;
     } else if (s.status === 'pending' || s.status === 'partially_blocked') {
       const hasEligible = Number(s.unpaid_eligible_amount || s.eligible_amount) > 0;
-      const payBtn = hasEligible ? 
+      const payBtn = hasEligible ?
         `<button type="button" class="btn btn-success btn-sm" onclick="openPaySettlementModal('${s.settlement_id}', ${s.version || 1}, '${safeRiderName}', '${formatRiderSettlementCurrency(s.unpaid_eligible_amount || s.eligible_amount)}', '${formatRiderSettlementCurrency(s.blocked_amount)}')">
           <i data-lucide="credit-card" style="width: 14px; height: 14px;"></i> Pagar repasse
         </button>` : '';
@@ -14778,7 +15069,7 @@ function renderAdminRiderWeeklySettlements(settlements) {
 
     html += `<tr>
       <td><strong>${s.rider_name || 'Motoboy'}</strong></td>
-      <td><code>${s.rider_code || '—'}</code></td>
+      <td><code>${s.rider_code || 'â€”'}</code></td>
       <td style="font-size: 0.8rem;">${periodStr}</td>
       <td><span class="badge ${badgeClass}">${statusLabel}</span></td>
       <td>${formatRiderSettlementCurrency(s.base_rider_amount)}</td>
@@ -14798,7 +15089,7 @@ function renderAdminRiderWeeklySettlements(settlements) {
   tbody.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
 
-  // Verificar se há recuperação pendente
+  // Verificar se hÃ¡ recuperaÃ§Ã£o pendente
   checkPendingPaymentRecovery();
 }
 
@@ -14844,7 +15135,7 @@ async function openRiderSettlementDrawer(settlementId) {
     renderRiderSettlementDetail(data);
 
   } catch (err) {
-    console.error("[RPC get_admin_rider_weekly_settlement_detail] Exceção:", err);
+    console.error("[RPC get_admin_rider_weekly_settlement_detail] ExceÃ§Ã£o:", err);
     closeRiderSettlementDrawer();
   }
 }
@@ -14888,7 +15179,7 @@ function renderRiderSettlementDetail(detailData) {
 
   const periodStr = `${new Date(settlement.period_start).toLocaleDateString('pt-BR')} a ${new Date(settlement.period_end).toLocaleDateString('pt-BR')}`;
   if (subtitleEl) {
-    subtitleEl.textContent = `${settlement.rider_name} (${settlement.rider_code}) • Período: ${periodStr} • Versão v${settlement.version}`;
+    subtitleEl.textContent = `${settlement.rider_name} (${settlement.rider_code}) â€¢ PerÃ­odo: ${periodStr} â€¢ VersÃ£o v${settlement.version}`;
   }
 
   const hasUnexplainedDiff = (items || []).some(i => Number(i.unexplained_difference) > 0);
@@ -14898,44 +15189,44 @@ function renderRiderSettlementDetail(detailData) {
   if (hasUnexplainedDiff) {
     html += `<div class="integrity-alert-banner">
       <i data-lucide="alert-triangle" style="width: 18px; height: 18px;"></i>
-      <span>Aviso de Integridade: Um ou mais itens possuem diferença não explicada registrada no banco de dados.</span>
+      <span>Aviso de Integridade: Um ou mais itens possuem diferenÃ§a nÃ£o explicada registrada no banco de dados.</span>
     </div>`;
   }
 
-  // 1. Resumo Contábil
+  // 1. Resumo ContÃ¡bil
   if (summary) {
     html += `<div class="rider-drawer-section">
-      <h4 class="rider-drawer-section-title"><i data-lucide="calculator" style="width: 16px; height: 16px;"></i> Resumo Contábil do Fechamento</h4>
+      <h4 class="rider-drawer-section-title"><i data-lucide="calculator" style="width: 16px; height: 16px;"></i> Resumo ContÃ¡bil do Fechamento</h4>
       <div class="summary-grid-2col">
         <div class="summary-item-box"><span class="summary-item-label">Faturamento Bruto</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.gross_delivery_amount)}</span></div>
         <div class="summary-item-box"><span class="summary-item-label">Base do Motoboy</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.base_rider_amount)}</span></div>
         <div class="summary-item-box"><span class="summary-item-label">Receita da Plataforma</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.platform_amount)}</span></div>
-        <div class="summary-item-box"><span class="summary-item-label">Consumíveis</span><span class="summary-item-value" style="color: #ef4444;">${formatRiderSettlementCurrency(summary.consumables_amount)}</span></div>
-        <div class="summary-item-box"><span class="summary-item-label">Créditos</span><span class="summary-item-value" style="color: #10b981;">${formatRiderSettlementCurrency(summary.credits_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">ConsumÃ­veis</span><span class="summary-item-value" style="color: #ef4444;">${formatRiderSettlementCurrency(summary.consumables_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">CrÃ©ditos</span><span class="summary-item-value" style="color: #10b981;">${formatRiderSettlementCurrency(summary.credits_amount)}</span></div>
         <div class="summary-item-box"><span class="summary-item-label">Ajustes (+ / -)</span><span class="summary-item-value">${formatRiderSettlementCurrency(Number(summary.positive_adjustments_amount) - Number(summary.negative_adjustments_amount))}</span></div>
-        <div class="summary-item-box" style="background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);"><span class="summary-item-label" style="color: #3b82f6;">Valor Líquido</span><span class="summary-item-value" style="color: #3b82f6;">${formatRiderSettlementCurrency(summary.net_amount)}</span></div>
-        <div class="summary-item-box"><span class="summary-item-label">Liberado Elegível</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.eligible_amount)}</span></div>
+        <div class="summary-item-box" style="background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);"><span class="summary-item-label" style="color: #3b82f6;">Valor LÃ­quido</span><span class="summary-item-value" style="color: #3b82f6;">${formatRiderSettlementCurrency(summary.net_amount)}</span></div>
+        <div class="summary-item-box"><span class="summary-item-label">Liberado ElegÃ­vel</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.eligible_amount)}</span></div>
         <div class="summary-item-box"><span class="summary-item-label">Bloqueado Clientes</span><span class="summary-item-value" style="color: #ef4444;">${formatRiderSettlementCurrency(summary.blocked_amount)}</span></div>
         <div class="summary-item-box"><span class="summary-item-label">Pago em Lotes</span><span class="summary-item-value">${formatRiderSettlementCurrency(summary.paid_amount)}</span></div>
-        <div class="summary-item-box" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3);"><span class="summary-item-label" style="color: #10b981;">Elegível Não Pago</span><span class="summary-item-value" style="color: #10b981;">${formatRiderSettlementCurrency(summary.unpaid_eligible_amount)}</span></div>
+        <div class="summary-item-box" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3);"><span class="summary-item-label" style="color: #10b981;">ElegÃ­vel NÃ£o Pago</span><span class="summary-item-value" style="color: #10b981;">${formatRiderSettlementCurrency(summary.unpaid_eligible_amount)}</span></div>
       </div>
     </div>`;
   }
 
   // 2. Itens do Fechamento
   html += `<div class="rider-drawer-section">
-    <h4 class="rider-drawer-section-title"><i data-lucide="list-ordered" style="width: 16px; height: 16px;"></i> Itens e Lançamentos (${items ? items.length : 0})</h4>
+    <h4 class="rider-drawer-section-title"><i data-lucide="list-ordered" style="width: 16px; height: 16px;"></i> Itens e LanÃ§amentos (${items ? items.length : 0})</h4>
     <div class="table-responsive">
       <table class="table" style="font-size: 0.78rem;">
         <thead>
           <tr>
             <th>Tipo</th>
-            <th>Descrição</th>
+            <th>DescriÃ§Ã£o</th>
             <th>Tele</th>
             <th>Cliente</th>
             <th>Data</th>
             <th>Valor Orig.</th>
-            <th>Elegível</th>
+            <th>ElegÃ­vel</th>
             <th>Bloqueado</th>
             <th>Pago</th>
             <th>Restante</th>
@@ -14950,10 +15241,10 @@ function renderRiderSettlementDetail(detailData) {
     items.forEach(it => {
       html += `<tr>
         <td><code>${it.source_type}</code></td>
-        <td>${it.description || '—'}</td>
-        <td>${it.tele_code || '—'}</td>
-        <td>${it.client_name || '—'}</td>
-        <td>${it.occurred_at ? new Date(it.occurred_at).toLocaleDateString('pt-BR') : '—'}</td>
+        <td>${it.description || 'â€”'}</td>
+        <td>${it.tele_code || 'â€”'}</td>
+        <td>${it.client_name || 'â€”'}</td>
+        <td>${it.occurred_at ? new Date(it.occurred_at).toLocaleDateString('pt-BR') : 'â€”'}</td>
         <td>${formatRiderSettlementCurrency(it.original_amount)}</td>
         <td>${formatRiderSettlementCurrency(it.eligible_amount)}</td>
         <td style="color: ${Number(it.blocked_amount) > 0 ? '#ef4444' : 'inherit'};">${formatRiderSettlementCurrency(it.blocked_amount)}</td>
@@ -14976,13 +15267,13 @@ function renderRiderSettlementDetail(detailData) {
             <th>Tipo</th>
             <th>Status</th>
             <th>Valor</th>
-            <th>Método</th>
-            <th>Referência</th>
-            <th>Observações</th>
-            <th>Responsável</th>
+            <th>MÃ©todo</th>
+            <th>ReferÃªncia</th>
+            <th>ObservaÃ§Ãµes</th>
+            <th>ResponsÃ¡vel</th>
             <th>Pagamento</th>
             <th>Estorno</th>
-            <th>Ações</th>
+            <th>AÃ§Ãµes</th>
           </tr>
         </thead>
         <tbody>`;
@@ -14991,7 +15282,7 @@ function renderRiderSettlementDetail(detailData) {
     html += `<tr><td colspan="10" style="text-align: center; color: var(--color-text-muted);">Nenhum lote registrado.</td></tr>`;
   } else {
     batches.forEach(b => {
-      let batchActionBtn = '—';
+      let batchActionBtn = 'â€”';
       if (b.status === 'paid') {
         batchActionBtn = `<button type="button" class="btn btn-danger btn-sm" onclick="openReverseBatchModal('${b.id}', ${b.version || 1}, '${settlement.id}', '${formatRiderSettlementCurrency(b.total_paid_amount)}')">
           <i data-lucide="rotate-ccw" style="width: 12px; height: 12px;"></i> Estornar
@@ -15002,12 +15293,12 @@ function renderRiderSettlementDetail(detailData) {
         <td>${b.batch_type_label || b.batch_type}</td>
         <td><span class="badge badge-secondary">${b.status_label || b.status}</span></td>
         <td><strong>${formatRiderSettlementCurrency(b.total_paid_amount)}</strong></td>
-        <td>${b.payment_method || '—'}</td>
-        <td><code>${b.payment_reference || '—'}</code></td>
-        <td>${b.notes || '—'}</td>
-        <td>${b.paid_by_name || '—'}</td>
-        <td>${b.paid_at ? new Date(b.paid_at).toLocaleString('pt-BR') : '—'}</td>
-        <td>${b.reversed_at ? new Date(b.reversed_at).toLocaleString('pt-BR') : '—'}</td>
+        <td>${b.payment_method || 'â€”'}</td>
+        <td><code>${b.payment_reference || 'â€”'}</code></td>
+        <td>${b.notes || 'â€”'}</td>
+        <td>${b.paid_by_name || 'â€”'}</td>
+        <td>${b.paid_at ? new Date(b.paid_at).toLocaleString('pt-BR') : 'â€”'}</td>
+        <td>${b.reversed_at ? new Date(b.reversed_at).toLocaleString('pt-BR') : 'â€”'}</td>
         <td>${batchActionBtn}</td>
       </tr>`;
     });
@@ -15039,7 +15330,7 @@ function closeRiderSettlementDrawer() {
 }
 
 // =====================================================================
-// Dahora Expresso — Fase 3B.2A.2: Operações Financeiras Autoritativas
+// Dahora Expresso â€” Fase 3B.2A.2: OperaÃ§Ãµes Financeiras Autoritativas
 // =====================================================================
 
 let activeSettlementOperationalState = {
@@ -15056,11 +15347,11 @@ let activeSettlementOperationalState = {
 // 1. Calcular Fechamento (usando period_start e period_end autoritativos do Postgres)
 async function handleCalculateRiderSettlement(riderId, periodStartIso, periodEndIso) {
   if (!riderId || !periodStartIso || !periodEndIso) {
-    alert("Dados autoritativos do período ausentes para calcular o fechamento.");
+    alert("Dados autoritativos do perÃ­odo ausentes para calcular o fechamento.");
     return;
   }
 
-  if (!confirm("Deseja executar o cálculo autoritativo deste fechamento semanal no banco de dados?")) return;
+  if (!confirm("Deseja executar o cÃ¡lculo autoritativo deste fechamento semanal no banco de dados?")) return;
 
   try {
     const { data, error } = await supabaseClient.rpc('admin_calculate_rider_weekly_settlement', {
@@ -15080,7 +15371,7 @@ async function handleCalculateRiderSettlement(riderId, periodStartIso, periodEnd
       openRiderSettlementDrawer(data.settlement_id);
     }
   } catch (err) {
-    console.error("[RPC admin_calculate_rider_weekly_settlement] Exceção:", err);
+    console.error("[RPC admin_calculate_rider_weekly_settlement] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -15132,7 +15423,7 @@ async function submitCloseRiderSettlement() {
     if (error || !data || data.success === false) {
       const errCode = data?.error_code || error?.code;
       if (errCode === 'VERSION_CONFLICT') {
-        alert("O fechamento foi alterado por outra operação. Os dados autoritativos foram atualizados.");
+        alert("O fechamento foi alterado por outra operaÃ§Ã£o. Os dados autoritativos foram atualizados.");
       } else {
         alert(`Erro ao encerrar fechamento: ${error?.message || data?.message || 'Falha na RPC'}`);
       }
@@ -15148,7 +15439,7 @@ async function submitCloseRiderSettlement() {
     }
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="check-circle"></i> Confirmar Encerramento'; }
-    console.error("[RPC admin_close_rider_weekly_settlement] Exceção:", err);
+    console.error("[RPC admin_close_rider_weekly_settlement] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -15184,7 +15475,7 @@ async function submitReopenRiderSettlement() {
   if (!reason) {
     const noticeEl = document.getElementById('reopen-settlement-notice');
     if (noticeEl) {
-      noticeEl.textContent = 'O motivo da reabertura é obrigatório.';
+      noticeEl.textContent = 'O motivo da reabertura Ã© obrigatÃ³rio.';
       noticeEl.classList.remove('hidden');
     }
     return;
@@ -15205,7 +15496,7 @@ async function submitReopenRiderSettlement() {
     if (error || !data || data.success === false) {
       const errCode = data?.error_code || error?.code;
       if (errCode === 'CANNOT_REOPEN_PAID') {
-        alert("Não é possível reabrir um repasse já pago sem o estorno formal dos lotes.");
+        alert("NÃ£o Ã© possÃ­vel reabrir um repasse jÃ¡ pago sem o estorno formal dos lotes.");
       } else if (errCode === 'VERSION_CONFLICT') {
         alert("O fechamento foi modificado por outro operador. Os dados foram recarregados.");
       } else {
@@ -15223,7 +15514,7 @@ async function submitReopenRiderSettlement() {
     }
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="unlock"></i> Confirmar Reabertura'; }
-    console.error("[RPC admin_reopen_rider_weekly_settlement] Exceção:", err);
+    console.error("[RPC admin_reopen_rider_weekly_settlement] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -15278,7 +15569,7 @@ async function openPaySettlementModal(settlementId, expectedVersion, riderName, 
     btnConfirm.innerHTML = '<i data-lucide="check-check"></i> Confirmar Pagamento Realizado';
   }
 
-  // Backend Recovery: Verificar se já existe um lote em status 'pending' para este fechamento
+  // Backend Recovery: Verificar se jÃ¡ existe um lote em status 'pending' para este fechamento
   const client = (typeof supabaseClient !== 'undefined' && supabaseClient) ? supabaseClient : (window.supabaseClient || (typeof global !== 'undefined' ? global.supabaseClient : null));
   if (client) {
     try {
@@ -15361,21 +15652,21 @@ async function submitCreateRiderPayBatch() {
     const batchId = data.batch_id;
     activeSettlementOperationalState.batchId = batchId;
 
-    // EXIGÊNCIA OBRIGATÓRIA: Re-fetch autoritativo de get_admin_rider_weekly_settlement_detail para obter a batch.version real!
+    // EXIGÃŠNCIA OBRIGATÃ“RIA: Re-fetch autoritativo de get_admin_rider_weekly_settlement_detail para obter a batch.version real!
     const { data: detailData, error: detailErr } = await supabaseClient.rpc('get_admin_rider_weekly_settlement_detail', {
       p_settlement_id: settlementId
     });
 
     if (detailErr || !detailData || detailData.success === false) {
       if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
-      alert("Erro ao buscar versão autoritativa do lote. A confirmação foi interrompida para segurança.");
+      alert("Erro ao buscar versÃ£o autoritativa do lote. A confirmaÃ§Ã£o foi interrompida para seguranÃ§a.");
       return;
     }
 
     const realBatch = (detailData.batches || []).find(b => b.id === batchId);
     if (!realBatch || realBatch.version === undefined || realBatch.version === null) {
       if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
-      alert("Inconsistência: Lote criado não foi localizado no detalhe autoritativo. Etapa 2 interrompida.");
+      alert("InconsistÃªncia: Lote criado nÃ£o foi localizado no detalhe autoritativo. Etapa 2 interrompida.");
       return;
     }
 
@@ -15407,7 +15698,7 @@ async function submitCreateRiderPayBatch() {
 
   } catch (err) {
     if (btnCreate) { btnCreate.disabled = false; btnCreate.innerHTML = '<i data-lucide="layers"></i> Criar Lote de Pagamento'; }
-    console.error("[RPC admin_create_rider_payment_batch] Exceção:", err);
+    console.error("[RPC admin_create_rider_payment_batch] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -15443,7 +15734,7 @@ async function submitMarkRiderBatchPaid() {
     if (error || !data || data.success === false) {
       const errCode = data?.error_code || error?.code;
       if (errCode === 'VERSION_CONFLICT') {
-        alert("O lote de pagamento foi alterado por outra operação. Dados recarregados.");
+        alert("O lote de pagamento foi alterado por outra operaÃ§Ã£o. Dados recarregados.");
       } else {
         alert(`Erro ao marcar lote como pago: ${error?.message || data?.message || 'Falha na RPC'}`);
       }
@@ -15463,7 +15754,7 @@ async function submitMarkRiderBatchPaid() {
     }
   } catch (err) {
     if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i data-lucide="check-check"></i> Confirmar Pagamento Realizado'; }
-    console.error("[RPC admin_mark_rider_payment_batch_paid] Exceção:", err);
+    console.error("[RPC admin_mark_rider_payment_batch_paid] ExceÃ§Ã£o:", err);
   }
 }
 
@@ -15501,7 +15792,7 @@ async function submitReverseRiderBatch() {
   if (!reason) {
     const noticeEl = document.getElementById('reverse-batch-notice');
     if (noticeEl) {
-      noticeEl.textContent = 'O motivo do estorno é obrigatório.';
+      noticeEl.textContent = 'O motivo do estorno Ã© obrigatÃ³rio.';
       noticeEl.classList.remove('hidden');
     }
     return;
@@ -15532,11 +15823,11 @@ async function submitReverseRiderBatch() {
     }
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="rotate-ccw"></i> Confirmar Estorno Auditado'; }
-    console.error("[RPC admin_reverse_rider_payment_batch] Exceção:", err);
+    console.error("[RPC admin_reverse_rider_payment_batch] ExceÃ§Ã£o:", err);
   }
 }
 
-// 6. Recuperação e Reconciliação do sessionStorage
+// 6. RecuperaÃ§Ã£o e ReconciliaÃ§Ã£o do sessionStorage
 async function checkPendingPaymentRecovery() {
   if (typeof sessionStorage === 'undefined') return;
   const prefix = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_`;
@@ -15573,7 +15864,7 @@ async function resumePendingRiderPayment() {
     });
 
     if (error || !detailData || detailData.success === false) {
-      alert("Não foi possível buscar o estado autoritativo do lote para recuperação.");
+      alert("NÃ£o foi possÃ­vel buscar o estado autoritativo do lote para recuperaÃ§Ã£o.");
       return;
     }
 
@@ -15581,12 +15872,12 @@ async function resumePendingRiderPayment() {
     const storageKey = `rps_payment_pending_${currentActiveSession?.user?.id || 'admin'}_${settlement_id}`;
 
     if (!batch) {
-      alert("Inconsistência: Lote pendente não foi encontrado no banco de dados.");
+      alert("InconsistÃªncia: Lote pendente nÃ£o foi encontrado no banco de dados.");
       return;
     }
 
     if (batch.status === 'paid') {
-      alert("O lote de pagamento já foi marcado como PAGO anteriormente por outro operador.");
+      alert("O lote de pagamento jÃ¡ foi marcado como PAGO anteriormente por outro operador.");
       sessionStorage.removeItem(storageKey);
       dismissRiderPaymentRecoveryBanner();
       await fetchAdminRiderWeeklySettlements(false);
@@ -15636,7 +15927,7 @@ async function resumePendingRiderPayment() {
 // Interface Autoritativa de Reset do Ambiente DEMO (Restrito ao Ambiente DEMO)
 // =====================================================================
 function initDemoResetUI() {
-  /* Esta verificação controla apenas a interface. A autorização real ocorre na Edge Function e na RPC PostgreSQL. */
+  /* Esta verificaÃ§Ã£o controla apenas a interface. A autorizaÃ§Ã£o real ocorre na Edge Function e na RPC PostgreSQL. */
   const envKind = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.environmentKind) || window.__ENV_ENVIRONMENT_KIND;
   const isResetEnabled = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.demoResetEnabled) || (window.__ENV_DEMO_RESET_ENABLED === 'true');
 
@@ -15654,10 +15945,10 @@ function initDemoResetUI() {
     modalDiv.innerHTML = `
       <div class="modal-content" style="background:#1e293b; border:1px solid #ef4444; border-radius:12px; max-width:480px; width:100%; padding:24px; color:#f8fafc; font-family:sans-serif;">
         <h3 style="color:#ef4444; margin-top:0; font-size:1.25rem; display:flex; align-items:center; gap:8px;">
-          <span>⚠️ Restaurar Demonstração</span>
+          <span>âš ï¸ Restaurar DemonstraÃ§Ã£o</span>
         </h3>
         <p style="font-size:0.9rem; color:#cbd5e1; line-height:1.5;">
-          Esta ação apagará <strong>TODOS</strong> os dados operacionais criados na demonstração (Teles, transações, motoboys e clientes adicionais). As contas base de demonstração serão restauradas com saldos zerados.
+          Esta aÃ§Ã£o apagarÃ¡ <strong>TODOS</strong> os dados operacionais criados na demonstraÃ§Ã£o (Teles, transaÃ§Ãµes, motoboys e clientes adicionais). As contas base de demonstraÃ§Ã£o serÃ£o restauradas com saldos zerados.
         </p>
         <p style="font-size:0.85rem; color:#f87171; font-weight:bold; margin-top:12px;">
           Para confirmar, digite <code>RESTAURAR DEMO</code> abaixo:
@@ -15665,7 +15956,7 @@ function initDemoResetUI() {
         <input type="text" id="input-confirm-demo-reset" placeholder="RESTAURAR DEMO" style="width:100%; padding:10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#fff; font-size:0.95rem; margin-bottom:16px;" oninput="validateDemoResetInput(this.value)">
         <div style="display:flex; justify-content:flex-end; gap:12px;">
           <button type="button" class="btn btn-secondary" onclick="closeDemoResetModal()" style="padding:10px 16px; border-radius:6px; background:#475569; color:#fff; border:none; cursor:pointer;">Cancelar</button>
-          <button type="button" id="btn-submit-demo-reset" disabled onclick="submitDemoReset()" style="padding:10px 16px; border-radius:6px; background:#ef4444; color:#fff; border:none; cursor:not-allowed; font-weight:bold;">Restaurar Demonstração</button>
+          <button type="button" id="btn-submit-demo-reset" disabled onclick="submitDemoReset()" style="padding:10px 16px; border-radius:6px; background:#ef4444; color:#fff; border:none; cursor:not-allowed; font-weight:bold;">Restaurar DemonstraÃ§Ã£o</button>
         </div>
       </div>
     `;
@@ -15713,7 +16004,7 @@ window.submitDemoReset = async function() {
       }
       result = data;
     } else if (supabaseClient) {
-      // Fallback para RPC direta se Edge Function não estiver publicada no ambiente local
+      // Fallback para RPC direta se Edge Function nÃ£o estiver publicada no ambiente local
       const { data, error } = await supabaseClient.rpc('reset_demo_environment', {
         p_confirmation: 'RESTAURAR DEMO'
       });
@@ -15723,23 +16014,23 @@ window.submitDemoReset = async function() {
 
     if (result && result.success) {
       sessionStorage.clear();
-      alert(`Demonstração restaurada com sucesso em ${result.duration_ms}ms!\nID de Execução: ${result.execution_id}`);
+      alert(`DemonstraÃ§Ã£o restaurada com sucesso em ${result.duration_ms}ms!\nID de ExecuÃ§Ã£o: ${result.execution_id}`);
       window.location.reload();
     } else {
-      const msg = result ? (result.message || 'Erro não especificado') : 'Resposta nula';
+      const msg = result ? (result.message || 'Erro nÃ£o especificado') : 'Resposta nula';
       if (msg.includes('RESET_ALREADY_RUNNING')) {
-        alert('Uma operação de reset já está em andamento. Aguarde alguns segundos.');
+        alert('Uma operaÃ§Ã£o de reset jÃ¡ estÃ¡ em andamento. Aguarde alguns segundos.');
       } else if (msg.includes('RESET_NOT_ALLOWED')) {
-        alert('Esta operação só é permitida em ambiente de demonstração.');
+        alert('Esta operaÃ§Ã£o sÃ³ Ã© permitida em ambiente de demonstraÃ§Ã£o.');
       } else {
-        alert(`Falha ao restaurar demonstração: ${msg}`);
+        alert(`Falha ao restaurar demonstraÃ§Ã£o: ${msg}`);
       }
     }
   } catch (err) {
     console.error("[DEMO RESET EXCEPTION]", err);
     alert(`Erro ao comunicar com o servidor de reset: ${err.message || err}`);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerText = 'Restaurar Demonstração'; }
+    if (btn) { btn.disabled = false; btn.innerText = 'Restaurar DemonstraÃ§Ã£o'; }
     window.closeDemoResetModal();
   }
 };
