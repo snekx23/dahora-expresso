@@ -10170,9 +10170,9 @@ async function submitAddCommercialClient(event) {
       data = res.data;
       invokeError = res.error;
 
-      // Se no ambiente local a Edge Function retornar HTTP 404/503 real (sem container de Edge Functions rodando no Supabase local), provisionar de forma autoritativa localmente
+      // Se no ambiente local a Edge Function retornar HTTP 404 real (sem container de Edge Functions rodando no Supabase local), provisionar de forma autoritativa localmente
       const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (invokeError && (invokeError.context?.status === 404 || (isLocalHost && invokeError.context?.status === 503))) {
+      if (invokeError && isLocalHost && invokeError.context?.status === 404) {
         try {
           const isLocalEnv = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           if (isLocalEnv) {

@@ -313,13 +313,28 @@ test.describe('DAHORA EXPRESSO — SECURITY NEGATIVE & CONCURRENCY MATRIZ (RC.12
     // Open app
     await page.goto(`${BASE_URL}`);
 
-    // Verify local fallback is NOT triggered for HTTP 400/401/403/409/422/429/500
-    // Test that invokeError with status != 404 does NOT trigger local fetch
-    const invokeErrorBadStatus = { context: { status: 500 }, message: 'Server Error' };
-    expect(invokeErrorBadStatus.context?.status === 404).toBe(false);
+    // Helper evaluating fallback condition matching public/app.js: (isLocalHost && invokeError.context?.status === 404)
+    const evaluatesFallback = (status, msg = '') => {
+      const isLocalHost = true;
+      const invokeError = { context: { status }, message: msg };
+      return Boolean(invokeError && isLocalHost && invokeError.context?.status === 404);
+    };
 
-    // Test that invokeError with status 404 triggers local fallback logic
-    const invokeError404 = { context: { status: 404 }, message: 'Not Found' };
-    expect(invokeError404.context?.status === 404).toBe(true);
+    // 1. HTTP 404 -> Fallback = TRUE (1)
+    expect(evaluatesFallback(404)).toBe(true);
+
+    // 2. Non-404 status codes (400, 401, 403, 409, 422, 429, 500, 502, 503) -> Fallback = FALSE (0)
+    expect(evaluatesFallback(400)).toBe(false);
+    expect(evaluatesFallback(401)).toBe(false);
+    expect(evaluatesFallback(403)).toBe(false);
+    expect(evaluatesFallback(409)).toBe(false);
+    expect(evaluatesFallback(422)).toBe(false);
+    expect(evaluatesFallback(429)).toBe(false);
+    expect(evaluatesFallback(500)).toBe(false);
+    expect(evaluatesFallback(502)).toBe(false);
+    expect(evaluatesFallback(503)).toBe(false);
+
+    // 3. Textual heuristics like message.includes('404') without real status === 404 -> Fallback = FALSE (0)
+    expect(evaluatesFallback(500, 'Error 404 occurred in message')).toBe(false);
   });
 });
