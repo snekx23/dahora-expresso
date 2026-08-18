@@ -36,6 +36,7 @@ let adminClientViewContext = null;
         storageKey: 'dahora-owner-auth'
       }
     });
+    window.supabaseClient = supabaseClient;
     setupPasswordRecoveryListener();
   } else {
     console.error("Supabase SDK not loaded!");
@@ -58,6 +59,7 @@ const mockData = {
   riderCredits: [],
   cities: []
 };
+window.mockData = mockData;
 
 let commercesList = [];
 let currentTeleFilter = 'all';
@@ -69,14 +71,40 @@ let commercialClientsSelectCache = [];
 let currentActiveSession = null;
 let currentAdminProfile = null;
 
-async function checkAdminSession() {
-  if (!supabaseClient) return null;
+function hasPersistedAuthToken() {
   try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.includes('auth') || key.startsWith('sb-'))) {
+        const val = localStorage.getItem(key);
+        if (val && val !== 'null' && val !== 'undefined') return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+function showLoginViewOnly() {
+  currentActiveSession = null;
+  currentAdminProfile = null;
+  const viewLanding = document.getElementById('view-landing');
+  const viewDashboard = document.getElementById('view-dashboard');
+  if (viewLanding) viewLanding.classList.add('active');
+  if (viewDashboard) viewDashboard.classList.remove('active');
+  switchLoginTab('owner');
+}
+
+const initialHasAuthToken = hasPersistedAuthToken();
+
+async function checkAdminSession() {
+  if (!supabaseClient) return { status: 'no_session' };
+  try {
+    console.log('[AUTH STORAGE KEY]', supabaseClient?.auth?.storageKey, 'keys:', Object.keys(localStorage));
     const { data: sessionData, error: sessionErr } = await supabaseClient.auth.getSession();
     if (sessionErr || !sessionData || !sessionData.session) {
       currentActiveSession = null;
       currentAdminProfile = null;
-      return null;
+      return { status: initialHasAuthToken ? 'expired' : 'no_session' };
     }
 
     currentActiveSession = sessionData.session;
@@ -94,19 +122,19 @@ async function checkAdminSession() {
         await supabaseClient.auth.signOut();
         currentActiveSession = null;
         currentAdminProfile = null;
-        return null;
+        return { status: 'expired' };
       }
       currentAdminProfile = profile;
       console.log(`[AUTH AUDIT] Admin profile validated. role: ${profile.role}, is_active: ${profile.is_active}`);
       if (typeof updateOwnerFabVisibility === 'function') updateOwnerFabVisibility();
     }
 
-    return { session: currentActiveSession, profile: currentAdminProfile };
+    return { status: 'valid', session: currentActiveSession, profile: currentAdminProfile };
   } catch (err) {
     console.error("[AUTH AUDIT] Session check error:", err);
     currentActiveSession = null;
     currentAdminProfile = null;
-    return null;
+    return { status: hasPersistedAuthToken() ? 'expired' : 'no_session' };
   }
 }
 
@@ -808,15 +836,21 @@ const initAppHandler = async () => {
     });
   }
 
-  // 1. Restaurar e validar a sessÃ£o do Supabase Auth
-  const authState = await checkAdminSession();
-  if (!authState) {
-    // Nenhuma sessÃ£o ativa -> Exibir tela de login sem chamar APIs protegidas
-    handleInvalidSession("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+  // 1. Restaurar e validar a sessão do Supabase Auth
+  const authRes = await checkAdminSession();
+  if (!authRes || authRes.status === 'no_session') {
+    // CENÁRIO A: Primeiro acesso / Sem sessão -> Exibir tela de login sem toast de expiração
+    showLoginViewOnly();
+    return;
+  }
+  if (authRes.status === 'expired') {
+    // CENÁRIO B: Sessão anterior expirada/inválida -> Exibir toast de expiração
+    handleInvalidSession("Sua sessão expirou. Faça login novamente.");
     return;
   }
 
-  // 2. SessÃ£o Ativa & VÃ¡lida -> Carregar painel
+  // 2. CENÁRIO C: Sessão Ativa & Válida -> Carregar painel
+  const authState = authRes;
   if (authState.profile && (authState.profile.role === 'client_user' || authState.profile.role === 'client')) {
     mockData.activeProfile = 'client';
   } else {
@@ -1100,7 +1134,8 @@ async function switchDashboardTab(targetTab) {
     view.classList.add('hidden');
   });
 
-  const activeTabEl = document.getElementById(`tab-${targetTab}`);
+  const targetTabId = targetTab === 'client-deliveries' ? 'client-teles' : targetTab;
+  const activeTabEl = document.getElementById(`tab-${targetTabId}`);
   if (activeTabEl) {
     activeTabEl.classList.add('active');
     activeTabEl.classList.remove('hidden');
@@ -1198,10 +1233,8 @@ async function switchDashboardTab(targetTab) {
     renderClientHistoryTable();
   } else if (targetTab === 'client-ratings') {
     renderClientRatings();
-  } else if (targetTab === 'client-teles') {
-    await fetchPendingDeliveries();
-    await fetchClientHistory();
-    renderClientTelesUnified();
+  } else if (targetTab === 'client-teles' || targetTab === 'client-deliveries') {
+    await loadClientDeliveries();
   } else if (targetTab === 'client-support') {
     const dot = document.getElementById('client-chat-dot');
     if (dot) dot.classList.add('hidden');
@@ -3927,257 +3960,347 @@ async function dispatchDelivery(deliveryId, riderId) {
   }
 
   await loadTelesManagement();
-  showToastNotification(`Tele ${displayCode} atribuÃ­da com sucesso a ${rider.name}.`);
+  showToastNotification(`Tele ${displayCode} atribuída com sucesso a ${rider.name}.`);
 }
 
+// =========================================================================
+// GATE RC.13 — REDESIGN OPERACIONAL DA ABA "ENTREGAS" DO PAINEL DO CLIENTE
+// =========================================================================
 
+currentClientTeleFilter = 'all'; // 'all', 'pending', 'active', 'completed', 'canceled'
+let currentClientTelePeriod = 'this_month'; // 'this_month', 'today', 'this_week', 'all'
+let currentClientTeleSearch = '';
+let currentClientDeliveriesPage = 1;
+window.currentClientDeliveriesPage = currentClientDeliveriesPage;
+const CLIENT_DELIVERIES_PAGE_SIZE = 15;
+let currentDeliveriesFetchToken = 0;
+let clientDeliveriesCache = [];
+let clientDeliveriesTotalCount = 0;
 
-window.setClientTeleViewMode = function(mode) {
-  clientTeleViewMode = mode;
-  document.querySelectorAll('#client-view-toggle-grid, #client-view-toggle-list').forEach(btn => btn.classList.remove('active'));
-  const btn = document.getElementById(`client-view-toggle-${mode}`);
-  if (btn) btn.classList.add('active');
-  renderClientTelesUnified();
-};
+// Mapeamento autoral dos 13 status canônicos reais do banco (sem inventar aliases)
+function mapClientDeliveryStatus(statusRaw) {
+  const norm = String(statusRaw || '').trim().toLowerCase();
 
-window.setClientTeleFilter = function(filter) {
-  currentClientTeleFilter = filter;
-  document.querySelectorAll('.teles-filters .filter-pill').forEach(btn => {
-    if (btn.id.startsWith('client-filter-')) {
-      btn.classList.remove('active');
+  // 1. AGUARDANDO
+  if (norm === 'solicitada' || norm === 'aguardando_despacho') {
+    return {
+      group: 'pending',
+      label: norm === 'solicitada' ? 'Solicitada' : 'Aguardando Despacho',
+      badgeClass: 'status-warning'
+    };
+  }
+
+  // 2. EM EXECUÇÃO
+  if (['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_rota', 'em_entrega'].includes(norm)) {
+    let label = 'Em execução';
+    if (norm === 'motoboy_designado') label = 'Motoboy a caminho';
+    else if (norm === 'indo_coletar') label = 'Indo coletar';
+    else if (norm === 'aguardando_coleta') label = 'Aguardando coleta';
+    else if (norm === 'coletada') label = 'Coletada';
+    else if (norm === 'em_rota') label = 'Em rota';
+    else if (norm === 'em_entrega') label = 'Em entrega';
+
+    return {
+      group: 'active',
+      label,
+      badgeClass: 'status-info'
+    };
+  }
+
+  // 3. CONCLUÍDAS
+  if (['concluido', 'concluida', 'entregue'].includes(norm)) {
+    return {
+      group: 'completed',
+      label: 'Concluída',
+      badgeClass: 'status-success'
+    };
+  }
+
+  // 4. CANCELADAS
+  if (['cancelado', 'cancelada'].includes(norm)) {
+    return {
+      group: 'canceled',
+      label: 'Cancelada',
+      badgeClass: 'status-danger'
+    };
+  }
+
+  // UNKNOWN / UNRECOGNIZED STATUS - SAFE NEUTRAL FALLBACK (Log diagnóstico sem forçar em Aguardando)
+  console.warn(`[STATUS MAPPER] Status não reconhecido retornado pelo banco: "${statusRaw}"`);
+  return {
+    group: 'unknown',
+    label: statusRaw || 'Desconhecido',
+    badgeClass: 'status-neutral'
+  };
+}
+
+function getStatusArrayForGroup(group) {
+  if (group === 'pending') return ['solicitada', 'aguardando_despacho'];
+  if (group === 'active') return ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_rota', 'em_entrega'];
+  if (group === 'completed') return ['concluido', 'concluida', 'entregue'];
+  if (group === 'canceled') return ['cancelado', 'cancelada'];
+  return null;
+}
+
+function getPeriodDateRangeISO(periodKey) {
+  const now = new Date();
+  if (periodKey === 'today') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    return { startIso: start.toISOString() };
+  }
+  if (periodKey === 'this_week') {
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const start = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
+    return { startIso: start.toISOString() };
+  }
+  if (periodKey === 'this_month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    return { startIso: start.toISOString() };
+  }
+  return { startIso: null };
+}
+
+function formatTeleCodeDisplay(teleCodeOrId) {
+  if (!teleCodeOrId) return 'TEL-000000';
+  const str = String(teleCodeOrId).trim();
+  if (str.startsWith('TEL-')) return str;
+  if (isUuidString(str)) {
+    return `TEL-${str.slice(0, 6).toUpperCase()}`;
+  }
+  return `TEL-${str}`;
+}
+
+async function updateClientDeliveriesSummaryCountsFromBackend(clientId, periodKey) {
+  if (!supabaseClient || !clientId) return;
+
+  try {
+    const { startIso } = getPeriodDateRangeISO(periodKey || currentClientTelePeriod);
+
+    let query = supabaseClient
+      .from('teles')
+      .select('status')
+      .eq('client_id', clientId);
+
+    if (startIso) {
+      query = query.gte('created_at', startIso);
     }
-  });
-  const btn = document.getElementById(`client-filter-${filter}`);
-  if (btn) btn.classList.add('active');
-  renderClientTelesUnified();
-};
 
-window.renderClientTelesUnified = function() {
-  const container = document.getElementById('client-teles-content-container');
-  if (!container) return;
+    const { data, error } = await query;
 
-  const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente nÃ£o vinculado';
+    if (error || !data) return;
 
-  const pendingList = mockData.pendingDeliveries.filter(d => d.client === currentCommerce);
-  const activeList = mockData.clientHistory.filter(o => o.client === currentCommerce && o.status !== 'Entregue' && o.status !== 'ConcluÃ­do' && o.status !== 'Cancelado');
-  const completedList = mockData.clientHistory.filter(o => o.client === currentCommerce && (o.status === 'Entregue' || o.status === 'ConcluÃ­do'));
-  const canceledList = mockData.clientHistory.filter(o => o.client === currentCommerce && o.status === 'Cancelado');
+    let pending = 0;
+    let active = 0;
+    let completed = 0;
+    let canceled = 0;
 
-  const pendingCount = pendingList.length;
-  const activeCount = activeList.length;
-  const completedCount = completedList.length;
-  const canceledCount = canceledList.length;
-  const allCount = pendingCount + activeCount + completedCount + canceledCount;
+    data.forEach(item => {
+      const mapped = mapClientDeliveryStatus(item.status);
+      if (mapped.group === 'pending') pending++;
+      else if (mapped.group === 'active') active++;
+      else if (mapped.group === 'completed') completed++;
+      else if (mapped.group === 'canceled') canceled++;
+    });
 
+    const all = pending + active + completed + canceled;
+    updateClientDeliveriesSummaryCounts({ pending, active, completed, canceled, all });
+  } catch (e) {
+    console.warn("[SUMMARY COUNTS] Erro ao atualizar contadores:", e);
+  }
+}
+
+function updateClientDeliveriesSummaryCounts(counts) {
   const elAll = document.getElementById('client-count-all');
   const elPending = document.getElementById('client-count-pending');
   const elActive = document.getElementById('client-count-active');
   const elCompleted = document.getElementById('client-count-completed');
   const elCanceled = document.getElementById('client-count-canceled');
 
-  if (elAll) elAll.innerText = allCount;
-  if (elPending) elPending.innerText = pendingCount;
-  if (elActive) elActive.innerText = activeCount;
-  if (elCompleted) elCompleted.innerText = completedCount;
-  if (elCanceled) elCanceled.innerText = canceledCount;
-
-  const pendingItems = pendingList.map(d => {
-    const fixedPrice = getFixedPriceByAddress(d.address);
-    const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
-
-    return {
-      id: d.id,
-      tele_code: d.tele_code || null,
-      type: 'pending',
-      client: d.client || 'Cliente nÃ£o vinculado',
-      destName: d.destName,
-      address: d.address,
-      dest_lat: d.dest_lat,
-      dest_lng: d.dest_lng,
-      dist: d.dist || 'â€”',
-      price: priceFormatted,
-      payment: d.payment || 'A combinar',
-      cargo: d.cargo || 'Pedido',
-      rider: 'Aguardando...',
-      date: 'Hoje, Agora',
-      created_at: d.created_at,
-      status: 'Pendente',
-      statusClass: 'status-warning'
-    };
-  });
-
-  const historyItems = [...activeList, ...completedList, ...canceledList].map(o => {
-    let type = 'active';
-    if (o.status === 'Entregue' || o.status === 'ConcluÃ­do') type = 'completed';
-    else if (o.status === 'Cancelado') type = 'canceled';
-
-    const fixedPrice = getFixedPriceByAddress(o.address);
-    const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
-
-    return {
-      id: o.id,
-      tele_code: o.tele_code || null,
-      type: type,
-      client: o.client || 'Cliente nÃ£o vinculado',
-      destName: o.destName,
-      address: o.address,
-      dest_lat: o.dest_lat,
-      dest_lng: o.dest_lng,
-      dist: o.dist || 'â€”',
-      price: priceFormatted,
-      payment: o.payment || 'Pago',
-      cargo: o.cargo || 'Pedido',
-      rider: o.rider || 'Sem entregador',
-      date: o.date,
-      created_at: o.created_at,
-      status: o.status,
-      statusClass: o.statusClass || (o.status === 'Entregue' || o.status === 'ConcluÃ­do' ? 'status-success' : (o.status === 'Cancelado' ? 'status-danger' : 'status-progress'))
-    };
-  });
-
-  const allItems = [...pendingItems, ...historyItems];
-
-  let filteredList = [];
-  if (currentClientTeleFilter === 'all') {
-    filteredList = allItems;
-  } else {
-    filteredList = allItems.filter(item => item.type === currentClientTeleFilter);
-  }
-
-  filteredList.sort((a, b) => {
-    const timeA = getTeleTimestamp(a);
-    const timeB = getTeleTimestamp(b);
-    if (timeA !== timeB) {
-      return currentTeleSortOrder === 'desc' ? (timeB - timeA) : (timeA - timeB);
-    }
-    const codeA = String(a.tele_code || a.id || '');
-    const codeB = String(b.tele_code || b.id || '');
-    return currentTeleSortOrder === 'desc' ? codeB.localeCompare(codeA) : codeA.localeCompare(codeB);
-  });
-
-  if (clientTeleViewMode === 'grid') {
-    renderClientTelesGrid(filteredList);
-  } else {
-    renderClientTelesTable(filteredList);
-  }
-};
-
-function renderClientTelesGrid(list) {
-  const container = document.getElementById('client-teles-content-container');
-  if (!container) return;
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); color: var(--color-text-muted);">
-        <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--color-text-muted); margin-bottom: 12px; display: inline-block;"></i>
-        <p style="font-weight: 600; color: var(--color-text);">Nenhuma tele encontrada</p>
-        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critÃ©rios do filtro selecionado.</p>
-      </div>
-    `;
-    if (window.lucide) lucide.createIcons();
-    return;
-  }
-
-  let html = `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">`;
-
-  list.forEach(item => {
-    const originBadge = getOriginBadgeHtml(item.payment, item.id);
-    const isCanceled = item.type === 'canceled';
-    const isCompleted = item.type === 'completed';
-
-    html += `
-      <div class="active-card" style="border: 1px solid ${isCanceled ? 'rgba(239, 68, 68, 0.2)' : (isCompleted ? 'rgba(34, 197, 94, 0.2)' : 'var(--border-color)')};">
-        <div class="active-card-header">
-          <strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.tele_code, item)}</strong>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            ${originBadge}
-          </div>
-        </div>
-        <div class="active-card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-          <p style="margin: 0;"><strong>Destino:</strong> ${escapeHtml(item.destName)}</p>
-          <p class="text-muted text-xs" style="margin: 0; display: flex; align-items: center; gap: 4px; line-height: 1.4;">
-            <i data-lucide="map-pin" style="width: 12px; height: 12px; flex-shrink: 0;"></i>
-            <span style="flex: 1;">${escapeHtml(item.address)}</span>
-            ${item.dest_lat && item.dest_lng ? `
-              <button onclick="window.openQuickMapModal('${item.id}', ${item.dest_lat}, ${item.dest_lng})" style="background: rgba(255, 185, 0, 0.15); border: 1px solid rgba(255, 185, 0, 0.3); color: var(--primary); border-radius: 4px; padding: 2px 5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; outline: none; transition: all 0.2s;" title="Visualizar no Mapa">
-                <i data-lucide="map" style="width: 12px; height: 12px;"></i>
-              </button>
-            ` : ''}
-          </p>
-          <p style="margin: 0;"><strong>Mercadoria:</strong> ${escapeHtml(item.cargo)}</p>
-          <p style="margin: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-            <strong>DistÃ¢ncia:</strong> ${escapeHtml(item.dist.split('|')[0])} â€¢
-            <strong>Taxa:</strong>
-            <span style="font-weight: 600; color: var(--primary);">${escapeHtml(item.price)}</span>
-          </p>
-          <p style="margin: 0;"><strong>Motoboy:</strong> <span class="badge badge-success" style="background: var(--accent-cyan-glow); color: var(--accent-cyan); border-color: rgba(0, 174, 239, 0.2);">${escapeHtml(item.rider)}</span></p>
-          <p style="margin: 0;"><strong>Status:</strong> <span class="status-indicator ${escapeHtml(item.statusClass)}">${escapeHtml(item.status)}</span></p>
-        </div>
-      </div>
-    `;
-  });
-
-  html += `</div>`;
-  container.innerHTML = html;
-  if (window.lucide) lucide.createIcons();
+  if (elAll) elAll.innerText = counts.all || 0;
+  if (elPending) elPending.innerText = counts.pending || 0;
+  if (elActive) elActive.innerText = counts.active || 0;
+  if (elCompleted) elCompleted.innerText = counts.completed || 0;
+  if (elCanceled) elCanceled.innerText = counts.canceled || 0;
 }
 
-function renderClientTelesTable(list) {
+async function loadClientDeliveries() {
   const container = document.getElementById('client-teles-content-container');
   if (!container) return;
 
-  if (list.length === 0) {
+  const fetchToken = ++currentDeliveriesFetchToken;
+
+  // 1. Resolver o client_id autoritativo do contexto ativo
+  const activeCtx = resolveActiveClientContext();
+  const resolvedClientId = activeCtx ? activeCtx.clientId : null;
+
+  // FAIL CLOSED se o commercial_clients.id não for resolvido
+  if (!resolvedClientId) {
+    if (fetchToken !== currentDeliveriesFetchToken) return;
     container.innerHTML = `
-      <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); color: var(--color-text-muted);">
-        <i data-lucide="check-circle" style="width: 48px; height: 48px; color: var(--color-text-muted); margin-bottom: 12px; display: inline-block;"></i>
-        <p style="font-weight: 600; color: var(--color-text);">Nenhuma tele encontrada</p>
-        <p style="font-size: 0.9rem;">Nenhuma tele atende aos critÃ©rios do filtro selecionado.</p>
+      <div style="text-align: center; padding: 48px 20px; background-color: var(--bg-card, #1a1a24); border: 1px dashed var(--border-color, #2a2a3a); border-radius: 12px;">
+        <i data-lucide="shield-alert" style="width: 48px; height: 48px; color: var(--warning, #f59e0b); margin-bottom: 12px; display: inline-block;"></i>
+        <p style="font-weight: 600; font-size: 1.1rem; color: var(--color-text, #fff); margin-bottom: 6px;">Nenhum cliente ativo selecionado</p>
+        <p style="font-size: 0.9rem; color: var(--color-text-muted, #8a8a9e);">Selecione um cliente comercial no painel ou faça login como parceiro.</p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    updateClientDeliveriesSummaryCounts({ pending: 0, active: 0, completed: 0, canceled: 0, all: 0 });
+    return;
+  }
+
+  // 2. Exibir Skeleton / Loading State
+  container.innerHTML = `
+    <div style="text-align: center; padding: 48px 20px;">
+      <div class="spinner-border text-primary" role="status" style="width: 32px; height: 32px; border-width: 3px; display: inline-block; animation: spin 0.8s linear infinite; border-radius: 50%; border: 3px solid rgba(230, 57, 70, 0.2); border-top-color: var(--primary, #e63946);"></div>
+      <p style="font-size: 0.9rem; color: var(--color-text-muted, #8a8a9e); margin-top: 12px;">Carregando entregas...</p>
+    </div>
+  `;
+
+  try {
+    // 3. Atualizar contadores de resumo do backend para TODO o período do cliente
+    updateClientDeliveriesSummaryCountsFromBackend(resolvedClientId, currentClientTelePeriod);
+
+    if (!supabaseClient) {
+      if (fetchToken !== currentDeliveriesFetchToken) return;
+      container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--color-text-muted);">Supabase não conectado.</div>`;
+      return;
+    }
+
+    // 4. Montar query Supabase autoritativa e paginada
+    const statusArray = getStatusArrayForGroup(currentClientTeleFilter);
+    const { startIso } = getPeriodDateRangeISO(currentClientTelePeriod);
+
+    const fromIndex = (currentClientDeliveriesPage - 1) * CLIENT_DELIVERIES_PAGE_SIZE;
+    const toIndex = fromIndex + CLIENT_DELIVERIES_PAGE_SIZE - 1;
+
+    let query = supabaseClient
+      .from('teles')
+      .select('id, tele_code, client_id, motoboy_id, status, pickup_address, delivery_address, delivery_reference, recipient_name, recipient_phone, notes, total_order_amount, delivery_charge, payment_method, created_at, updated_at, completed_at, cancelled_at, cancellation_reason, fleet:motoboy_id(name)', { count: 'exact' })
+      .eq('client_id', resolvedClientId)
+      .order('created_at', { ascending: false });
+
+    if (statusArray && statusArray.length > 0) {
+      query = query.in('status', statusArray);
+    }
+
+    if (startIso) {
+      query = query.gte('created_at', startIso);
+    }
+
+    query = query.range(fromIndex, toIndex);
+
+    const { data, count, error } = await query;
+
+    // Proteção contra resposta assíncrona atrasada em troca de contexto (Race Condition Protection)
+    if (fetchToken !== currentDeliveriesFetchToken) return;
+
+    if (error) {
+      console.error("[DELIVERIES LOADER] Erro na busca Supabase:", error);
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px; background-color: var(--bg-card); border: 1px dashed var(--danger); border-radius: 12px; color: var(--danger);">
+          <p style="font-weight: 600;">Falha ao carregar entregas</p>
+          <p style="font-size: 0.85rem; color: var(--color-text-muted);">${escapeHtml(error.message || 'Erro de conexão.')}</p>
+        </div>
+      `;
+      return;
+    }
+
+    clientDeliveriesCache = data || [];
+    clientDeliveriesTotalCount = count || 0;
+
+    // 5. Aplicar busca textual se o usuário digitou no campo
+    let itemsToDisplay = clientDeliveriesCache;
+    if (currentClientTeleSearch) {
+      const q = currentClientTeleSearch.trim().toLowerCase();
+      itemsToDisplay = itemsToDisplay.filter(item => {
+        const code = String(item.tele_code || formatTeleCodeDisplay(item.id)).toLowerCase();
+        const dest = String(item.recipient_name || '').toLowerCase();
+        const addr = String(item.delivery_address || '').toLowerCase();
+        const phone = String(item.recipient_phone || '').toLowerCase();
+        return code.includes(q) || dest.includes(q) || addr.includes(q) || phone.includes(q);
+      });
+    }
+
+    // 6. Renderizar Tabela / Cards / Estado Vazio / Paginação
+    renderClientDeliveriesView(itemsToDisplay, clientDeliveriesTotalCount);
+
+  } catch (err) {
+    if (fetchToken !== currentDeliveriesFetchToken) return;
+    console.error("[DELIVERIES LOADER] Exceção inesperada:", err);
+  }
+}
+
+function renderClientDeliveriesView(list, totalCount) {
+  const container = document.getElementById('client-teles-content-container');
+  if (!container) return;
+
+  if (!list || list.length === 0) {
+    let emptyMsg = "Não encontramos entregas para os filtros selecionados.";
+    if (currentClientTeleFilter === 'all' && currentClientTelePeriod === 'all' && !currentClientTeleSearch) {
+      emptyMsg = "Você ainda não possui entregas cadastradas.";
+    }
+
+    container.innerHTML = `
+      <div style="text-align: center; padding: 48px 20px; background-color: var(--bg-card, #1a1a24); border: 1px dashed var(--border-color, #2a2a3a); border-radius: 12px; color: var(--color-text-muted, #8a8a9e);">
+        <i data-lucide="package-open" style="width: 48px; height: 48px; color: var(--color-text-muted, #8a8a9e); margin-bottom: 12px; display: inline-block;"></i>
+        <p style="font-weight: 600; font-size: 1.05rem; color: var(--color-text, #fff); margin-bottom: 6px;">Nenhuma entrega encontrada</p>
+        <p style="font-size: 0.9rem; margin-bottom: 16px;">${escapeHtml(emptyMsg)}</p>
+        <button class="btn btn-outline btn-sm" onclick="switchDashboardTab('client-request-delivery')" style="display: inline-flex; align-items: center; gap: 6px;">
+          <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Nova solicitação
+        </button>
       </div>
     `;
     if (window.lucide) lucide.createIcons();
     return;
   }
 
+  const totalPages = Math.ceil(totalCount / CLIENT_DELIVERIES_PAGE_SIZE) || 1;
+
   let html = `
-    <div class="table-responsive">
-      <table class="compact-table">
+    <!-- Tabela Desktop -->
+    <div class="table-responsive desktop-deliveries-table">
+      <table class="compact-table" style="width: 100%; border-collapse: collapse;">
         <thead>
-          <tr>
-            <th>Origem</th>
-            <th>CÃ³digo</th>
-            <th>DestinatÃ¡rio</th>
-            <th>EndereÃ§o</th>
-            <th>Motoboy</th>
-            <th onclick="window.toggleTeleSortOrder()" style="cursor: pointer; user-select: none;" title="Clique para alternar ordenaÃ§Ã£o por Data/Hora">
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <span>Data/Hora</span>
-                <span style="font-size: 0.78rem; padding: 2px 6px; background: rgba(255, 185, 0, 0.15); color: var(--primary); border-radius: 4px; border: 1px solid rgba(255, 185, 0, 0.3);">
-                  ${currentTeleSortOrder === 'desc' ? 'â†“ Recentes' : 'â†‘ Antigas'}
-                </span>
-              </div>
-            </th>
-            <th>Taxa (Valor)</th>
-            <th>Status</th>
+          <tr style="border-bottom: 1px solid var(--border-color, #2a2a3a); text-align: left;">
+            <th style="padding: 12px;">Código</th>
+            <th style="padding: 12px;">Data / Hora</th>
+            <th style="padding: 12px;">Destino</th>
+            <th style="padding: 12px;">Motoboy</th>
+            <th style="padding: 12px;">Valor Tele</th>
+            <th style="padding: 12px;">Status</th>
+            <th style="padding: 12px; text-align: right;">Ações</th>
           </tr>
         </thead>
         <tbody>
   `;
 
   list.forEach(item => {
-    const originBadge = getOriginBadgeHtml(item.payment, item.id);
-    const dateFormatted = formatOrderDate(item.date, item.created_at);
+    const teleCodeDisplay = formatTeleCodeDisplay(item.tele_code || item.id);
+    const dateFormatted = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const recipient = item.recipient_name ? escapeHtml(item.recipient_name) : '';
+    const address = escapeHtml(item.delivery_address || '');
+    const destDisplay = recipient ? `<strong>${recipient}</strong><br><span class="text-muted text-xs">${address}</span>` : `<span class="text-xs">${address}</span>`;
+
+    const motoboyName = item.fleet?.name || (item.rider && item.rider !== 'Aguardando Despacho' ? item.rider : null);
+    const riderBadge = motoboyName ? `<span class="badge badge-soft" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); font-weight: 500;">${escapeHtml(motoboyName)}</span>` : `<span class="text-muted text-xs" style="font-style: italic;">Aguardando motoboy</span>`;
+
+    const statusObj = mapClientDeliveryStatus(item.status);
+    const priceFormatted = formatMoneyBR(Number(item.delivery_charge || 0));
 
     html += `
-      <tr>
-        <td>${originBadge}</td>
-        <td><strong style="font-family: var(--font-display);">${formatOrderIdForDisplay(item.tele_code, item)}</strong></td>
-        <td>${escapeHtml(item.destName)}</td>
-        <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.address)}">${escapeHtml(item.address)}</td>
-        <td><span class="badge badge-soft">${escapeHtml(item.rider)}</span></td>
-        <td>${dateFormatted}</td>
-        <td><strong style="color: var(--primary);">${escapeHtml(item.price)}</strong></td>
-        <td><span class="status-indicator ${escapeHtml(item.statusClass)}">${escapeHtml(item.status)}</span></td>
+      <tr style="border-bottom: 1px solid var(--border-color, #1f1f2e);">
+        <td style="padding: 12px;"><strong style="font-family: var(--font-display); font-size: 0.9rem; color: var(--color-text, #fff);">${escapeHtml(teleCodeDisplay)}</strong></td>
+        <td style="padding: 12px; font-size: 0.85rem; color: var(--color-text-muted, #a0a0b0);">${dateFormatted}</td>
+        <td style="padding: 12px; max-width: 280px; font-size: 0.85rem;">${destDisplay}</td>
+        <td style="padding: 12px;">${riderBadge}</td>
+        <td style="padding: 12px;"><strong style="color: var(--primary, #e63946); font-size: 0.95rem;">${priceFormatted}</strong></td>
+        <td style="padding: 12px;"><span class="status-indicator ${statusObj.badgeClass}">${escapeHtml(statusObj.label)}</span></td>
+        <td style="padding: 12px; text-align: right;">
+          <button class="btn btn-secondary btn-sm" onclick="openClientTeleDetailModal('${item.id}')" style="padding: 4px 10px; font-size: 0.8rem; border-radius: 6px;">
+            <i data-lucide="eye" style="width: 13px; height: 13px; margin-right: 4px;"></i> Ver detalhes
+          </button>
+        </td>
       </tr>
     `;
   });
@@ -4186,11 +4309,269 @@ function renderClientTelesTable(list) {
         </tbody>
       </table>
     </div>
+
+    <!-- Lista de Cards Mobile -->
+    <div class="mobile-deliveries-list" style="display: flex; flex-direction: column; gap: 12px;">
   `;
+
+  list.forEach(item => {
+    const teleCodeDisplay = formatTeleCodeDisplay(item.tele_code || item.id);
+    const dateFormatted = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+    const recipient = item.recipient_name ? escapeHtml(item.recipient_name) : '';
+    const address = escapeHtml(item.delivery_address || '');
+    const motoboyName = item.fleet?.name || (item.rider && item.rider !== 'Aguardando Despacho' ? item.rider : null);
+    const statusObj = mapClientDeliveryStatus(item.status);
+    const priceFormatted = formatMoneyBR(Number(item.delivery_charge || 0));
+
+    html += `
+      <div class="mobile-tele-card" style="background: var(--bg-card, #1a1a24); border: 1px solid var(--border-color, #2a2a3a); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="font-family: var(--font-display); font-size: 1rem; color: var(--color-text, #fff);">${escapeHtml(teleCodeDisplay)}</strong>
+          <span class="status-indicator ${statusObj.badgeClass}">${escapeHtml(statusObj.label)}</span>
+        </div>
+        <div style="font-size: 0.85rem; color: var(--color-text-muted, #a0a0b0);">
+          <p style="margin: 0 0 4px 0;"><strong>Destino:</strong> ${recipient ? `${recipient} — ` : ''}${address}</p>
+          <p style="margin: 0 0 4px 0;"><strong>Horário:</strong> ${dateFormatted}</p>
+          <p style="margin: 0 0 4px 0;"><strong>Motoboy:</strong> ${motoboyName ? escapeHtml(motoboyName) : 'Aguardando motoboy'}</p>
+          <p style="margin: 0;"><strong>Valor:</strong> <strong style="color: var(--primary, #e63946);">${priceFormatted}</strong></p>
+        </div>
+        <div style="margin-top: 6px; text-align: right;">
+          <button class="btn btn-secondary btn-sm" onclick="openClientTeleDetailModal('${item.id}')" style="width: 100%; justify-content: center; padding: 6px 12px; font-size: 0.82rem; border-radius: 6px;">
+            <i data-lucide="eye" style="width: 14px; height: 14px; margin-right: 4px;"></i> Ver detalhes
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+
+  // Barra de Paginação
+  if (totalPages > 1 || totalCount > CLIENT_DELIVERIES_PAGE_SIZE) {
+    html += `
+      <div class="pagination-bar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border-color, #2a2a3a); flex-wrap: wrap; gap: 12px;">
+        <span class="text-muted text-xs">Exibindo ${list.length} de ${totalCount} entregas (Página ${currentClientDeliveriesPage} de ${totalPages})</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="btn btn-secondary btn-sm" ${currentClientDeliveriesPage <= 1 ? 'disabled' : ''} onclick="changeClientDeliveriesPage(${currentClientDeliveriesPage - 1})" style="padding: 4px 12px; font-size: 0.8rem;">
+            Anterior
+          </button>
+          <span style="font-size: 0.85rem; font-weight: 600; padding: 0 4px;">${currentClientDeliveriesPage}</span>
+          <button class="btn btn-secondary btn-sm" ${currentClientDeliveriesPage >= totalPages ? 'disabled' : ''} onclick="changeClientDeliveriesPage(${currentClientDeliveriesPage + 1})" style="padding: 4px 12px; font-size: 0.8rem;">
+            Próxima
+          </button>
+        </div>
+      </div>
+    `;
+  }
 
   container.innerHTML = html;
   if (window.lucide) lucide.createIcons();
 }
+
+// Handlers de Filtro e Paginação
+window.setClientTeleFilter = function(filter) {
+  currentClientTeleFilter = filter;
+  currentClientDeliveriesPage = 1;
+  window.currentClientDeliveriesPage = 1;
+  document.querySelectorAll('.teles-filters .filter-pill').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  const btn = document.getElementById(`client-filter-${filter}`);
+  if (btn) btn.classList.add('active');
+  loadClientDeliveries();
+};
+
+window.setClientTelePeriodFilter = function(period) {
+  currentClientTelePeriod = period;
+  currentClientDeliveriesPage = 1;
+  window.currentClientDeliveriesPage = 1;
+  loadClientDeliveries();
+};
+
+window.handleClientTeleSearch = function(val) {
+  currentClientTeleSearch = val;
+  if (clientDeliveriesCache) {
+    let itemsToDisplay = clientDeliveriesCache;
+    if (currentClientTeleSearch) {
+      const q = currentClientTeleSearch.trim().toLowerCase();
+      itemsToDisplay = itemsToDisplay.filter(item => {
+        const code = String(item.tele_code || formatTeleCodeDisplay(item.id)).toLowerCase();
+        const dest = String(item.recipient_name || '').toLowerCase();
+        const addr = String(item.delivery_address || '').toLowerCase();
+        const phone = String(item.recipient_phone || '').toLowerCase();
+        return code.includes(q) || dest.includes(q) || addr.includes(q) || phone.includes(q);
+      });
+    }
+    renderClientDeliveriesView(itemsToDisplay, clientDeliveriesTotalCount);
+  }
+};
+
+window.changeClientDeliveriesPage = function(newPage) {
+  if (newPage < 1) return;
+  currentClientDeliveriesPage = newPage;
+  window.currentClientDeliveriesPage = newPage;
+  loadClientDeliveries();
+};
+
+window.renderClientTelesUnified = function() {
+  loadClientDeliveries();
+};
+
+// Modal / Drawer de Detalhes da Tele (Sem vazamento de percentuais 85/15 ou UUIDs técnicos)
+window.openClientTeleDetailModal = function(teleId) {
+  const item = (clientDeliveriesCache || []).find(t => String(t.id) === String(teleId));
+  if (!item) {
+    console.warn("[DETAIL MODAL] Tele não encontrada no cache local:", teleId);
+    return;
+  }
+
+  let modal = document.getElementById('modal-client-tele-detail');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-client-tele-detail';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => {
+      if (e.target === modal) closeClientTeleDetailModal();
+    };
+    document.body.appendChild(modal);
+  }
+
+  const teleCodeDisplay = formatTeleCodeDisplay(item.tele_code || item.id);
+  const statusObj = mapClientDeliveryStatus(item.status);
+  const priceFormatted = formatMoneyBR(Number(item.delivery_charge || 0));
+  const motoboyName = item.fleet?.name || (item.rider && item.rider !== 'Aguardando Despacho' ? item.rider : 'Aguardando motoboy');
+
+  // Timestamps Reais da Timeline (Sem fabricar horários inexistentes)
+  const createdDate = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR') : '—';
+  const completedDate = item.completed_at ? new Date(item.completed_at).toLocaleString('pt-BR') : null;
+  const cancelledDate = item.cancelled_at ? new Date(item.cancelled_at).toLocaleString('pt-BR') : null;
+
+  let timelineHtml = `
+    <div style="display: flex; align-items: center; gap: 10px; margin: 16px 0; padding: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6;"></div>
+        <span style="font-size: 0.75rem; color: var(--color-text-muted);">Solicitada</span>
+        <span style="font-size: 0.7rem; color: var(--color-text-muted);">${createdDate}</span>
+      </div>
+  `;
+
+  if (completedDate) {
+    timelineHtml += `
+      <div style="flex: 1; height: 2px; background: #10b981;"></div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></div>
+        <span style="font-size: 0.75rem; color: #10b981; font-weight: 600;">Entregue</span>
+        <span style="font-size: 0.7rem; color: var(--color-text-muted);">${completedDate}</span>
+      </div>
+    `;
+  } else if (cancelledDate) {
+    timelineHtml += `
+      <div style="flex: 1; height: 2px; background: #ef4444;"></div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></div>
+        <span style="font-size: 0.75rem; color: #ef4444; font-weight: 600;">Cancelada</span>
+        <span style="font-size: 0.7rem; color: var(--color-text-muted);">${cancelledDate}</span>
+      </div>
+    `;
+  } else {
+    timelineHtml += `
+      <div style="flex: 1; height: 2px; background: var(--border-color, #2a2a3a);"></div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-muted);"></div>
+        <span style="font-size: 0.75rem; color: var(--color-text-muted);">Em andamento</span>
+      </div>
+    `;
+  }
+
+  timelineHtml += `</div>`;
+
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 540px; width: 90%; background: var(--bg-card, #1a1a24); border: 1px solid var(--border-color, #2a2a3a); border-radius: 14px; padding: 24px; color: var(--color-text, #fff);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #2a2a3a); padding-bottom: 12px;">
+        <div>
+          <h3 style="margin: 0; font-family: var(--font-display); font-size: 1.3rem;">Detalhes da Entrega</h3>
+          <span style="font-size: 0.85rem; color: var(--color-text-muted);">${escapeHtml(teleCodeDisplay)}</span>
+        </div>
+        <button onclick="closeClientTeleDetailModal()" style="background: transparent; border: none; color: var(--color-text-muted); cursor: pointer; padding: 4px;">
+          <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+        </button>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span class="status-indicator ${statusObj.badgeClass}">${escapeHtml(statusObj.label)}</span>
+        <strong style="font-size: 1.2rem; color: var(--primary, #e63946);">${priceFormatted}</strong>
+      </div>
+
+      ${timelineHtml}
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.85rem; margin-top: 16px;">
+        <div style="grid-column: span 2; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+          <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Ponto de Retirada (Coleta):</strong>
+          <span>${escapeHtml(item.pickup_address || 'Endereço cadastrado do cliente')}</span>
+        </div>
+
+        <div style="grid-column: span 2; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+          <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Endereço de Entrega (Destino):</strong>
+          <span>${escapeHtml(item.delivery_address || '—')}</span>
+          ${item.delivery_reference ? `<br><small class="text-muted">Ref: ${escapeHtml(item.delivery_reference)}</small>` : ''}
+        </div>
+
+        <div style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+          <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Destinatário:</strong>
+          <span>${item.recipient_name ? escapeHtml(item.recipient_name) : '—'}</span>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+          <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Telefone de Contato:</strong>
+          <span>${item.recipient_phone ? escapeHtml(item.recipient_phone) : '—'}</span>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+          <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Motoboy Responsável:</strong>
+          <span>${escapeHtml(motoboyName)}</span>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+          <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Forma de Pagamento:</strong>
+          <span>${escapeHtml(item.payment_method || 'Faturado')}</span>
+        </div>
+
+        ${item.cargo_type ? `
+          <div style="grid-column: span 2; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+            <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Tipo de Mercadoria:</strong>
+            <span>${escapeHtml(item.cargo_type)}</span>
+          </div>
+        ` : ''}
+
+        ${item.notes ? `
+          <div style="grid-column: span 2; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;">
+            <strong style="color: var(--color-text-muted); display: block; margin-bottom: 2px;">Observações:</strong>
+            <span>${escapeHtml(item.notes)}</span>
+          </div>
+        ` : ''}
+
+        ${item.cancellation_reason ? `
+          <div style="grid-column: span 2; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); padding: 10px; border-radius: 6px; color: #ef4444;">
+            <strong style="display: block; margin-bottom: 2px;">Motivo do Cancelamento:</strong>
+            <span>${escapeHtml(item.cancellation_reason)}</span>
+          </div>
+        ` : ''}
+      </div>
+
+      <div style="margin-top: 20px; text-align: right;">
+        <button class="btn btn-secondary btn-sm" onclick="closeClientTeleDetailModal()">Fechar</button>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('active');
+  if (window.lucide) lucide.createIcons({ el: modal });
+};
+
+window.closeClientTeleDetailModal = function() {
+  const modal = document.getElementById('modal-client-tele-detail');
+  if (modal) modal.classList.remove('active');
+};
 
 // Complete delivery function
 async function completeDelivery(deliveryId, riderName) {
@@ -4937,6 +5318,7 @@ function showToastNotification(message) {
   }
 
   const toast = document.createElement('div');
+  toast.className = 'toast';
   toast.style.cssText = 'background: var(--bg-card); border-left: 4px solid var(--primary); color: var(--color-text); padding: 16px 24px; border-radius: var(--border-radius-md); box-shadow: var(--shadow-lg); font-family: var(--font-primary); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; pointer-events: auto; border: 1px solid var(--border-color); animation: toast-in 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);';
   toast.innerHTML = `<i data-lucide="check-circle" style="color: var(--primary); width: 18px; height: 18px;"></i> <span style="font-weight: 500;">${message}</span>`;
   container.appendChild(toast);
@@ -10666,42 +11048,79 @@ async function submitUpdatePassword(event) {
 
 // Resolvedor Central de Contexto Ativo de Cliente Comercial
 function resolveActiveClientContext() {
-  // CenÃ¡rio 1: Admin visualizando cliente comercial especÃ­fico
-  if (adminClientViewContext && adminClientViewContext.clientId) {
+  // Cenário 1: Admin visualizando cliente comercial específico (Impersonation Mode)
+  if (typeof adminClientViewContext !== 'undefined' && adminClientViewContext && adminClientViewContext.clientId) {
     return {
       isAdminView: true,
       clientId: adminClientViewContext.clientId,
-      clientCode: adminClientViewContext.clientCode,
-      establishmentName: adminClientViewContext.establishmentName,
+      clientCode: adminClientViewContext.clientCode || 'CLI-000000',
+      establishmentName: adminClientViewContext.establishmentName || 'Cliente Comercial',
       source: 'admin_view_context'
     };
   }
 
-  // CenÃ¡rio 2: Cliente comercial autenticado normalmente no portal
-  const userRole = String(currentAdminProfile?.role || '').trim().toLowerCase();
-  const isClientUser = (userRole === 'client_user' || userRole === 'client' || mockData?.activeProfile === 'client');
-
-  if (isClientUser && currentAdminProfile) {
-    return {
-      isAdminView: false,
-      clientId: currentAdminProfile.user_id,
-      clientCode: currentAdminProfile.email || 'CLI-000000',
-      establishmentName: currentAdminProfile.name || 'Meu Estabelecimento',
-      source: 'authenticated_client'
-    };
-  }
-
-  // CenÃ¡rio 3: Compatibilidade para cliente autenticado em memÃ³ria
-  if (typeof activeCommercialClient !== 'undefined' && activeCommercialClient && activeCommercialClient.id && mockData.activeProfile === 'client') {
+  // Cenário 2: Cliente comercial autenticado diretamente
+  if (typeof activeCommercialClient !== 'undefined' && activeCommercialClient && activeCommercialClient.id) {
     return {
       isAdminView: false,
       clientId: activeCommercialClient.id,
       clientCode: activeCommercialClient.client_code || activeCommercialClient.public_code || 'CLI-000000',
       establishmentName: activeCommercialClient.establishment_name || 'Meu Estabelecimento',
-      source: 'legacy_active_client'
+      source: 'active_commercial_client'
     };
   }
 
+  if (typeof currentClientProfile !== 'undefined' && currentClientProfile && currentClientProfile.client_id) {
+    return {
+      isAdminView: false,
+      clientId: currentClientProfile.client_id,
+      clientCode: currentClientProfile.client_code || 'CLI-000000',
+      establishmentName: currentClientProfile.establishment_name || 'Meu Estabelecimento',
+      source: 'current_client_profile'
+    };
+  }
+
+  if (typeof window !== 'undefined' && window.currentClientProfile && window.currentClientProfile.client_id) {
+    return {
+      isAdminView: false,
+      clientId: window.currentClientProfile.client_id,
+      clientCode: window.currentClientProfile.client_code || 'CLI-000000',
+      establishmentName: window.currentClientProfile.establishment_name || 'Meu Estabelecimento',
+      source: 'window_client_profile'
+    };
+  }
+
+  const userRole = String(typeof currentAdminProfile !== 'undefined' && currentAdminProfile?.role || '').trim().toLowerCase();
+  const isClientUser = (userRole === 'client_user' || userRole === 'client' || mockData?.activeProfile === 'client');
+
+  if (isClientUser && typeof currentAdminProfile !== 'undefined' && currentAdminProfile && currentAdminProfile.client_id) {
+    return {
+      isAdminView: false,
+      clientId: currentAdminProfile.client_id,
+      clientCode: currentAdminProfile.email || 'CLI-000000',
+      establishmentName: currentAdminProfile.name || 'Meu Estabelecimento',
+      source: 'authenticated_client_profile'
+    };
+  }
+
+  // Para client_user autenticado diretamente, RLS restringe commercialClientsList estritamente ao seu próprio estabelecimento
+  if (isClientUser && typeof commercialClientsList !== 'undefined' && Array.isArray(commercialClientsList) && commercialClientsList.length > 0) {
+    const clientRecord = (currentAdminProfile && currentAdminProfile.client_id)
+      ? (commercialClientsList.find(c => String(c.id) === String(currentAdminProfile.client_id)) || commercialClientsList[0])
+      : commercialClientsList[0];
+
+    if (clientRecord && clientRecord.id) {
+      return {
+        isAdminView: false,
+        clientId: clientRecord.id,
+        clientCode: clientRecord.client_code || clientRecord.public_code || 'CLI-000000',
+        establishmentName: clientRecord.establishment_name || 'Meu Estabelecimento',
+        source: 'client_user_rls_commercial_client'
+      };
+    }
+  }
+
+  // STRICT FAIL CLOSED: Sem fallback arbitrário para admin (owner/manager) nem user_id
   return null;
 }
 

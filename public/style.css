@@ -4602,3 +4602,92 @@ body.drawer-open {
   }
 }
 
+/* ================= GATE RC.13C — REDESIGN RESPONSIVO ABA ENTREGAS ================= */
+@media (max-width: 768px) {
+  /* 1. Ocultar tabela desktop e exibir lista de cards mobile */
+  .desktop-deliveries-table {
+    display: none !important;
+  }
+  .mobile-deliveries-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  /* 2. Grid de 4 Indicadores de Resumo em 2x2 */
+  .client-summary-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+  .client-summary-grid .summary-card {
+    min-width: 0 !important;
+    padding: 12px 14px !important;
+    border-radius: 10px !important;
+    box-sizing: border-box !important;
+  }
+  .client-summary-grid .summary-card h2 {
+    font-size: 1.5rem !important;
+    margin-top: 6px !important;
+  }
+
+  /* 3. Barra de Controles e Filtros em Stacking 100% Width */
+  .filter-controls-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 12px !important;
+    gap: 12px !important;
+    margin-bottom: 16px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+
+  .period-and-search-wrapper {
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+
+  .period-filter-group {
+    width: 100% !important;
+  }
+
+  #client-period-filter {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .search-input-wrapper {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 4. Horizontal Scroll Apenas Interno para Pills de Status */
+  .teles-filters {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px !important;
+    box-sizing: border-box !important;
+  }
+  .teles-filters .filter-pill {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .desktop-deliveries-table {
+    display: block !important;
+  }
+  .mobile-deliveries-list {
+    display: none !important;
+  }
+}
+
