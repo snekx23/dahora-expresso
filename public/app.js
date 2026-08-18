@@ -5484,160 +5484,364 @@ window.closeDownloadApp = function(event) {
   modal.classList.add('hidden');
 };
 
-// â”€â”€â”€ SUPPORT CHAT IMPLEMENTATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── SUPPORT CHAT IMPLEMENTATION (RC.15B AUTHORITATIVE) ─────────────────────
+
+let clientSupportChannel = null;
+let clientSupportFetchToken = 0;
+let activeClientSupportClientId = null;
+
+let adminClientSupportChannel = null;
+let activeAdminClientChatId = null;
+
+// Timestamp Formatter (pt-BR with America/Sao_Paulo timezone)
+function formatChatTimestamp(createdAtIso) {
+  if (!createdAtIso) return 'Agora';
+  const d = new Date(createdAtIso);
+  if (isNaN(d.getTime())) return 'Agora';
+
+  const now = new Date();
+  const isToday = d.getDate() === now.getDate() &&
+                  d.getMonth() === now.getMonth() &&
+                  d.getFullYear() === now.getFullYear();
+
+  const timeStr = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+
+  if (isToday) {
+    return timeStr;
+  }
+
+  const dateStr = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
+  return `${dateStr} ${timeStr}`;
+}
 
 // Helper to create message bubbles
 function createMessageBubble(msg, currentRole) {
-  const isMe = msg.sender_role === currentRole;
+  if (!msg) return '';
+
+  if (msg.sender_type === 'system') {
+    return `
+      <div data-message-id="${msg.id || ''}" style="display: flex; justify-content: center; width: 100%; margin: 8px 0;">
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--color-text-muted); padding: 6px 14px; border-radius: 12px; font-size: 0.75rem; text-align: center;">
+          ${escapeHtml(msg.message)}
+        </div>
+      </div>
+    `;
+  }
+
+  const isMe = (msg.sender_type || msg.sender_role) === currentRole;
   const alignStyle = isMe ? 'align-self: flex-end; align-items: flex-end;' : 'align-self: flex-start; align-items: flex-start;';
 
-  // Premium gradients/colors for bubbles
   const bubbleStyle = isMe
     ? 'background: linear-gradient(135deg, #f97316, #c2410c); color: #ffffff; border-radius: 16px 16px 2px 16px; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);'
     : 'background: #272732; border: 1px solid var(--border-color); color: var(--color-text); border-radius: 16px 16px 16px 2px;';
 
-  const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Agora';
+  const timeStr = formatChatTimestamp(msg.created_at);
+
+  let readStatusHtml = '';
+  if (isMe && currentRole === 'client') {
+    if (msg.read_at) {
+      readStatusHtml = `<span title="Lida pelo suporte" style="color: var(--accent-cyan); font-weight: 700; margin-left: 4px;">✓✓</span>`;
+    } else {
+      readStatusHtml = `<span title="Enviada" style="color: rgba(255,255,255,0.7); margin-left: 4px;">✓</span>`;
+    }
+  }
 
   return `
-    <div style="display: flex; flex-direction: column; max-width: 70%; ${alignStyle}">
-      <span style="font-size: 0.72rem; color: var(--color-text-muted); margin-bottom: 4px; font-weight: 500;">${msg.sender_name}</span>
-      <div style="padding: 10px 16px; font-size: 0.88rem; line-height: 1.45; word-break: break-word; ${bubbleStyle}">
+    <div data-message-id="${msg.id || ''}" style="display: flex; flex-direction: column; max-width: 85%; ${alignStyle}">
+      <span style="font-size: 0.72rem; color: var(--color-text-muted); margin-bottom: 4px; font-weight: 500;">${escapeHtml(msg.sender_name || 'Usuário')}</span>
+      <div style="padding: 10px 16px; font-size: 0.88rem; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere; ${bubbleStyle}">
         ${escapeHtml(msg.message)}
       </div>
-      <span style="font-size: 0.65rem; color: var(--color-text-muted); margin-top: 4px;">${time}</span>
+      <span style="font-size: 0.65rem; color: var(--color-text-muted); margin-top: 4px; display: flex; align-items: center;">
+        ${timeStr} ${readStatusHtml}
+      </span>
     </div>
   `;
 }
 
-// â”€â”€â”€ CLIENT CHAT LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Composer helper functions
+function updateClientChatSendButton() {
+  const input = document.getElementById('client-chat-input');
+  const btn = document.getElementById('client-chat-send-btn');
+  if (!input || !btn) return;
+  const hasText = input.value.trim().length > 0;
+  btn.disabled = !hasText;
+}
+
+function sendClientChatMessageKeydown(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    sendClientChatMessage(event);
+  }
+}
+
+// ─── CLIENT CHAT LOGIC ───────────────────────────────────────────────────────
+
+// Status Badge Helper (Online, Conectando..., Offline)
+function updateClientChatStatusBadge(state) {
+  const badge = document.getElementById('client-chat-status-badge');
+  if (!badge) return;
+
+  if (state === 'ONLINE') {
+    badge.style.color = '#10b981';
+    badge.style.background = 'rgba(16, 185, 129, 0.1)';
+    badge.style.border = '1px solid rgba(16, 185, 129, 0.2)';
+    badge.textContent = 'Online';
+  } else if (state === 'CONNECTING') {
+    badge.style.color = '#f59e0b';
+    badge.style.background = 'rgba(245, 158, 11, 0.1)';
+    badge.style.border = '1px solid rgba(245, 158, 11, 0.2)';
+    badge.textContent = 'Conectando...';
+  } else {
+    badge.style.color = '#9ca3af';
+    badge.style.background = 'rgba(156, 163, 175, 0.1)';
+    badge.style.border = '1px solid rgba(156, 163, 175, 0.2)';
+    badge.textContent = 'Offline';
+  }
+}
+
+// ─── CLIENT CHAT LOGIC ───────────────────────────────────────────────────────
 
 async function loadClientChatHistory() {
   const container = document.getElementById('client-chat-messages');
   if (!container) return;
 
-  container.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
-      <div style="width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent-cyan); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-    </div>
-  `;
+  const currentToken = ++clientSupportFetchToken;
 
-  const creds = mockData.credentials[mockData.activeProfile];
-  if (!creds) return;
+  // 1. Resolve authoritative Client Context
+  const context = resolveActiveClientContext();
+  const clientId = context ? context.clientId : null;
+
+  // FAIL CLOSED if no client context can be resolved
+  if (!clientId) {
+    if (clientSupportChannel && supabaseClient) {
+      supabaseClient.removeChannel(clientSupportChannel);
+      clientSupportChannel = null;
+    }
+    activeClientSupportClientId = null;
+    updateClientChatStatusBadge('OFFLINE');
+    setClientChatComposerEnabled(false);
+    container.innerHTML = `
+      <div class="chat-state-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--color-text-muted); gap: 12px; padding: 20px;">
+        <i data-lucide="shield-alert" style="width: 36px; height: 36px; color: var(--accent-orange);"></i>
+        <p style="font-size: 0.85rem; margin: 0; font-weight: 600; color: var(--color-text);">Nenhum estabelecimento selecionado</p>
+        <p style="font-size: 0.78rem; margin: 0; color: var(--color-text-muted);">Não foi possível determinar o ID do cliente para abrir o suporte.</p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  // 2. Anti-flash: Clear DOM immediately if switching to a new client
+  if (activeClientSupportClientId !== clientId) {
+    if (clientSupportChannel && supabaseClient) {
+      supabaseClient.removeChannel(clientSupportChannel);
+      clientSupportChannel = null;
+    }
+    container.innerHTML = `
+      <div class="chat-state-placeholder" style="display: flex; align-items: center; justify-content: center; height: 100%;">
+        <div style="width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent-cyan); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      </div>
+    `;
+    activeClientSupportClientId = clientId;
+  }
 
   if (!supabaseClient) {
+    updateClientChatStatusBadge('OFFLINE');
+    setClientChatComposerEnabled(false);
     renderClientMessages([]);
     return;
   }
 
+  updateClientChatStatusBadge('CONNECTING');
+
+  let historyData = null;
+  let fetchError = null;
+
   try {
     const { data, error } = await supabaseClient
-      .from('support_messages')
+      .from('client_support_messages')
       .select('*')
-      .eq('client_email', creds.email)
-      .order('id', { ascending: true });
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: true });
 
     if (error) throw error;
-
-    renderClientMessages(data || []);
+    historyData = data || [];
   } catch (err) {
-    console.error("Error loading client chat history:", err);
-    renderClientMessages([]);
+    fetchError = err;
+  }
+
+  if (currentToken !== clientSupportFetchToken) return; // Anti-race lock
+
+  if (fetchError) {
+    console.error("Error loading client chat history:", fetchError);
+    updateClientChatStatusBadge('OFFLINE');
+    setClientChatComposerEnabled(false);
+    renderClientMessagesError();
+    return;
+  }
+
+  // Ready / Empty state reached
+  setClientChatComposerEnabled(true);
+  renderClientMessages(historyData, context);
+  updateClientChatStatusBadge('ONLINE');
+
+  // Auxiliary 1: Mark messages as read (context-aware, never throws UI error)
+  try {
+    if (context.isImpersonated) {
+      Promise.resolve(supabaseClient.rpc('admin_mark_client_support_messages_read', { p_client_id: clientId })).catch(() => {});
+    } else {
+      Promise.resolve(supabaseClient.rpc('mark_my_client_support_messages_read')).catch(() => {});
+    }
+  } catch (auxErr) {
+    console.warn("Non-critical mark-read error:", auxErr);
+  }
+
+  // Auxiliary 2: Realtime Subscription
+  if (!clientSupportChannel) {
+    clientSupportChannel = supabaseClient.channel('realtime-client-support-' + clientId)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'client_support_messages',
+        filter: `client_id=eq.${clientId}`
+      }, (payload) => {
+        if (payload.new) appendAndScrollClient(payload.new);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          updateClientChatStatusBadge('ONLINE');
+        } else if (status === 'CLOSED') {
+          updateClientChatStatusBadge('OFFLINE');
+        }
+      });
   }
 }
 
-function renderClientMessages(messages) {
+function setClientChatComposerEnabled(enabled) {
+  const input = document.getElementById('client-chat-input');
+  const btn = document.getElementById('client-chat-send-btn');
+  if (input) input.disabled = !enabled;
+  if (btn && !enabled) btn.disabled = true;
+  if (enabled) updateClientChatSendButton();
+}
+
+function renderClientMessages(messages, context) {
   const container = document.getElementById('client-chat-messages');
   if (!container) return;
 
   if (messages.length === 0) {
     container.innerHTML = `
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--color-text-muted); gap: 12px; padding: 20px;">
-        <i data-lucide="message-square" style="width: 36px; height: 36px; color: var(--color-text-muted);"></i>
-        <p style="font-size: 0.85rem; margin: 0;">Nenhuma mensagem enviada ainda.</p>
-        <p style="font-size: 0.78rem; margin: 0; color: var(--color-text-muted);">Envie uma mensagem abaixo para falar com o suporte administrativo.</p>
+      <div class="chat-state-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--color-text-muted); gap: 12px; padding: 20px;">
+        <i data-lucide="headset" style="width: 42px; height: 42px; color: var(--accent-cyan); opacity: 0.8;"></i>
+        <p style="font-size: 0.9rem; margin: 0; font-weight: 600; color: var(--color-text);">Fale com nosso suporte</p>
+        <p style="font-size: 0.8rem; margin: 0; color: var(--color-text-muted); max-width: 320px; line-height: 1.4;">Envie sua dúvida ou mensagem abaixo. Nossa equipe responderá por aqui em tempo real.</p>
       </div>
     `;
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
-  container.innerHTML = messages.map(msg => createMessageBubble(msg, 'client')).join('');
+  const role = (context && context.isImpersonated) ? 'admin' : 'client';
+  container.innerHTML = messages.map(msg => createMessageBubble(msg, role)).join('');
   container.scrollTop = container.scrollHeight;
+}
+
+function renderClientMessagesError() {
+  const container = document.getElementById('client-chat-messages');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="chat-state-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--color-text-muted); gap: 12px; padding: 20px;">
+      <i data-lucide="alert-circle" style="width: 36px; height: 36px; color: #ef4444;"></i>
+      <p style="font-size: 0.88rem; margin: 0; font-weight: 600; color: var(--color-text);">Não foi possível carregar a conversa</p>
+      <button class="btn btn-secondary" onclick="loadClientChatHistory()" style="margin-top: 4px; padding: 6px 16px; font-size: 0.8rem;">Tentar novamente</button>
+    </div>
+  `;
+  if (window.lucide) lucide.createIcons();
 }
 
 async function sendClientChatMessage(event) {
   if (event) event.preventDefault();
 
   const input = document.getElementById('client-chat-input');
+  const btn = document.querySelector('#client-chat-form button[type="submit"]');
   if (!input) return;
 
   const val = input.value.trim();
   if (!val) return;
 
-  const creds = mockData.credentials[mockData.activeProfile];
-  if (!creds) return;
-
-  input.value = ''; // Clear input immediately for responsive feel
-
   if (!supabaseClient) {
-    const newMsg = {
-      client_email: creds.email,
-      sender_role: 'client',
-      sender_name: creds.name,
-      message: val,
-      created_at: new Date().toISOString()
-    };
-    appendAndScrollClient(newMsg);
-
-    // Simulate auto-reply from support admin
-    setTimeout(() => {
-      const reply = {
-        client_email: creds.email,
-        sender_role: 'admin',
-        sender_name: 'Suporte Dahora Expresso',
-        message: 'OlÃ¡! Recebemos sua mensagem. Um atendente entrarÃ¡ em contato em breve.',
-        created_at: new Date().toISOString()
-      };
-      appendAndScrollClient(reply);
-    }, 1500);
+    showToastNotification("Backend não conectado.");
     return;
   }
 
-  try {
-    const { error } = await supabaseClient
-      .from('support_messages')
-      .insert([{
-        client_email: creds.email,
-        sender_role: 'client',
-        sender_name: creds.name,
-        message: val
-      }]);
+  input.disabled = true;
+  if (btn) btn.disabled = true;
 
-    if (error) throw error;
+  try {
+    const context = resolveActiveClientContext();
+    if (!context || !context.clientId) {
+      throw new Error("Nenhum estabelecimento comercial ativo.");
+    }
+
+    let rpcRes;
+    if (context.isImpersonated) {
+      rpcRes = await supabaseClient.rpc('admin_send_client_support_message', {
+        p_client_id: context.clientId,
+        p_message: val
+      });
+    } else {
+      rpcRes = await supabaseClient.rpc('send_my_client_support_message', { p_message: val });
+    }
+
+    if (rpcRes.error) throw rpcRes.error;
+
+    if (rpcRes.data && rpcRes.data.success) {
+      input.value = '';
+      if (rpcRes.data.message) {
+        appendAndScrollClient(rpcRes.data.message);
+      }
+    } else {
+      throw new Error(rpcRes.data ? rpcRes.data.message : 'Erro ao enviar');
+    }
   } catch (err) {
     console.error("Error sending client chat message:", err);
-    showToastNotification("Erro ao enviar mensagem.");
+    showToastNotification(err.message || "Erro ao enviar mensagem.");
+  } finally {
+    input.disabled = false;
+    if (btn) btn.disabled = false;
+    updateClientChatSendButton();
+    input.focus();
   }
 }
 
 function appendAndScrollClient(msg) {
   const container = document.getElementById('client-chat-messages');
-  if (!container) return;
+  if (!container || !msg) return;
 
-  // If there was empty state message, clear it
-  const emptyState = container.querySelector('[data-lucide="message-square"]');
-  if (emptyState) {
-    container.innerHTML = '';
+  // Deduplicate by message ID if present
+  if (msg.id && container.querySelector(`[data-message-id="${msg.id}"]`)) {
+    return;
   }
 
+  // Remove any placeholder (empty state, error state, or no-client state)
+  const placeholder = container.querySelector('.chat-state-placeholder');
+  if (placeholder) {
+    placeholder.remove();
+  }
+
+  const context = resolveActiveClientContext();
+  const currentRole = (context && context.isImpersonated) ? 'admin' : 'client';
   const div = document.createElement('div');
   div.style.display = 'contents';
-  div.innerHTML = createMessageBubble(msg, 'client');
+  div.innerHTML = createMessageBubble(msg, currentRole);
   container.appendChild(div);
 
-  // Smooth scroll to bottom
-  container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+  container.scrollTop = container.scrollHeight;
 }
+
+// ─── ADMIN CLIENT CHAT LOGIC ─────────────────────────────────────────────────
 
 async function loadAdminChatChannels() {
   const listContainer = document.getElementById('admin-chat-channels-list');
@@ -5655,28 +5859,11 @@ async function loadAdminChatChannels() {
   }
 
   try {
-    const { data, error } = await supabaseClient
-      .from('support_messages')
-      .select('*')
-      .order('id', { ascending: true });
-
+    const { data, error } = await supabaseClient.rpc('get_admin_client_support_channels');
     if (error) throw error;
 
-    // Group by unique client_email
-    const clientsMap = {};
-    (data || []).forEach(msg => {
-      // ONLY process client messages (client_email does not start with '#')
-      if (msg.client_email && msg.client_email.startsWith('#')) return;
-
-      clientsMap[msg.client_email] = {
-        email: msg.client_email,
-        name: msg.sender_role === 'client' ? msg.sender_name : (clientsMap[msg.client_email]?.name || 'Cliente Comercial'),
-        lastMessage: msg.message,
-        time: new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      };
-    });
-
-    const channels = Object.values(clientsMap);
+    const channels = (data && data.success && Array.isArray(data.channels)) ? data.channels : [];
+    activeAdminChatChannels = channels;
     renderAdminChatChannels(channels);
   } catch (err) {
     console.error("Error loading admin chat channels:", err);
@@ -5694,20 +5881,28 @@ function renderAdminChatChannels(channels) {
   }
 
   listContainer.innerHTML = channels.map(chan => {
-    const isActive = activeChatClientEmail === chan.email;
+    const isActive = activeAdminClientChatId === chan.client_id;
     const activeBg = isActive ? 'background: rgba(255, 255, 255, 0.08); border-left: 3px solid var(--accent-cyan);' : 'border-left: 3px solid transparent;';
     const highlightHover = 'this.style.background=\'rgba(255, 255, 255, 0.05)\'';
     const normalBg = isActive ? 'this.style.background=\'rgba(255, 255, 255, 0.08)\'' : 'this.style.background=\'transparent\'';
+    const unreadBadge = chan.unread_count > 0
+      ? `<span style="background: #ef4444; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 10px;">${chan.unread_count}</span>`
+      : '';
+    const lastMsgText = chan.last_message ? chan.last_message.message : 'Sem mensagens';
+    const timeText = chan.last_message ? new Date(chan.last_message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
     return `
-      <div class="chat-channel-item" onclick="selectAdminChatChannel('${chan.email}', '${chan.name.replace(/'/g, "\\'")}')"
+      <div class="chat-channel-item" onclick="selectAdminChatChannel('${chan.client_id}', '${escapeHtml(chan.establishment_name || 'Cliente').replace(/'/g, "\\'")}', '${escapeHtml(chan.email || '')}')"
            onmouseover="${highlightHover}" onmouseout="${normalBg}"
            style="padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s; ${activeBg}">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <strong style="font-size: 0.88rem; color: var(--color-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">${chan.name}</strong>
-          <span style="font-size: 0.68rem; color: var(--color-text-muted);">${chan.time}</span>
+          <strong style="font-size: 0.88rem; color: var(--color-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;">${escapeHtml(chan.establishment_name || 'Cliente')}</strong>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${unreadBadge}
+            <span style="font-size: 0.68rem; color: var(--color-text-muted);">${timeText}</span>
+          </div>
         </div>
-        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${chan.lastMessage}</p>
+        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(lastMsgText)}</p>
       </div>
     `;
   }).join('');
@@ -5716,32 +5911,33 @@ function renderAdminChatChannels(channels) {
 function filterAdminChatChannels() {
   const query = document.getElementById('admin-chat-search')?.value.trim().toLowerCase() || '';
   const filtered = activeAdminChatChannels.filter(c =>
-    (c.name || '').toLowerCase().includes(query) ||
+    (c.establishment_name || '').toLowerCase().includes(query) ||
     (c.email || '').toLowerCase().includes(query)
   );
   renderAdminChatChannels(filtered);
 }
 
-async function selectAdminChatChannel(email, name) {
-  activeChatClientEmail = email;
-  activeChatClientName = name;
+async function selectAdminChatChannel(clientId, name, email) {
+  if (activeAdminClientChatId !== clientId) {
+    if (adminClientSupportChannel && supabaseClient) {
+      supabaseClient.removeChannel(adminClientSupportChannel);
+      adminClientSupportChannel = null;
+    }
+  }
 
-  // Clear admin chat dot when selecting a channel
+  activeAdminClientChatId = clientId;
+
   const adminDot = document.getElementById('admin-chat-dot');
   if (adminDot) adminDot.classList.add('hidden');
 
-  // Toggle UI visibility
   document.getElementById('admin-chat-no-selection').classList.add('hidden');
   document.getElementById('admin-chat-window-pane').classList.remove('hidden');
 
-  // Fill Header details
   document.getElementById('admin-chat-client-title').innerText = name;
   document.getElementById('admin-chat-client-subtitle').innerText = email;
 
-  // Render channels again to update active tab highlight
-  loadAdminChatChannels();
+  renderAdminChatChannels(activeAdminChatChannels);
 
-  // Load chat history for this client
   const chatMessages = document.getElementById('admin-chat-messages');
   if (chatMessages) {
     chatMessages.innerHTML = `
@@ -5758,14 +5954,33 @@ async function selectAdminChatChannel(email, name) {
 
   try {
     const { data, error } = await supabaseClient
-      .from('support_messages')
+      .from('client_support_messages')
       .select('*')
-      .eq('client_email', email)
-      .order('id', { ascending: true });
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: true });
 
     if (error) throw error;
 
     renderAdminMessages(data || []);
+
+    // Mark messages as read by admin
+    supabaseClient.rpc('admin_mark_client_support_messages_read', { p_client_id: clientId }).catch(err => {
+      console.warn('Failed to mark admin client messages as read:', err);
+    });
+
+    // Subscribe to Realtime
+    if (!adminClientSupportChannel) {
+      adminClientSupportChannel = supabaseClient.channel('realtime-admin-client-support-' + clientId)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'client_support_messages',
+          filter: `client_id=eq.${clientId}`
+        }, (payload) => {
+          if (payload.new) appendAndScrollAdmin(payload.new);
+        })
+        .subscribe();
+    }
   } catch (err) {
     console.error("Error fetching messages for admin:", err);
     renderAdminMessages([]);
@@ -5794,62 +6009,53 @@ async function sendAdminChatMessage(event) {
   if (event) event.preventDefault();
 
   const input = document.getElementById('admin-chat-input');
+  const btn = document.querySelector('#admin-chat-form button[type="submit"]');
   if (!input) return;
 
   const val = input.value.trim();
-  if (!val) return;
-
-  if (!activeChatClientEmail) return;
-
-  const creds = mockData.credentials['owner'];
-  if (!creds) return;
-
-  input.value = ''; // Responsive feedback clear
+  if (!val || !activeAdminClientChatId) return;
 
   if (!supabaseClient) {
-    const newMsg = {
-      client_email: activeChatClientEmail,
-      sender_role: 'admin',
-      sender_name: creds.name,
-      message: val,
-      created_at: new Date().toISOString()
-    };
-    appendAndScrollAdmin(newMsg);
-
-    // Simulate auto-reply
-    setTimeout(() => {
-      const reply = {
-        client_email: activeChatClientEmail,
-        sender_role: 'client',
-        sender_name: activeChatClientName,
-        message: 'Obrigado pelo retorno! Vou verificar aqui.',
-        created_at: new Date().toISOString()
-      };
-      appendAndScrollAdmin(reply);
-    }, 1500);
+    showToastNotification("Backend não conectado.");
     return;
   }
 
+  input.disabled = true;
+  if (btn) btn.disabled = true;
+
   try {
-    const { error } = await supabaseClient
-      .from('support_messages')
-      .insert([{
-        client_email: activeChatClientEmail,
-        sender_role: 'admin',
-        sender_name: creds.name,
-        message: val
-      }]);
+    const { data, error } = await supabaseClient.rpc('admin_send_client_support_message', {
+      p_client_id: activeAdminClientChatId,
+      p_message: val
+    });
 
     if (error) throw error;
+
+    if (data && data.success) {
+      input.value = '';
+      if (data.message) {
+        appendAndScrollAdmin(data.message);
+      }
+    } else {
+      throw new Error(data ? data.message : 'Erro ao responder');
+    }
   } catch (err) {
     console.error("Error sending admin message:", err);
     showToastNotification("Erro ao enviar resposta.");
+  } finally {
+    input.disabled = false;
+    if (btn) btn.disabled = false;
+    input.focus();
   }
 }
 
 function appendAndScrollAdmin(msg) {
   const container = document.getElementById('admin-chat-messages');
   if (!container) return;
+
+  if (msg.id && container.querySelector(`[data-message-id="${msg.id}"]`)) {
+    return;
+  }
 
   const emptyMsg = container.querySelector('p');
   if (emptyMsg && emptyMsg.innerText.includes('Sem mensagens')) {

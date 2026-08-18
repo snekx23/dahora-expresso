@@ -2777,24 +2777,34 @@
 
           <!-- 8. Client Support Chat Tab -->
           <div id="tab-client-support" class="dashboard-tab-content">
-            <div class="chat-container-wrapper" style="display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 480px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+            <div class="chat-container-wrapper" style="display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 480px; max-height: 800px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
               <!-- Chat Header -->
-              <div class="chat-header-pane" style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; background: var(--secondary);">
-                <div style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></div>
-                <div>
-                  <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0;">Suporte Dahora Expresso</h3>
-                  <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0; margin-top: 2px;">Envie mensagens em tempo real para nossa central administrativa</p>
+              <div class="chat-header-pane" style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--secondary);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981;"></div>
+                  </div>
+                  <div>
+                    <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0;">Suporte Dahora Expresso</h3>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0; margin-top: 2px;">Atendimento em tempo real com nossa central</p>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span id="client-chat-status-badge" style="font-size: 0.72rem; color: #10b981; font-weight: 600; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 4px 10px; border-radius: 12px;">Online</span>
                 </div>
               </div>
               <!-- Message list container -->
               <div id="client-chat-messages" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; background: rgba(0,0,0,0.15);">
                 <!-- Message bubbles injected here -->
               </div>
-              <!-- Message Input -->
-              <form id="client-chat-form" onsubmit="sendClientChatMessage(event)" style="padding: 16px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; background: var(--secondary);">
-                <input type="text" id="client-chat-input" placeholder="Digite sua dÃºvida ou mensagem de suporte..." required style="flex: 1; padding: 12px 16px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.9rem; outline: none;" autocomplete="off">
-                <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px; justify-content: center; min-width: 100px;">
-                  <span>Enviar</span> <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+              <!-- Message Input Form -->
+              <form id="client-chat-form" onsubmit="sendClientChatMessage(event)" style="padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; align-items: center; background: var(--secondary);">
+                <textarea id="client-chat-input" placeholder="Digite sua mensagem para o suporte..." required rows="1"
+                          oninput="updateClientChatSendButton()"
+                          onkeydown="sendClientChatMessageKeydown(event)"
+                          style="flex: 1; padding: 10px 14px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.9rem; outline: none; resize: none; font-family: inherit; max-height: 100px; line-height: 1.4;" autocomplete="off"></textarea>
+                <button type="submit" id="client-chat-send-btn" class="btn btn-primary" disabled style="display: flex; align-items: center; gap: 8px; justify-content: center; min-width: 90px; padding: 10px 16px; height: 42px;">
+                  <span>Enviar</span> <i data-lucide="send" style="width: 15px; height: 15px;"></i>
                 </button>
               </form>
             </div>
