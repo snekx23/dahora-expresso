@@ -22,6 +22,7 @@ export const LOCAL_SERVICE_ROLE_KEY = generateServiceRoleKey();
 
 export const ADMIN_TEST_EMAIL = 'admin1@dahoraexpresso.com.br';
 export const ADMIN_TEST_PASS = 'dahoraexpresso1';
+export const ADMIN_USER_ID = '14620da0-6e08-488f-95ff-26f751785870';
 
 export const CLIENT_TEST_EMAIL = 'padaria.central@homolog.test';
 export const CLIENT_TEST_PASS = 'dahoraexpresso1';
@@ -39,9 +40,15 @@ export async function createAuthedTestClient(email = ADMIN_TEST_EMAIL, password 
     const adminClient = createClient(LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
     const { data: users } = await adminClient.from('user_profiles').select('user_id').eq('email', email);
     if (users && users.length > 0) {
-      await adminClient.auth.admin.updateUserById(users[0].user_id, { password, email_confirm: true });
+      const { error: updateErr } = await adminClient.auth.admin.updateUserById(users[0].user_id, { password, email_confirm: true });
+      if (updateErr) {
+        await adminClient.auth.admin.createUser({ id: users[0].user_id, email, password, email_confirm: true });
+      }
     } else {
-      const { data: newUser } = await adminClient.auth.admin.createUser({ email, password, email_confirm: true });
+      const targetId = email.includes('admin') ? ADMIN_USER_ID : email.includes('motoboy') ? RIDER_TEST_ID : undefined;
+      const createOpts = { email, password, email_confirm: true };
+      if (targetId) createOpts.id = targetId;
+      const { data: newUser } = await adminClient.auth.admin.createUser(createOpts);
       if (newUser?.user) {
         const role = email.includes('admin') ? 'owner' : email.includes('motoboy') ? 'motoboy' : 'client_user';
         await adminClient.from('user_profiles').insert({ user_id: newUser.user.id, name: 'Test User', email, role, is_active: true });
@@ -54,6 +61,42 @@ export async function createAuthedTestClient(email = ADMIN_TEST_EMAIL, password 
 
   if (error || !data?.session) {
     throw new Error(`Auth failure for ${email}: ${error?.message}`);
+  }
+
+  // Ensure relational mappings exist for known test fixtures
+  const adminClient = createClient(LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const authUserId = data.session.user.id;
+
+  if (email === CLIENT_TEST_EMAIL) {
+    const padariaId = '8e40963a-9146-4bfd-9447-d8d373be7ca6';
+    const { data: existingClient } = await adminClient.from('commercial_clients').select('id').eq('id', padariaId);
+    if (!existingClient || existingClient.length === 0) {
+      await adminClient.from('commercial_clients').insert({
+        id: padariaId,
+        client_code: 'CLI-000001',
+        establishment_name: 'Padaria Central Homolog',
+        responsible_name: 'João Da Silva',
+        phone: '(51) 99999-8888',
+        email: CLIENT_TEST_EMAIL,
+        address: 'Av. Brasil, 1500',
+        document: '11.222.333/0001-99',
+        lifecycle_status: 'ativo',
+        financial_status: 'em_dia'
+      });
+    }
+    const { data: existingLink } = await adminClient.from('client_users').select('id').eq('user_id', authUserId).eq('client_id', padariaId);
+    if (!existingLink || existingLink.length === 0) {
+      await adminClient.from('client_users').insert({
+        user_id: authUserId,
+        client_id: padariaId,
+        role: 'owner',
+        status: 'ativo'
+      });
+    }
+  }
+
+  if (email === RIDER_TEST_EMAIL) {
+    await adminClient.from('fleet').update({ user_id: authUserId }).eq('id', RIDER_TEST_ID);
   }
 
   return createClient(LOCAL_SUPABASE_URL, LOCAL_SUPABASE_KEY, {

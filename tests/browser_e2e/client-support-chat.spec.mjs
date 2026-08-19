@@ -1,7 +1,24 @@
 import { test, expect } from '@playwright/test';
+import pg from 'pg';
 
 test.describe('GATE RC.15C.2 - Client Support Chat Realtime & Desktop/Mobile E2E', () => {
   test.setTimeout(60000);
+
+  test.beforeAll(async () => {
+    const db = new pg.Client({ connectionString: 'postgres://postgres:postgres@127.0.0.1:54322/postgres' });
+    try {
+      await db.connect();
+      const padariaId = '8e40963a-9146-4bfd-9447-d8d373be7ca6';
+      const msgs = await db.query(`SELECT id FROM public.client_support_messages WHERE client_id = $1`, [padariaId]);
+      if (msgs.rows.length < 2) {
+        await db.query(`INSERT INTO public.client_support_messages (client_id, sender_type, sender_name, message) VALUES
+          ($1, 'client', 'Padaria Central Homolog', 'Mensagem de teste do cliente'),
+          ($1, 'admin', 'Suporte Dahora Expresso', 'Resposta do suporte admin')`, [padariaId]);
+      }
+    } finally {
+      await db.end().catch(() => {});
+    }
+  });
 
   test('Client Support Chat: Realtime "Online" status, Client & Admin bubbles visible, reload persistence & zero error/empty state', async ({ page }) => {
     const consoleErrors = [];

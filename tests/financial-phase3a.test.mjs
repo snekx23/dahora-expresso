@@ -34,18 +34,38 @@ test('Suíte de Testes da Fase 3A (Fundação Financeira Canônica e Fechamento 
   adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
   clientUserClient = await createAuthedClient('padaria.central@homolog.test', 'dahoraexpresso1');
 
-  const { data: clients } = await serviceClient.from('commercial_clients').select('id').eq('lifecycle_status', 'ativo').limit(1);
-  const CLIENT_ID_1 = clients[0].id;
+  const randNum = Math.floor(100000 + Math.random() * 899999);
+  const { data: newClient, error: clientErr } = await serviceClient.from('commercial_clients').insert({
+    client_code: `CLI-${randNum}`,
+    establishment_name: `Padaria Fin ${randNum}`,
+    responsible_name: 'João Teste',
+    email: `fin.${randNum}@homolog.local`,
+    phone: '(51) 99999-7777',
+    address: 'Rua Teste, 100',
+    neighborhood: 'Centro',
+    city: 'Sapucaia do Sul',
+    document: `${randNum}000199`,
+    lifecycle_status: 'ativo',
+    financial_status: 'em_dia',
+    is_internal: false
+  }).select('*').single();
+  assert.ok(!clientErr, `Client creation error: ${clientErr?.message}`);
+  const CLIENT_ID_1 = newClient.id;
 
-  // Obter um motoboy válido da frota
-  const { data: rider } = await adminClient.from('fleet').select('id, name').limit(1);
-  riderFleetId = rider && rider.length > 0 ? rider[0].id : "7668596b-0444-4435-9f0c-8d0ad7ce7fb8";
+  const { data: newRider } = await serviceClient.from('fleet').insert({
+    name: `Motoboy Fin ${randNum}`,
+    phone: `519${randNum}`,
+    status: 'disponivel'
+  }).select('id').single();
+  riderFleetId = newRider.id;
 
   // Janela semanal isolada para o teste
   const pStart = '2026-08-10T00:00:00.000Z';
   const pEnd = '2026-08-17T00:00:00.000Z';
 
   // Limpar lotes e settlements prévios do mesmo período de teste
+  await serviceClient.from('client_payment_allocations').delete().eq('client_id', CLIENT_ID_1);
+  await serviceClient.from('client_financial_transactions').delete().eq('client_id', CLIENT_ID_1);
   await adminClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', adminClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
   await adminClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
   await adminClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', adminClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
@@ -92,8 +112,9 @@ test('Suíte de Testes da Fase 3A (Fundação Financeira Canônica e Fechamento 
     assert.equal(compRes.success, true);
     assert.equal(compRes.status, 'concluida');
 
-    // Forçar completed_at na janela do teste
+    // Forçar completed_at e período do settlement na janela do teste
     await adminClient.from('teles').update({ completed_at: '2026-08-12T10:05:00.000Z' }).eq('id', tele1.id);
+    await adminClient.from('rider_weekly_settlement_items').update({ period_start: pStart, period_end: pEnd }).eq('tele_id', tele1.id);
 
     const { data: rtx } = await adminClient.from('rider_financial_transactions').select('*').eq('tele_id', tele1.id).single();
     assert.equal(Number(rtx.amount), 17.00, 'Motoboy recebe 85% (17,00 de 20,00)');
@@ -106,7 +127,7 @@ test('Suíte de Testes da Fase 3A (Fundação Financeira Canônica e Fechamento 
   await t.test('2. Alocação de pagamento do cliente marca a Tele como fully_covered e funding_status = eligible', async () => {
     const { data: payRegRes, error: clientPayErr } = await adminClient.rpc('admin_register_client_payment', {
       p_client_id: CLIENT_ID_1,
-      p_amount: 50.00,
+      p_amount: 20.00,
       p_payment_method: 'PIX',
       p_notes: 'Pagamento PIX do cliente de teste',
       p_idempotency_key: `idemp-reg-pay-${Date.now()}`

@@ -992,7 +992,7 @@ async function loginSuccess() {
 
   const clientActionCards = document.getElementById('client-action-cards');
   if (clientActionCards) {
-    if (profile === 'owner') {
+    if (profile === 'owner' && !adminClientViewContext) {
       clientActionCards.classList.add('hidden');
     } else {
       clientActionCards.classList.remove('hidden');
@@ -1212,15 +1212,10 @@ async function switchDashboardTab(targetTab) {
     }
     const clientActionCards = document.getElementById('client-action-cards');
     if (clientActionCards) {
-      if (mockData.activeProfile === 'owner') {
-        clientActionCards.classList.add('hidden');
-      } else {
-        clientActionCards.classList.remove('hidden');
-      }
+      clientActionCards.classList.remove('hidden');
     }
     await fetchClientHistory();
-    updateClientDashboardOverview();
-    initClientOverviewChart();
+    loadClientOverviewDashboard();
   } else if (targetTab === 'client-financials') {
     await loadClientFinancialsData();
   } else if (targetTab === 'client-extract') {
@@ -6541,10 +6536,8 @@ function subscribeDashboardRealtime() {
         const commerceName = creds ? creds.commerceName : null;
         await fetchClientHistory();
         renderClientTelesUnified();
-        renderClientHistoryTable();
-        updateClientDashboardOverview();
         if (document.getElementById('tab-client-overview')?.classList.contains('active')) {
-          initClientOverviewChart();
+          loadClientOverviewDashboard();
         }
         if (clientFleetMap) {
           renderClientMapMarkers(clientFleetCenterCoords);
@@ -8855,92 +8848,180 @@ function updateOwnerDashboardOverview() {
   if (ticketEl) {
     ticketEl.innerText = 'R$ ' + avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+}
 
-  if (topClientsEl) {
-    const clientCounts = {};
+let currentOverviewFetchToken = 0;
+let clientOverviewChartInstance = null;
 
-    commercesList.forEach(c => {
-      clientCounts[c.nome] = { count: 0, revenue: 0 };
-    });
+async function loadClientOverviewDashboard() {
+  const localToken = ++currentOverviewFetchToken;
+  const context = typeof resolveActiveClientContext === 'function' ? resolveActiveClientContext() : null;
 
-    mockData.clientHistory.forEach(item => {
-      if (item.status === 'Entregue') {
-        const name = item.client || 'Cliente nÃ£o vinculado';
-        const price = parseMoneyString(item.price);
-        if (!clientCounts[name]) {
-          clientCounts[name] = { count: 0, revenue: 0 };
-        }
-        clientCounts[name].count++;
-        clientCounts[name].revenue += price;
-      }
-    });
+  const nameEl = document.getElementById('client-overview-establishment-name');
+  const pendingEl = document.getElementById('client-overview-kpi-pending');
+  const activeEl = document.getElementById('client-overview-kpi-active');
+  const completedTodayEl = document.getElementById('client-overview-kpi-completed-today');
+  const totalTodayEl = document.getElementById('client-overview-kpi-total-today');
 
-    const sortedClients = Object.entries(clientCounts)
-      .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
-      .sort((a, b) => b.count - a.count);
+  const monthTotalEl = document.getElementById('client-overview-month-total');
+  const monthCompletedEl = document.getElementById('client-overview-month-completed');
+  const monthCanceledEl = document.getElementById('client-overview-month-canceled');
+  const avgDurationEl = document.getElementById('client-overview-avg-duration');
+  const rateEl = document.getElementById('client-overview-completion-rate');
 
-    if (sortedClients.length === 0) {
-      topClientsEl.innerHTML = `
-        <div style="text-align: center; padding: 20px; color: var(--color-text-muted); font-size: 0.85rem;">
-          Nenhum cliente cadastrado.
-        </div>
-      `;
+  const emptyNoticeEl = document.getElementById('client-overview-empty-notice');
+  const errorStateEl = document.getElementById('client-overview-error-state');
+
+  // Reset / Skeleton Loading State
+  if (pendingEl) pendingEl.innerText = '...';
+  if (activeEl) activeEl.innerText = '...';
+  if (completedTodayEl) completedTodayEl.innerText = '...';
+  if (totalTodayEl) totalTodayEl.innerText = '...';
+  if (monthTotalEl) monthTotalEl.innerText = '...';
+  if (monthCompletedEl) monthCompletedEl.innerText = '...';
+  if (monthCanceledEl) monthCanceledEl.innerText = '...';
+  if (avgDurationEl) avgDurationEl.innerText = '...';
+  if (rateEl) rateEl.innerText = '...';
+  if (errorStateEl) errorStateEl.classList.add('hidden');
+  if (emptyNoticeEl) emptyNoticeEl.classList.add('hidden');
+
+  const isImpersonated = Boolean(context && (context.isAdminView || context.isImpersonated));
+
+  if (!supabaseClient || (isImpersonated && !context?.clientId)) {
+    if (pendingEl) pendingEl.innerText = '0';
+    if (activeEl) activeEl.innerText = '0';
+    if (completedTodayEl) completedTodayEl.innerText = '0';
+    if (totalTodayEl) totalTodayEl.innerText = '0';
+    if (monthTotalEl) monthTotalEl.innerText = '0';
+    if (monthCompletedEl) monthCompletedEl.innerText = '0';
+    if (monthCanceledEl) monthCanceledEl.innerText = '0';
+    if (avgDurationEl) avgDurationEl.innerText = 'N/A';
+    if (rateEl) rateEl.innerText = 'N/A';
+    renderClientOverviewChart([]);
+    return;
+  }
+
+  try {
+    let res = null;
+    if (isImpersonated) {
+      res = await supabaseClient.rpc('admin_get_client_dashboard_overview', { p_client_id: context.clientId });
     } else {
-      topClientsEl.innerHTML = sortedClients.map(c => `
-        <div class="list-item" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px;">
-          <div class="item-info" style="display: flex; align-items: center; gap: 10px; flex: 1;">
-            <div class="item-icon-avatar bg-yellow"><i data-lucide="store" class="text-black"></i></div>
-            <div style="min-width: 0; flex: 1;">
-              <h4 style="text-overflow: ellipsis; white-space: nowrap; overflow: hidden; font-size: 0.9rem; font-weight: 700; margin: 0;">${escapeHtml(c.name)}</h4>
-              <p class="text-muted" style="font-size: 0.78rem; margin: 2px 0 0 0;">${c.count} ${c.count === 1 ? 'entrega' : 'entregas'} esta semana</p>
-            </div>
-          </div>
-          <div class="item-action text-right" style="display: flex; align-items: center; gap: 12px;">
-            <strong style="font-size: 0.9rem; white-space: nowrap;">R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-            <button onclick="deleteCommerceByName('${escapeHtml(c.name)}')" class="btn-action-danger" title="Remover ComÃ©rcio" style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px 8px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; border-radius: 4px; transition: background 0.2s;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
-          </div>
-        </div>
-      `).join('');
-      if (window.lucide) lucide.createIcons();
+      res = await supabaseClient.rpc('get_client_dashboard_overview');
     }
+
+    if (localToken !== currentOverviewFetchToken) {
+      return; // Anti-race guard
+    }
+
+    if (res.error || !res.data || !res.data.success) {
+      throw new Error(res.error ? res.error.message : (res.data ? res.data.message : 'Falha ao carregar resumo'));
+    }
+
+    const payload = res.data;
+
+    if (nameEl) {
+      nameEl.innerText = payload.establishment_name || 'Visão Geral da Operação';
+    }
+
+    if (pendingEl) pendingEl.innerText = payload.today.pending;
+    if (activeEl) activeEl.innerText = payload.today.active;
+    if (completedTodayEl) completedTodayEl.innerText = payload.today.completed;
+    if (totalTodayEl) totalTodayEl.innerText = payload.today.total_created;
+
+    if (monthTotalEl) monthTotalEl.innerText = payload.month.total_created;
+    if (monthCompletedEl) monthCompletedEl.innerText = payload.month.completed;
+    if (monthCanceledEl) monthCanceledEl.innerText = payload.month.canceled;
+
+    if (avgDurationEl) {
+      avgDurationEl.innerText = payload.performance.avg_delivery_minutes !== null ? `${payload.performance.avg_delivery_minutes} min` : 'N/A';
+    }
+
+    if (rateEl) {
+      rateEl.innerText = payload.performance.completion_rate !== null ? `${payload.performance.completion_rate}%` : 'N/A';
+    }
+
+    if (emptyNoticeEl) {
+      if (payload.month.completed === 0 && payload.month.total_created === 0) {
+        emptyNoticeEl.classList.remove('hidden');
+      } else {
+        emptyNoticeEl.classList.add('hidden');
+      }
+    }
+
+    renderClientOverviewChart(payload.last_7_days || []);
+
+  } catch (err) {
+    if (localToken !== currentOverviewFetchToken) return;
+    console.warn("Client overview load failed:", err);
+    if (errorStateEl) errorStateEl.classList.remove('hidden');
+    if (pendingEl) pendingEl.innerText = '0';
+    if (activeEl) activeEl.innerText = '0';
+    if (completedTodayEl) completedTodayEl.innerText = '0';
+    if (totalTodayEl) totalTodayEl.innerText = '0';
+    renderClientOverviewChart([]);
   }
 }
 
-// â”€â”€â”€ WITHDRAW TELE HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderClientOverviewChart(last7Days) {
+  const ctx = document.getElementById('clientOverviewChart');
+  if (!ctx) return;
 
-window.handleWithdrawClick = async function(deliveryId, riderName) {
-  const rider = mockData.fleet.find(r => r.name === riderName);
-  if (!rider) return;
-  await removeTeleFromRider(deliveryId, rider.id);
-};
+  if (clientOverviewChartInstance) {
+    clientOverviewChartInstance.destroy();
+    clientOverviewChartInstance = null;
+  }
 
-// â”€â”€â”€ CLIENT DASHBOARD OVERVIEW REAL METRICS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const labels = last7Days.map(d => d.label || d.date);
+  const totals = last7Days.map(d => d.total || 0);
+  const completed = last7Days.map(d => d.completed || 0);
 
-function getClientWeeklyChartData() {
-  const counts = [0, 0, 0, 0, 0, 0, 0];
-  const now = new Date();
+  if (typeof Chart === 'undefined') return;
 
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(now.setDate(diff));
-  monday.setHours(0,0,0,0);
-
-  const currentCreds = mockData.credentials[mockData.activeProfile];
-  const currentCommerce = currentCreds ? currentCreds.commerceName : 'Cliente nÃ£o vinculado';
-
-  mockData.clientHistory.forEach(item => {
-    if (item.status === 'Entregue' && item.client === currentCommerce && item.created_at) {
-      const itemDate = new Date(item.created_at);
-      if (itemDate >= monday) {
-        const itemDay = itemDate.getDay();
-        const index = itemDay === 0 ? 6 : itemDay - 1;
-        if (index >= 0 && index < 7) {
-          counts[index]++;
+  try {
+    clientOverviewChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels.length > 0 ? labels : ['-','-','-','-','-','-','-'],
+        datasets: [
+          {
+            label: 'Total Solicitado',
+            data: totals.length > 0 ? totals : [0,0,0,0,0,0,0],
+            backgroundColor: '#8b5cf6',
+            borderRadius: 4
+          },
+          {
+            label: 'Concluídas',
+            data: completed.length > 0 ? completed : [0,0,0,0,0,0,0],
+            backgroundColor: '#10b981',
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: {
+            labels: { color: '#8e8e9f' }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1, precision: 0, color: '#8e8e9f' },
+            grid: { color: 'rgba(255,255,255,0.05)' }
+          },
+          x: {
+            ticks: { color: '#8e8e9f' },
+            grid: { display: false }
+          }
         }
       }
-    }
-  });
-  return counts;
+    });
+  } catch (chartErr) {
+    console.warn("Client overview Chart.js render warning:", chartErr);
+  }
 }
 
 function updateClientDashboardOverview() {
@@ -11339,11 +11420,19 @@ async function openAdminClientPanelView(clientId) {
     return;
   }
 
-  const client = (commercialClientsList || []).find(c => String(c.id) === String(clientId));
+  if (!commercialClientsList || commercialClientsList.length === 0) {
+    if (typeof fetchCommercialClients === 'function') {
+      await fetchCommercialClients();
+    }
+  }
+  let client = (commercialClientsList || []).find(c => String(c.id) === String(clientId));
+  if (!client && typeof window !== 'undefined' && Array.isArray(window.commercialClientsList)) {
+    client = window.commercialClientsList.find(c => String(c.id) === String(clientId));
+  }
   if (!client) {
-    console.error(`[ADMIN CLIENT VIEW] Cliente nÃ£o encontrado no sistema (ID: ${clientId}).`);
-    showToastNotification("Cliente comercial nÃ£o encontrado.", "error");
-    return; // FAIL CLOSED: NÃ£o abre nenhum cliente aleatÃ³rio nem usa fallback commercialClientsList[0]
+    console.error(`[ADMIN CLIENT VIEW] Cliente não encontrado no sistema (ID: ${clientId}).`);
+    showToastNotification("Cliente comercial não encontrado.", "error");
+    return;
   }
 
   // 1. Registra auditoria obrigatÃ³ria no backend Supabase via RPC
@@ -11384,8 +11473,14 @@ async function openAdminClientPanelView(clientId) {
     mockData.credentials.client.email = client.email;
   }
 
+  const clientActionCards = document.getElementById('client-action-cards');
+  if (clientActionCards) {
+    clientActionCards.classList.remove('hidden');
+  }
+
   loginSuccess();
   switchDashboardTab('client-overview');
+  loadClientOverviewDashboard();
   renderAdminClientViewBanner();
   showToastNotification(`Visualizando Painel Administrativo como [${client.establishment_name}] (${adminClientViewContext.clientCode})`);
 }

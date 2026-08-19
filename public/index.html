@@ -1720,119 +1720,163 @@
                   </div>
                 </div>
               </div>
-
-              <!-- Completed Teles table -->
-              <div class="card">
-                <div class="card-header">
-                  <h3>Teles ConcluÃ­das no PerÃ­odo</h3>
-                </div>
-                <div class="card-body no-padding">
-                  <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
-                    <table class="table">
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>Data</th>
-                          <th>Estabelecimento / Destino</th>
-                          <th>Motoboy</th>
-                          <th>Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody id="finance-history-table-body">
-                        <!-- Rendered dynamically via JS -->
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
-
-          <!-- ================= CLIENTE TABS ================= -->
           <!-- 1. Client Overview -->
           <div id="tab-client-overview" class="dashboard-tab-content">
-            <section class="ops-hero partner-hero">
+            <!-- Hero Header Operacional -->
+            <section class="ops-hero partner-hero" style="margin-bottom: 20px;">
               <div class="ops-hero-content">
-                <span class="ops-eyebrow"><i data-lucide="store"></i> Ãrea do Parceiro</span>
-                <h3 class="ops-hero-title">Solicite entregas e acompanhe sua operaÃ§Ã£o.</h3>
-                <p class="ops-hero-text">Use este painel para abrir novas solicitaÃ§Ãµes, consultar histÃ³rico, falar com o suporte e acompanhar avaliaÃ§Ãµes sem depender de nÃºmeros simulados.</p>
+                <span class="ops-eyebrow"><i data-lucide="store"></i> Visão Geral do Estabelecimento</span>
+                <h3 class="ops-hero-title" id="client-overview-establishment-name">Visão Geral da Operação</h3>
+                <p class="ops-hero-text">Acompanhe os indicadores operacionais em tempo real e o histórico consolidado de suas entregas.</p>
               </div>
-              <div class="ops-status-chip">
+              <div class="ops-status-chip" id="client-overview-status-chip">
                 <i data-lucide="circle-check"></i>
-                <span>Pronto para operar</span>
+                <span id="client-overview-status-text">Operação Ativa</span>
               </div>
             </section>
 
+            <!-- Grid de 4 KPIs Operacionais (Aguardando, Em Execução, Concluídas Hoje, Teles Criadas Hoje) -->
+            <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+
+              <!-- KPI 1: Aguardando -->
+              <div class="card kpi-card" style="padding: 16px 20px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; border: 1px solid var(--border-color);" onclick="switchDashboardTab('client-deliveries', 'pending')" title="Ver entregas aguardando">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-muted);">Aguardando</span>
+                  <span class="ops-card-icon" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b; padding: 6px; border-radius: 8px; display: inline-flex;"><i data-lucide="clock" style="width: 18px; height: 18px;"></i></span>
+                </div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--color-text); line-height: 1.1;" id="client-overview-kpi-pending">-</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 6px;">Fila atual de despacho</div>
+              </div>
+
+              <!-- KPI 2: Em Execução -->
+              <div class="card kpi-card" style="padding: 16px 20px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; border: 1px solid var(--border-color);" onclick="switchDashboardTab('client-deliveries', 'active')" title="Ver entregas em execução">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-muted);">Em Execução</span>
+                  <span class="ops-card-icon" style="background: rgba(59, 130, 246, 0.12); color: #3b82f6; padding: 6px; border-radius: 8px; display: inline-flex;"><i data-lucide="bike" style="width: 18px; height: 18px;"></i></span>
+                </div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--color-text); line-height: 1.1;" id="client-overview-kpi-active">-</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 6px;">Motoboy em rota / coleta</div>
+              </div>
+
+              <!-- KPI 3: Concluídas Hoje -->
+              <div class="card kpi-card" style="padding: 16px 20px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; border: 1px solid var(--border-color);" onclick="switchDashboardTab('client-deliveries', 'completed')" title="Ver entregas concluídas hoje">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-muted);">Concluídas Hoje</span>
+                  <span class="ops-card-icon" style="background: rgba(16, 185, 129, 0.12); color: #10b981; padding: 6px; border-radius: 8px; display: inline-flex;"><i data-lucide="check-circle-2" style="width: 18px; height: 18px;"></i></span>
+                </div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--color-text); line-height: 1.1;" id="client-overview-kpi-completed-today">-</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 6px;">Entregues no dia de hoje</div>
+              </div>
+
+              <!-- KPI 4: Teles Criadas Hoje -->
+              <div class="card kpi-card" style="padding: 16px 20px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; border: 1px solid var(--border-color);" onclick="switchDashboardTab('client-deliveries')" title="Ver todas as entregas">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-muted);">Teles Hoje</span>
+                  <span class="ops-card-icon" style="background: rgba(139, 92, 246, 0.12); color: #8b5cf6; padding: 6px; border-radius: 8px; display: inline-flex;"><i data-lucide="package" style="width: 18px; height: 18px;"></i></span>
+                </div>
+                <div style="font-size: 1.8rem; font-weight: 800; color: var(--color-text); line-height: 1.1;" id="client-overview-kpi-total-today">-</div>
+                <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 6px;">Solicitações abertas hoje</div>
+              </div>
+
+            </div>
+
+            <!-- Gráfico 7 Dias & Resumo do Mês -->
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 24px;" class="client-overview-mid-grid">
+
+              <!-- Gráfico dos últimos 7 dias -->
+              <div class="card ops-panel" style="padding: 20px;">
+                <div class="ops-panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                  <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="bar-chart-3" style="width: 18px; height: 18px; color: var(--primary-color);"></i>
+                    Movimento dos Últimos 7 Dias
+                  </h3>
+                  <span class="badge badge-soft" style="font-size: 0.72rem;">America/Sao_Paulo</span>
+                </div>
+                <div style="position: relative; width: 100%; height: 260px;">
+                  <canvas id="clientOverviewChart"></canvas>
+                </div>
+              </div>
+
+              <!-- Resumo do Mês & Performance -->
+              <div class="card ops-panel" style="padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                  <div class="ops-panel-header" style="margin-bottom: 16px;">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+                      <i data-lucide="calendar" style="width: 18px; height: 18px; color: var(--primary-color);"></i>
+                      Resumo do Mês
+                    </h3>
+                  </div>
+
+                  <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px;">
+                      <span style="font-size: 0.85rem; color: var(--color-text-muted);">Total de Teles no Mês</span>
+                      <strong style="font-size: 1.05rem; color: var(--color-text);" id="client-overview-month-total">-</strong>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px;">
+                      <span style="font-size: 0.85rem; color: var(--color-text-muted);">Concluídas no Mês</span>
+                      <strong style="font-size: 1.05rem; color: #10b981;" id="client-overview-month-completed">-</strong>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px;">
+                      <span style="font-size: 0.85rem; color: var(--color-text-muted);">Canceladas no Mês</span>
+                      <strong style="font-size: 1.05rem; color: #ef4444;" id="client-overview-month-canceled">-</strong>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px;">
+                      <span style="font-size: 0.85rem; color: var(--color-text-muted);">Tempo médio até conclusão</span>
+                      <strong style="font-size: 0.95rem; color: var(--color-text);" id="client-overview-avg-duration">-</strong>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px;">
+                      <span style="font-size: 0.85rem; color: var(--color-text-muted);">Conclusão das encerradas</span>
+                      <strong style="font-size: 0.95rem; color: var(--primary-color);" id="client-overview-completion-rate">-</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="client-overview-empty-notice" class="hidden" style="margin-top: 14px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.78rem; color: var(--color-text-muted); text-align: center;">
+                  Você ainda não possui entregas finalizadas neste mês.
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Botões de Ações Rápidas (4 Botões Úteis com Rotas Válidas) -->
             <div class="ops-actions-grid partner-actions" id="client-action-cards">
               <button type="button" class="ops-card ops-card-large" onclick="switchDashboardTab('order-request')">
                 <span class="ops-card-icon"><i data-lucide="package-plus"></i></span>
-                <h3>Nova solicitaÃ§Ã£o</h3>
-                <p>Abra uma entrega com endereÃ§o, forma de pagamento e observaÃ§Ãµes da carga.</p>
+                <h3>Nova solicitação</h3>
+                <p>Abra uma entrega com endereço, forma de pagamento e observações da carga.</p>
               </button>
-              <button type="button" class="ops-card" onclick="switchDashboardTab('client-history')">
-                <span class="ops-card-icon"><i data-lucide="history"></i></span>
-                <h3>HistÃ³rico</h3>
-                <p>Consulte pedidos finalizados quando houver registros no banco.</p>
+              <button type="button" class="ops-card" onclick="switchDashboardTab('client-deliveries')">
+                <span class="ops-card-icon"><i data-lucide="truck"></i></span>
+                <h3>Ver entregas</h3>
+                <p>Consulte o andamento das solicitações ativas e concluídas no painel.</p>
+              </button>
+              <button type="button" class="ops-card" onclick="switchDashboardTab('client-financials')">
+                <span class="ops-card-icon"><i data-lucide="dollar-sign"></i></span>
+                <h3>Financeiro</h3>
+                <p>Acompanhe o extrato de lançamentos e o saldo do estabelecimento.</p>
               </button>
               <button type="button" class="ops-card" onclick="switchDashboardTab('client-support')">
                 <span class="ops-card-icon"><i data-lucide="message-square"></i></span>
                 <h3>Suporte Chat</h3>
-                <p>Fale com a Dahora Expresso e acompanhe as respostas em uma conversa Ãºnica.</p>
-              </button>
-              <button type="button" class="ops-card" onclick="switchDashboardTab('client-ratings')">
-                <span class="ops-card-icon"><i data-lucide="star"></i></span>
-                <h3>AvaliaÃ§Ãµes</h3>
-                <p>Registre feedbacks reais da operaÃ§Ã£o para acompanhamento interno.</p>
+                <p>Fale com a Dahora Expresso e acompanhe as respostas em tempo real.</p>
               </button>
             </div>
 
-            <div class="dashboard-grid mt-4" id="client-info-panels">
-              <div class="card ops-panel">
-                <div class="ops-panel-header">
-                  <h3>Como usar o painel</h3>
-                  <span class="badge badge-soft">Parceiro</span>
-                </div>
-                <div class="card-body">
-                  <div class="ops-flow-list">
-                    <div class="ops-flow-item">
-                      <span class="ops-flow-marker"></span>
-                      <div>
-                        <strong>Solicite a coleta</strong>
-                        <p>Informe destino, pagamento, carga e observaÃ§Ãµes da entrega.</p>
-                      </div>
-                    </div>
-                    <div class="ops-flow-item">
-                      <span class="ops-flow-marker"></span>
-                      <div>
-                        <strong>Acompanhe o andamento</strong>
-                        <p>O status do pedido aparece na Ã¡rea de rastreamento quando a tele Ã© enviada.</p>
-                      </div>
-                    </div>
-                    <div class="ops-flow-item">
-                      <span class="ops-flow-marker"></span>
-                      <div>
-                        <strong>Resolva pendÃªncias</strong>
-                        <p>Use o suporte para dÃºvidas de entrega, repasse ou integraÃ§Ã£o.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card ops-panel">
-                <div class="ops-panel-header">
-                  <h3>Estado dos dados</h3>
-                  <span class="badge badge-soft">Real</span>
-                </div>
-                <div class="card-body">
-                  <div class="empty-state-card">
-                    <i data-lucide="database"></i>
-                    <h4>Sem mÃ©tricas simuladas</h4>
-                    <p>Quando houver registros reais, as tabelas e histÃ³ricos serÃ£o preenchidos automaticamente pelo banco de dados.</p>
-                  </div>
-                </div>
-              </div>
+            <!-- Error State Banner (Fail-closed) -->
+            <div id="client-overview-error-state" class="hidden" style="margin-top: 20px; padding: 24px; text-align: center; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--border-radius);">
+              <i data-lucide="alert-triangle" style="width: 36px; height: 36px; color: #ef4444; margin-bottom: 12px;"></i>
+              <h4 style="font-size: 1.05rem; font-weight: 700; color: #ef4444; margin: 0 0 6px 0;">Não foi possível carregar o resumo da operação</h4>
+              <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0 0 16px 0;">Ocorreu uma falha ao conectar com o banco de dados. Tente novamente em instantes.</p>
+              <button type="button" class="btn btn-secondary" id="client-overview-retry-btn" onclick="loadClientOverviewDashboard()" style="display: inline-flex; align-items: center; gap: 8px;">
+                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> Tentar novamente
+              </button>
             </div>
           </div>
 

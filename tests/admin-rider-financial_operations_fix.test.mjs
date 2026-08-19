@@ -49,18 +49,10 @@ function generateNativeAuthToken(userId, role = 'authenticated') {
 async function runNodeIntegrationTests() {
   console.log('🚀 Iniciando Suíte de Testes Node.js: Operações Financeiras Administrativas...');
 
-  const adminToken = generateNativeAuthToken(ADMIN_USER_ID);
-  const riderToken = generateNativeAuthToken(RIDER_USER_ID);
-
-  const adminClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${adminToken}` } },
-    auth: { persistSession: false }
-  });
-
-  const riderClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${riderToken}` } },
-    auth: { persistSession: false }
-  });
+  const { createAuthedTestClient, ADMIN_TEST_EMAIL, ADMIN_TEST_PASS, RIDER_TEST_EMAIL, RIDER_TEST_PASS, RIDER_TEST_ID } = await import('./helpers/test-fixtures.mjs');
+  const adminClient = await createAuthedTestClient(ADMIN_TEST_EMAIL, ADMIN_TEST_PASS);
+  const riderClient = await createAuthedTestClient(RIDER_TEST_EMAIL, RIDER_TEST_PASS);
+  const RIDER_USER_ID = RIDER_TEST_ID;
 
   console.log('  ✅ 1. Tokens JWT gerados nativamente para Admin e Motoboy.');
 

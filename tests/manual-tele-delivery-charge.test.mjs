@@ -18,32 +18,12 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
   let testMotoboyId;
   let createdAdminTeleId;
   let createdClientTeleId;
+  let clientAuthClient;
 
   test('0. Autenticação e Configuração de Ambiente para Testes', async () => {
-    // 0.1 Autenticar Admin1
-    let { data: adminAuth, error: adminErr } = await supabaseAdmin.auth.signInWithPassword({
-      email: adminEmail,
-      password: adminPassword
-    });
-    
-    if (adminErr) {
-      const { data: users } = await supabaseAdmin.from('user_profiles').select('user_id').eq('email', adminEmail);
-      if (users && users.length > 0) {
-        await supabaseAdmin.auth.admin.updateUserById(users[0].user_id, { password: adminPassword, email_confirm: true });
-        const retry = await supabaseAdmin.auth.signInWithPassword({ email: adminEmail, password: adminPassword });
-        adminAuth = retry.data;
-        adminErr = retry.error;
-      }
-    }
-    assert.ifError(adminErr, 'Falha ao autenticar Admin1');
-    assert.ok(adminAuth.session?.access_token, 'Admin session token ausente');
-
-    const adminUserId = adminAuth.user.id;
-
-    adminClient = createClient(supabaseUrl, supabaseSecretKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-      global: { headers: { Authorization: `Bearer ${adminAuth.session.access_token}` } }
-    });
+    const { createAuthedTestClient, ADMIN_TEST_EMAIL, ADMIN_TEST_PASS, CLIENT_TEST_EMAIL, CLIENT_TEST_PASS, ADMIN_USER_ID } = await import('./helpers/test-fixtures.mjs');
+    adminClient = await createAuthedTestClient(ADMIN_TEST_EMAIL, ADMIN_TEST_PASS);
+    clientAuthClient = await createAuthedTestClient(CLIENT_TEST_EMAIL, CLIENT_TEST_PASS);
 
     // 0.2 Selecionar e Configurar Cliente Comercial Ativo com Ponto de Coleta
     const { data: clients } = await supabaseAdmin
@@ -69,9 +49,12 @@ describe('Manual Tele Delivery Charge & Financial Protection Tests', () => {
     // 0.3 Garantir Vínculo de client_users para o Usuário Autenticado via PG autoritativo
     const { default: pg } = await import('pg');
     const dbClient = new pg.Client({ connectionString: 'postgres://postgres:postgres@127.0.0.1:54322/postgres' });
-    await dbClient.connect();
-    await dbClient.query(`INSERT INTO public.client_users (client_id, user_id, role, status) VALUES ($1, $2, 'admin', 'ativo') ON CONFLICT (client_id, user_id) DO UPDATE SET status = 'ativo';`, [activeClientId, adminUserId]);
-    await dbClient.end();
+    try {
+      await dbClient.connect();
+      await dbClient.query(`INSERT INTO public.client_users (client_id, user_id, role, status) VALUES ($1, $2, 'admin', 'ativo') ON CONFLICT (client_id, user_id) DO UPDATE SET status = 'ativo';`, [activeClientId, ADMIN_USER_ID]);
+    } finally {
+      await dbClient.end().catch(() => {});
+    }
 
     // 0.4 Selecionar Motoboy Canônico da Frota
     testMotoboyId = '7668596b-0444-4435-9f0c-8d0ad7ce7fb8';

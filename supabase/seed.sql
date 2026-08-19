@@ -16,7 +16,19 @@ INSERT INTO public.commercial_clients (
   is_internal = true,
   lifecycle_status = 'ativo';
 
--- 2. Cliente Comercial Fictício (Mercado Central)
+-- 2. Cliente Comercial Fictício (Padaria Central Homolog)
+INSERT INTO public.commercial_clients (
+  id, client_code, establishment_name, responsible_name, phone, email, address, neighborhood, city, postal_code, document, lifecycle_status, financial_status, is_internal
+) VALUES (
+  '8e40963a-9146-4bfd-9447-d8d373be7ca6'::uuid,
+  'CLI-000001', 'Padaria Central Homolog', 'João Da Silva', '(51) 99999-8888', 'padaria.central@homolog.test',
+  'Av. Brasil, 1500', 'Centro', 'Sapucaia do Sul', '93260-000', '11.222.333/0001-99', 'ativo', 'em_dia', false
+) ON CONFLICT (id) DO UPDATE SET
+  establishment_name = 'Padaria Central Homolog',
+  responsible_name = 'João Da Silva',
+  lifecycle_status = 'ativo';
+
+-- 3. Cliente Comercial Fictício (Mercado Central)
 INSERT INTO public.commercial_clients (
   id, client_code, establishment_name, responsible_name, phone, email, address, neighborhood, city, postal_code, document, lifecycle_status, financial_status, is_internal
 ) VALUES (
@@ -28,12 +40,13 @@ INSERT INTO public.commercial_clients (
   responsible_name = 'Carlos Silva',
   lifecycle_status = 'ativo';
 
--- 3. Motoboy Fictício na Frota (MOTO-001)
+-- 4. Motoboy Fictício na Frota (MOTO-001)
 INSERT INTO public.fleet (
-  id, motoboy_code, name, phone, vehicle, plate, status, simultaneous_limit
+  id, user_id, motoboy_code, name, phone, vehicle, plate, status, simultaneous_limit
 ) VALUES (
-  'f2222222-2222-4222-a222-222222222222'::uuid,
-  'MOTO-001', 'João Entregador', '(51) 97777-2222', 'Honda CG 160', 'ABC-1234', 'Ativo', 3
-) ON CONFLICT (motoboy_code) DO UPDATE SET
-  name = 'João Entregador',
+  '7668596b-0444-4435-9f0c-8d0ad7ce7fb8'::uuid,
+  NULL,
+  'MOTO-001', 'Motoboy Teste', '(51) 97777-2222', 'Honda CG 160', 'ABC-1234', 'Ativo', 3
+) ON CONFLICT (id) DO UPDATE SET
+  name = 'Motoboy Teste',
   status = 'Ativo';

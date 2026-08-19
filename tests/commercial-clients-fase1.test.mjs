@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { LOCAL_SUPABASE_URL, LOCAL_SUPABASE_KEY, LOCAL_SERVICE_ROLE_KEY, ADMIN_TEST_EMAIL, ADMIN_TEST_PASS } from './helpers/test-fixtures.mjs';
+import { LOCAL_SUPABASE_URL, LOCAL_SUPABASE_KEY, LOCAL_SERVICE_ROLE_KEY, ADMIN_TEST_EMAIL, ADMIN_TEST_PASS, createAuthedTestClient } from './helpers/test-fixtures.mjs';
 
 const BASE_URL = 'http://localhost:8000';
 
 async function getAdminToken() {
-  const sb = createClient(LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY);
-  const { data: users } = await sb.from('user_profiles').select('user_id').eq('email', ADMIN_TEST_EMAIL);
-  if (users && users.length > 0) {
-    await sb.auth.admin.updateUserById(users[0].user_id, { password: ADMIN_TEST_PASS, email_confirm: true });
-  }
   const client = createClient(LOCAL_SUPABASE_URL, LOCAL_SUPABASE_KEY);
-  const { data } = await client.auth.signInWithPassword({ email: ADMIN_TEST_EMAIL, password: ADMIN_TEST_PASS });
+  let { data } = await client.auth.signInWithPassword({ email: ADMIN_TEST_EMAIL, password: ADMIN_TEST_PASS });
+  if (!data?.session) {
+    await createAuthedTestClient(ADMIN_TEST_EMAIL, ADMIN_TEST_PASS);
+    const retry = await client.auth.signInWithPassword({ email: ADMIN_TEST_EMAIL, password: ADMIN_TEST_PASS });
+    data = retry.data;
+  }
   return data?.session?.access_token || '';
 }
 

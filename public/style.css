@@ -1428,7 +1428,7 @@ select {
 }
 
 .partner-actions {
-  grid-template-columns: 1.25fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .empty-state-card {
@@ -2157,6 +2157,19 @@ select {
 
   .request-info-sidebar {
     order: -1; /* Place info above on tablet/mobile */
+  }
+
+  /* Client Overview Responsiveness (Gate RC.16B.2) */
+  .client-overview-mid-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .partner-actions {
+    grid-template-columns: 1fr !important;
+  }
+  #clientOverviewChart {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
   }
 }
 

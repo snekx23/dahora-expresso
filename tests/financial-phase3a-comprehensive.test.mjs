@@ -30,8 +30,8 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
   adminClient = await createAuthedClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
   clientUserClient = await createAuthedClient('padaria.central@homolog.test', 'dahoraexpresso1');
 
-  const { data: clients } = await serviceClient.from('commercial_clients').select('id').eq('lifecycle_status', 'ativo').limit(1);
-  const CLIENT_ID_1 = clients[0].id;
+  const CLIENT_ID_1 = '8e40963a-9146-4bfd-9447-d8d373be7ca6';
+  await serviceClient.from('commercial_clients').update({ lifecycle_status: 'ativo' }).eq('id', CLIENT_ID_1);
 
   const { data: rider } = await adminClient.from('fleet').select('id, user_id, name').limit(1).single();
   riderFleetId = rider.id;
@@ -187,6 +187,15 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
     }).select('*').single();
     assert.ok(!teleErr, `Tele insert error: ${teleErr?.message}`);
     createdTeleIds.push(telePartial.id);
+
+    await adminClient.from('client_financial_transactions').insert({
+      client_id: CLIENT_ID_1,
+      type: 'corrida_taxa',
+      direction: 'debit',
+      amount: 20.00,
+      description: 'Lançamento de teste C1',
+      tele_id: telePartial.id
+    });
 
     const { data: payRegRes } = await adminClient.rpc('admin_register_client_payment', {
       p_client_id: CLIENT_ID_1,
