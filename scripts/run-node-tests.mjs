@@ -9,6 +9,7 @@ const nodeCompatibleFiles = [
   'bootstrap-remote-environment.test.mjs',
   'cancel-tele-hardening.test.mjs',
   'clean-baseline-and-client-rpc.test.mjs',
+  'client-profile-rpcs.test.mjs',
   'cloudflare-pages-runtime-config.test.mjs',
   'commercial-client-access-recovery.test.mjs',
   'commercial-clients-fase1.test.mjs',

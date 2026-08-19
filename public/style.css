@@ -3504,7 +3504,7 @@ input:checked + .slider:before {
   box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4) !important;
   cursor: pointer !important;
   transition: transform 0.2s, box-shadow 0.2s !important;
-  z-index: 9999 !important; /* z-index ultra-alto para persistÃªncia sobre tabelas */
+  z-index: 9999 !important; /* z-index ultra-alto para persistência sobre tabelas */
 }
 
 .fab-btn:hover {
@@ -3572,7 +3572,7 @@ input:checked + .slider:before {
 }
 
 /* =====================================================================
-   CENTRO DE OPERAÃ‡Ã•ES (CONTROL TOWER & REALTIME KANBAN)
+   CENTRO DE OPERAÇÕES (CONTROL TOWER & REALTIME KANBAN)
    ===================================================================== */
 .op-control-center-layout {
   display: flex;
@@ -4237,7 +4237,7 @@ gmp-place-autocomplete::part(input):focus {
 }
 
 /* =====================================================================
-   Fase 3B.2A.1 â€” Weekly Settlement Admin Drawer & Responsive Styles
+   Fase 3B.2A.1 — Weekly Settlement Admin Drawer & Responsive Styles
    ===================================================================== */
 body.drawer-open {
   overflow: hidden !important;
@@ -4433,7 +4433,7 @@ body.drawer-open {
 
 /* ================= COMMERCIAL CLIENTS TABLE & ACTIONS STYLING ================= */
 
-/* Chips do CÃ³digo do Cliente (LegÃ­vel, Discreto e sem Tachado) */
+/* Chips do Código do Cliente (Legível, Discreto e sem Tachado) */
 .client-code-chip {
   font-family: monospace;
   font-weight: 700;
@@ -4495,7 +4495,7 @@ body.drawer-open {
   width: 60px;
 }
 
-/* BotÃ£o Gatilho das AÃ§Ãµes (Compacto [ â‹® ]) */
+/* Botão Gatilho das Ações (Compacto [ â‹® ]) */
 .btn-icon-action {
   background: var(--secondary);
   border: 1px solid var(--border-color);
@@ -4576,7 +4576,7 @@ body.drawer-open {
   flex-shrink: 0;
 }
 
-/* Indicador de VisualizaÃ§Ã£o Administrativa do Cliente */
+/* Indicador de Visualização Administrativa do Cliente */
 .admin-view-indicator-banner {
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.35);
@@ -4701,6 +4701,27 @@ body.drawer-open {
   }
   .mobile-deliveries-list {
     display: none !important;
+  }
+
+/* ================= CLIENT PROFILE PAGE RESPONSIVE ================= */
+.client-profile-container {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .profile-hero-card {
+    flex-direction: column;
+    align-items: flex-start !important;
+    padding: 16px !important;
+    gap: 12px !important;
+  }
+  .profile-section-card {
+    padding: 16px !important;
+  }
+  #btn-save-client-profile {
+    width: 100%;
+    justify-content: center;
   }
 }
 

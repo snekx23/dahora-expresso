@@ -149,23 +149,60 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
   });
 
   await t.test('B3. Lote com idempotency_key repetida retorna resposta idempotente sem duplicar lote', async () => {
-    const { data: stl } = await adminClient.from('rider_weekly_settlements').select('id, version').eq('rider_id', riderFleetId).single();
+    const teleCode = `TL-IDEMP-${Date.now()}`;
+    const { data: tele, error: insTeleErr } = await serviceClient.from('teles').insert({
+      tele_code: teleCode,
+      client_id: null,
+      rider_id: riderFleetId,
+      status: 'concluida',
+      pickup_address: 'Av. Brasil, 100',
+      delivery_address: 'Rua Flores, 200',
+      delivery_charge: 30.00,
+      completed_at: '2026-08-19T14:00:00.000Z'
+    }).select('id').single();
+
+    await serviceClient.from('rider_financial_transactions').insert({
+      rider_id: riderFleetId,
+      tele_id: tele.id,
+      type: 'credito_entrega',
+      direction: 'credit',
+      amount: 25.00,
+      description: 'Credito tele B3'
+    });
+
+    const { data: calcRes } = await adminClient.rpc('admin_calculate_rider_weekly_settlement', {
+      p_rider_id: riderFleetId,
+      p_period_start: '2026-08-17T03:00:00.000Z',
+      p_period_end: '2026-08-24T03:00:00.000Z'
+    });
+
+    const { data: stl } = await adminClient.from('rider_weekly_settlements').select('id, version').eq('id', calcRes.settlement_id).single();
+
+    const { data: closeRes } = await adminClient.rpc('admin_close_rider_weekly_settlement', {
+      p_settlement_id: stl.id,
+      p_expected_version: stl.version
+    });
+
     const key = `IDEMP-SAME-${Date.now()}`;
 
     const { data: res1 } = await adminClient.rpc('admin_create_rider_payment_batch', {
       p_settlement_id: stl.id,
-      p_expected_version: stl.version,
+      p_expected_version: closeRes.version || stl.version,
       p_idempotency_key: key
     });
 
     const { data: res2, error: err2 } = await adminClient.rpc('admin_create_rider_payment_batch', {
       p_settlement_id: stl.id,
-      p_expected_version: stl.version,
+      p_expected_version: closeRes.version || stl.version,
       p_idempotency_key: key
     });
 
     assert.ok(!err2, `RPC 2 error: ${err2?.message}`);
-    assert.ok(res1.batch_id || res2.is_idempotent);
+    assert.ok(res1?.batch_id || res2?.is_idempotent);
+
+    // Clean up
+    await serviceClient.from('rider_financial_transactions').delete().eq('tele_id', tele.id);
+    await serviceClient.from('teles').delete().eq('id', tele.id);
   });
 
   // ===================================================================

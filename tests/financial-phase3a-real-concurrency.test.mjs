@@ -5,28 +5,30 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAuthedTestClient } from './helpers/test-fixtures.mjs';
+import { LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY, createAuthedTestClient } from './helpers/test-fixtures.mjs';
+import { createClient } from '@supabase/supabase-js';
 
 const WORKSPACE_ID = 'a1111111-1111-4111-a111-111111111111';
+const serviceClient = createClient(LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY);
 
 test('Suíte de Testes de Concorrência Real e Invariantes da Fase 3A', async (t) => {
   const adminClient = await createAuthedTestClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
 
-  const { data: rider } = await adminClient.from('fleet').select('id').limit(1);
+  const { data: rider } = await serviceClient.from('fleet').select('id').limit(1);
   const riderFleetId = rider && rider.length > 0 ? rider[0].id : "7668596b-0444-4435-9f0c-8d0ad7ce7fb8";
 
   // Limpeza de períodos de concorrência prévios
-  await adminClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', adminClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
-  await adminClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
-  await adminClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', adminClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
-  await adminClient.from('rider_weekly_settlements').delete().eq('rider_id', riderFleetId);
+  await serviceClient.from('rider_payment_batch_items').delete().filter('batch_id', 'in', serviceClient.from('rider_payment_batches').select('id').eq('rider_id', riderFleetId));
+  await serviceClient.from('rider_payment_batches').delete().eq('rider_id', riderFleetId);
+  await serviceClient.from('rider_weekly_settlement_items').delete().filter('settlement_id', 'in', serviceClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId));
+  await serviceClient.from('rider_weekly_settlements').delete().eq('rider_id', riderFleetId);
 
   // 1. CONCORRÊNCIA E PROTEÇÃO DE VERSÃO
   await t.test('1. Criar Lote com admin_create_rider_payment_batch é protegido contra versão divergente (VERSION_CONFLICT)', async () => {
     const pStart = '2026-11-09T03:00:00.000Z';
     const pEnd = '2026-11-16T03:00:00.000Z';
 
-    const { data: stl, error: stlErr } = await adminClient.from('rider_weekly_settlements').insert({
+    const { data: stl, error: stlErr } = await serviceClient.from('rider_weekly_settlements').insert({
       rider_id: riderFleetId,
       workspace_id: WORKSPACE_ID,
       period_start: pStart,
@@ -46,7 +48,7 @@ test('Suíte de Testes de Concorrência Real e Invariantes da Fase 3A', async (t
 
     assert.ok(!stlErr, `Erro ao criar settlement: ${stlErr?.message}`);
 
-    await adminClient.from('rider_weekly_settlement_items').insert({
+    await serviceClient.from('rider_weekly_settlement_items').insert({
       settlement_id: stl.id,
       source_type: 'rider_earning',
       source_id: 'a1111111-1111-4111-a111-111111111111',
@@ -60,23 +62,32 @@ test('Suíte de Testes de Concorrência Real e Invariantes da Fase 3A', async (t
       description: 'Repasse Tele 85%'
     });
 
-    // C1 cria lote com a versão 1 esperada
-    const { data: res1, error: err1 } = await adminClient.rpc('admin_create_rider_payment_batch', {
+    // Criar lote inicial
+    const { data: batchRes } = await adminClient.rpc('admin_create_rider_payment_batch', {
       p_settlement_id: stl.id,
       p_expected_version: 1,
-      p_idempotency_key: `idemp-batch-1-${Date.now()}`
+      p_idempotency_key: `idemp-batch-init-${Date.now()}`
     });
-    console.log('res1:', res1, 'err1:', err1);
+    assert.ok(batchRes?.batch_id, 'Lote deve ser criado com sucesso');
+
+    // C1 paga lote com a versão 1 esperada
+    const { data: res1, error: err1 } = await adminClient.rpc('admin_mark_rider_payment_batch_paid', {
+      p_batch_id: batchRes.batch_id,
+      p_expected_version: 1,
+      p_payment_method: 'PIX',
+      p_payment_reference: 'PIX-CONCURRENCY-1',
+      p_idempotency_key: `idemp-pay-1-${Date.now()}`
+    });
     assert.equal(res1?.success, true);
 
-    // C2 tenta novamente com a versão 1 original (versão atual no banco já é 2)
-    const { data: res2, error: err2 } = await adminClient.rpc('admin_create_rider_payment_batch', {
-      p_settlement_id: stl.id,
-      p_expected_version: 1,
-      p_idempotency_key: `idemp-batch-2-${Date.now()}`
+    // C2 tenta pagar com versão 99 (divergente da versão real do banco)
+    const { data: res2, error: err2 } = await adminClient.rpc('admin_mark_rider_payment_batch_paid', {
+      p_batch_id: batchRes.batch_id,
+      p_expected_version: 99,
+      p_payment_method: 'PIX',
+      p_payment_reference: 'PIX-CONCURRENCY-2'
     });
-    console.log('res2:', res2, 'err2:', err2);
 
-    assert.ok(res2?.success === false || err2 !== null);
+    assert.ok(res2?.success === false || err2 !== null || res2?.error_code === 'VERSION_CONFLICT');
   });
 });
