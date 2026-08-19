@@ -610,10 +610,41 @@ async function fetchPendingDeliveries() {
   }
 }
 
+function getRiderDisplayCode(code) {
+  if (!code || typeof code !== 'string') return '';
+  const cleaned = code.trim();
+  if (!cleaned || isUuidString(cleaned)) return '';
+  return cleaned;
+}
+
+function getRiderDisplayIdentity(rider) {
+  if (!rider) return { name: 'Motoboy', code: '' };
+  const rawName = rider.name || rider.full_name || rider.motoboy_name || '';
+  const name = (rawName && !isUuidString(rawName)) ? rawName.trim() : 'Motoboy';
+  const rawCode = rider.motoboy_code || rider.rider_code || rider.code || '';
+  const code = getRiderDisplayCode(rawCode);
+  return { name, code };
+}
+
+function getClientDisplayCode(code) {
+  if (!code || typeof code !== 'string') return '';
+  const cleaned = code.trim();
+  if (!cleaned || isUuidString(cleaned)) return '';
+  return cleaned;
+}
+
+function getClientDisplayIdentity(client) {
+  if (!client) return { name: 'Cliente', code: '' };
+  const rawName = client.establishment_name || client.name || client.company_name || '';
+  const name = (rawName && !isUuidString(rawName)) ? rawName.trim() : 'Cliente';
+  const rawCode = client.client_code || client.code || '';
+  const code = getClientDisplayCode(rawCode);
+  return { name, code };
+}
+
 function formatRiderDisplayName(r) {
   if (!r) return 'Motoboy sem nome';
-  const name = r.name || r.full_name || r.motoboy_name || '';
-  const code = r.motoboy_code || r.code || '';
+  const { name, code } = getRiderDisplayIdentity(r);
   if (name && code) return `${name} — ${code}`;
   if (name) return name;
   if (code) return `Motoboy — ${code}`;
@@ -637,21 +668,33 @@ async function fetchRiderConsumables() {
       return;
     }
 
-    mockData.riderConsumables = (data || []).map(item => ({
-      id: item.id,
-      rider_id: escapeHtml(String(item.motoboy_id || item.rider_id || '')),
-      rider_name: escapeHtml(item.motoboy_name || item.rider_name || 'Motoboy'),
-      categoria: escapeHtml(item.categoria === 'vale' ? 'Vale' : 'Consumível'),
-      item_name: escapeHtml(item.item_name || 'Item'),
-      item_type: escapeHtml(item.item_name || 'Item'),
-      quantidade: parseInt(item.quantidade || 1),
-      valor_unitario: parseFloat(item.valor_unitario || item.amount || 0),
-      amount: parseFloat(item.amount || 0),
-      observacao: escapeHtml(item.observacao || ''),
-      status: item.status || 'active',
-      reversal_reason: item.reversal_reason || '',
-      created_at: item.created_at
-    }));
+    mockData.riderConsumables = (data || []).map(item => {
+      const rawRiderName = item.motoboy_name || item.rider_name || '';
+      const matchedRider = (mockData.fleet || []).find(r => r.id === item.motoboy_id || r.user_id === item.motoboy_id || r.id === item.rider_id || r.user_id === item.rider_id);
+
+      let displayName = 'Motoboy';
+      if (matchedRider) {
+        displayName = formatRiderDisplayName(matchedRider);
+      } else if (rawRiderName && !isUuidString(rawRiderName)) {
+        displayName = rawRiderName;
+      }
+
+      return {
+        id: item.id,
+        rider_id: escapeHtml(String(item.motoboy_id || item.rider_id || '')),
+        rider_name: escapeHtml(displayName),
+        categoria: escapeHtml(item.categoria === 'vale' ? 'Vale' : 'Consumível'),
+        item_name: escapeHtml(item.item_name || 'Item'),
+        item_type: escapeHtml(item.item_name || 'Item'),
+        quantidade: parseInt(item.quantidade || 1),
+        valor_unitario: parseFloat(item.valor_unitario || item.amount || 0),
+        amount: parseFloat(item.amount || 0),
+        observacao: escapeHtml(item.observacao || ''),
+        status: item.status || 'active',
+        reversal_reason: item.reversal_reason || '',
+        created_at: item.created_at
+      };
+    });
   } catch (err) {
     console.warn("Aviso ao buscar rider_consumable_purchases:", err.message);
   }
@@ -1376,8 +1419,8 @@ function renderFleetTable() {
         <div class="user-profile">
           <div class="item-icon-avatar bg-yellow"><i data-lucide="bike" class="text-black"></i></div>
           <div>
-            <strong>${escapeHtml(rider.name)}</strong>
-            <p class="text-muted text-xs">Cód: ${escapeHtml(rider.motoboy_code || '—')}</p>
+            <strong>${escapeHtml(rider.name || 'Motoboy')}</strong>
+            <p class="text-muted text-xs">${getRiderDisplayCode(rider.motoboy_code) ? `Cód: ${escapeHtml(getRiderDisplayCode(rider.motoboy_code))}` : '—'}</p>
           </div>
         </div>
       </td>
@@ -1584,8 +1627,8 @@ function renderRiderSettings() {
     return `
       <tr>
         <td>
-          <strong>${escapeHtml(rider.name)}</strong>
-          <p class="text-muted">${escapeHtml(rider.id)}</p>
+          <strong>${escapeHtml(rider.name || 'Motoboy')}</strong>
+          <p class="text-muted">${getRiderDisplayCode(rider.motoboy_code) ? escapeHtml(getRiderDisplayCode(rider.motoboy_code)) : '—'}</p>
         </td>
         <td>
           <strong>${escapeHtml(rider.vehicle)}</strong>
@@ -4723,7 +4766,7 @@ function shareWhatsApp() {
 function viewRiderCredentials(riderId) {
   const rider = mockData.fleet.find(r => r.id === riderId);
   if (!rider) return;
-  openCredentialCard(rider.motoboy_code || '—', rider.name, rider.pin || '(sem PIN)');
+  openCredentialCard(getRiderDisplayCode(rider.motoboy_code) || '—', rider.name || 'Motoboy', rider.pin || '(sem PIN)');
 }
 
 
@@ -4854,8 +4897,8 @@ function openRiderActions(riderId) {
   const codeEl = document.getElementById('rider-action-code');
   const statusEl = document.getElementById('rider-action-status');
 
-  if (nameEl) nameEl.innerText = rider.name;
-  if (codeEl) codeEl.innerText = rider.motoboy_code || '—';
+  if (nameEl) nameEl.innerText = rider.name || 'Motoboy';
+  if (codeEl) codeEl.innerText = getRiderDisplayCode(rider.motoboy_code) || '—';
   if (statusEl) statusEl.innerText = rider.status;
 
   document.getElementById('modal-rider-actions').classList.remove('hidden');
@@ -6155,6 +6198,10 @@ function renderAdminChatChannels(channels) {
   }
 
   listContainer.innerHTML = channels.map(chan => {
+    const { name: clientName, code: clientCode } = getClientDisplayIdentity({ establishment_name: chan.establishment_name, client_code: chan.client_code });
+    const displayTitle = clientName || 'Cliente';
+    const displaySubtitle = clientCode ? `${clientCode} • ${chan.email || ''}` : (chan.email || '');
+
     const isActive = activeAdminClientChatId === chan.client_id;
     const activeBg = isActive ? 'background: rgba(255, 255, 255, 0.08); border-left: 3px solid var(--accent-cyan);' : 'border-left: 3px solid transparent;';
     const highlightHover = 'this.style.background=\'rgba(255, 255, 255, 0.05)\'';
@@ -6166,11 +6213,11 @@ function renderAdminChatChannels(channels) {
     const timeText = chan.last_message ? new Date(chan.last_message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
     return `
-      <div class="chat-channel-item" onclick="selectAdminChatChannel('${chan.client_id}', '${escapeHtml(chan.establishment_name || 'Cliente').replace(/'/g, "\\'")}', '${escapeHtml(chan.email || '')}')"
+      <div class="chat-channel-item" onclick="selectAdminChatChannel('${chan.client_id}', '${escapeHtml(displayTitle).replace(/'/g, "\\'")}', '${escapeHtml(displaySubtitle).replace(/'/g, "\\'")}')"
            onmouseover="${highlightHover}" onmouseout="${normalBg}"
            style="padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.2s; ${activeBg}">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <strong style="font-size: 0.88rem; color: var(--color-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;">${escapeHtml(chan.establishment_name || 'Cliente')}</strong>
+          <strong style="font-size: 0.88rem; color: var(--color-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;">${escapeHtml(displayTitle)}</strong>
           <div style="display: flex; align-items: center; gap: 6px;">
             ${unreadBadge}
             <span style="font-size: 0.68rem; color: var(--color-text-muted);">${timeText}</span>
@@ -8479,8 +8526,8 @@ function renderRiderCredits() {
     if (item.status !== 'reversed') {
       periodTotal += item.amount;
     }
-    const rider = mockData.fleet.find(r => r.id === item.rider_id);
-    const riderDisplayName = rider ? formatRiderDisplayName(rider) : 'Motoboy Removido';
+    const rider = (mockData.fleet || []).find(r => r.id === item.rider_id || r.user_id === item.rider_id);
+    const riderDisplayName = rider ? formatRiderDisplayName(rider) : 'Motoboy';
 
     const targetDateFmt = parseLocalDate(item.target_date).toLocaleDateString('pt-BR');
     const createdDate = new Date(item.created_at);
@@ -9867,9 +9914,17 @@ window.loadRiderExtract = async function(targetPage) {
           else if (item.type === 'ajuste_debito') typeLabel = 'Ajuste Débito / Consumível';
           else if (item.type === 'estorno') typeLabel = 'Estorno';
 
+          let teleCodeDisplay = 'LANÇAMENTO';
+          if (item.tele_code) {
+            const cleanCode = String(item.tele_code).trim();
+            if (!isUuidString(cleanCode)) {
+              teleCodeDisplay = '#' + cleanCode;
+            }
+          }
+
           return `
             <tr>
-              <td><strong>${escapeHtml(item.tele_code ? '#' + item.tele_code : 'LANÇAMENTO')}</strong></td>
+              <td><strong>${escapeHtml(teleCodeDisplay)}</strong></td>
               <td>${dateFormatted} ${timeFormatted}</td>
               <td><span style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(typeLabel)}</span></td>
               <td>${escapeHtml(item.description || '—')}</td>
@@ -9958,8 +10013,9 @@ window.initClientExtract = async function() {
     });
 
     clients.forEach(c => {
-      const codeStr = c.client_code ? ` (${escapeHtml(c.client_code)})` : '';
-      select.innerHTML += `<option value="${escapeHtml(c.id)}">${escapeHtml(c.establishment_name)}${codeStr}</option>`;
+      const { name, code } = getClientDisplayIdentity(c);
+      const codeStr = code ? ` (${escapeHtml(code)})` : '';
+      select.innerHTML += `<option value="${escapeHtml(c.id)}">${escapeHtml(name)}${codeStr}</option>`;
     });
     select.value = currentVal;
   }
@@ -15230,10 +15286,13 @@ function renderAdminSupportTicketsList() {
       ? `<span style="background: #ef4444; color: white; border-radius: 10px; padding: 2px 7px; font-size: 0.65rem; font-weight: 800;">${t.unread_messages_count} nova(s)</span>`
       : '';
 
+    const { name: rName, code: rCode } = getRiderDisplayIdentity({ name: t.rider_display_name || t.rider_name, motoboy_code: t.motoboy_code || t.rider_code });
+    const safeDisplayName = rCode ? `${rName} — ${rCode}` : rName;
+
     return `
       <div onclick="openAdminSupportTicketDetail('${t.ticket_id}')" style="padding: 12px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: background 0.15s; background: ${isSelected ? 'rgba(255, 183, 0, 0.12)' : 'var(--bg-card)'}; border: 1px solid ${isSelected ? 'var(--primary)' : 'var(--border-color)'}; display: flex; flex-direction: column; gap: 6px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-          <strong style="font-size: 0.82rem; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.rider_display_name)}</strong>
+          <strong style="font-size: 0.82rem; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(safeDisplayName)}</strong>
           ${getAdminSupportPriorityBadge(t.priority)}
         </div>
         <div style="font-size: 0.85rem; font-weight: 700; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -15306,9 +15365,13 @@ function renderAdminSupportTicketDetail(ticket, rider, messages) {
   const inputEl = document.getElementById('admin-rider-chat-input');
   const submitBtn = document.getElementById('admin-support-submit-btn');
 
+  const { name: rName, code: rCode } = getRiderDisplayIdentity({ name: (rider && (rider.display_name || rider.name)) || 'Motoboy', motoboy_code: (rider && (rider.motoboy_code || rider.code)) || '' });
+  const riderLabel = rCode ? `${rName} (${rCode})` : rName;
+  const phoneStr = (rider && rider.phone) ? rider.phone : 'Não informado';
+
   if (subjectEl) subjectEl.textContent = ticket.subject;
   if (priorityEl) priorityEl.innerHTML = getAdminSupportPriorityBadge(ticket.priority);
-  if (riderInfoEl) riderInfoEl.textContent = `Motoboy: ${rider.display_name} ¢ Tel: ${rider.phone || 'Não informado'} ¢ Categoria: ${getAdminSupportCategoryLabel(ticket.category)}`;
+  if (riderInfoEl) riderInfoEl.textContent = `Motoboy: ${riderLabel} • Tel: ${phoneStr} • Categoria: ${getAdminSupportCategoryLabel(ticket.category)}`;
   if (statusBadgeEl) statusBadgeEl.innerHTML = getAdminSupportStatusBadge(ticket.status);
 
   if (statusSelect) statusSelect.value = ticket.status;
@@ -16017,7 +16080,8 @@ function renderAdminRiderWeeklySettlements(settlements) {
 
     // Matriz de Ações por Estado Autoritativo
     let actionBtn = '';
-    const safeRiderName = (s.rider_name || 'Motoboy').replace(/'/g, "\\'");
+    const cleanRiderName = (s.rider_name && !isUuidString(s.rider_name)) ? s.rider_name : 'Motoboy';
+    const safeRiderName = cleanRiderName.replace(/'/g, "\\'");
 
     if (isNotCalculated) {
       actionBtn = `<button type="button" class="btn btn-primary btn-sm" onclick="handleCalculateRiderSettlement('${s.rider_id}', '${s.period_start}', '${s.period_end}')" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -16066,9 +16130,11 @@ function renderAdminRiderWeeklySettlements(settlements) {
       </button>`;
     }
 
+    const displayCode = getRiderDisplayCode(s.rider_code);
+
     html += `<tr>
-      <td><strong>${s.rider_name || 'Motoboy'}</strong></td>
-      <td><code>${s.rider_code || '—'}</code></td>
+      <td><strong>${escapeHtml(cleanRiderName)}</strong></td>
+      <td><code>${displayCode ? escapeHtml(displayCode) : '—'}</code></td>
       <td style="font-size: 0.8rem;">${periodStr}</td>
       <td><span class="badge ${badgeClass}">${statusLabel}</span></td>
       <td>${formatRiderSettlementCurrency(s.base_rider_amount)}</td>
