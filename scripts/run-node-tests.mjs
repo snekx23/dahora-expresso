@@ -48,7 +48,9 @@ const nodeCompatibleFiles = [
   'rls-motoboy-auth-rpc.test.mjs',
   'safari-mobile-login.test.mjs',
   'seed-homologation-safety-locks.test.mjs',
-  'tele-manual-and-client-flow.test.mjs'
+  'tele-manual-and-client-flow.test.mjs',
+  'tele-manual-authoritative-pickup-delivery.test.mjs',
+  'geographic-precision-and-routing.test.mjs'
 ];
 
 console.log('=====================================================================');

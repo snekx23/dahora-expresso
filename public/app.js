@@ -248,7 +248,7 @@ let activeChatClientName = null;
 let supportChatChannel = null;
 let activeAdminChatChannels = [];
 let activeAdminRiderChatChannels = [];
-let ownerFleetCenterCoords = [-23.55052, -46.633308];
+let ownerFleetCenterCoords = [-29.8247, -51.1444];
 let clientFleetCenterCoords = [-29.83, -51.14];
 let dashboardRealtimeChannel = null;
 let ownerFleetMarkers = {};
@@ -6972,14 +6972,14 @@ let requestMaps = {
     map: null,
     marker: null,
     restaurantMarker: null,
-    centerCoords: [-29.842173, -51.126764],
+    centerCoords: [-29.8247, -51.1444],
     destCoords: null
   },
   manual: {
     map: null,
     marker: null,
     restaurantMarker: null,
-    centerCoords: [-29.842173, -51.126764],
+    centerCoords: [-29.8247, -51.1444],
     destCoords: null
   }
 };
@@ -7118,9 +7118,16 @@ function initRequestDeliveryMap(type = 'client') {
     `;
 
     const setRestaurantMarker = (coords) => {
+      if (type === 'manual') {
+        if (typeof updateManualTelePickupMarker === 'function') {
+          updateManualTelePickupMarker();
+        }
+        return;
+      }
       const center = new window.google.maps.LatLng(coords[0], coords[1]);
+      const clientName = (currentUserProfile && currentUserProfile.establishment_name) ? currentUserProfile.establishment_name : 'Ponto de Coleta';
       requestMaps[type].restaurantMarker = new window.CustomHTMLMapMarker(center, requestMaps[type].map, restaurantIconHtml, () => {
-        const info = new window.google.maps.InfoWindow({ content: '<strong style="color:var(--color-text);">Seu Comércio</strong>' });
+        const info = new window.google.maps.InfoWindow({ content: `<strong style="color:var(--color-text);">${escapeHtml(clientName)}</strong>` });
         info.open(requestMaps[type].map, requestMaps[type].restaurantMarker);
       });
     };
@@ -7275,7 +7282,7 @@ async function setupAddressGeocodingListener(type = 'client') {
       componentRestrictions: { country: "br" },
       bounds: rsBounds,
       strictBounds: true,
-      fields: ["address_components", "geometry", "formatted_address"],
+      fields: ["address_components", "geometry", "formatted_address", "place_id"],
       types: ["address"]
     };
 
@@ -7395,10 +7402,10 @@ async function startRealtimeTracking(order) {
   }
 
   // Determine coordinates
-  const pickupLat = parseFloat(order.pickup_lat) || -23.55052;
-  const pickupLng = parseFloat(order.pickup_lng) || -46.633308;
-  const destLat = parseFloat(order.dest_lat) || -23.551;
-  const destLng = parseFloat(order.dest_lng) || -46.634;
+  const pickupLat = parseFloat(order.pickup_lat) || -29.8247;
+  const pickupLng = parseFloat(order.pickup_lng) || -51.1444;
+  const destLat = parseFloat(order.dest_lat) || -29.825;
+  const destLng = parseFloat(order.dest_lng) || -51.145;
 
   // Initialize tracking Leaflet map
   initTrackingMap(pickupLat, pickupLng, destLat, destLng);
@@ -8909,6 +8916,21 @@ async function showRequestDeliveryModal() {
   if (manEl) manEl.value = 'false';
   if (warnEl) warnEl.classList.add('hidden');
 
+  manualTelePickupState = {
+    clientId: null,
+    establishmentName: '',
+    isCustom: false,
+    defaultAddress: '',
+    defaultLat: null,
+    defaultLng: null,
+    defaultPlaceId: '',
+    customAddress: '',
+    customLat: null,
+    customLng: null,
+    customPlaceId: ''
+  };
+  if (typeof updateManualTelePickupUI === 'function') updateManualTelePickupUI();
+
   if (requestMaps && requestMaps.manual && requestMaps.manual.map) {
     if (requestMaps.manual.marker && requestMaps.manual.marker.setMap) {
       requestMaps.manual.marker.setMap(null);
@@ -9008,12 +9030,18 @@ function resetManualDeliveryForm() {
 
   manualTelePickupState = {
     clientId: null,
+    establishmentName: '',
     isCustom: false,
+    defaultAddress: '',
+    defaultLat: null,
+    defaultLng: null,
+    defaultPlaceId: '',
     customAddress: '',
     customLat: null,
     customLng: null,
     customPlaceId: ''
   };
+  if (typeof updateManualTelePickupUI === 'function') updateManualTelePickupUI();
 
   if (typeof updatePrecisionBadge === 'function') updatePrecisionBadge('manual');
 }
@@ -12134,20 +12162,17 @@ function renderCommercialClientsDropdown(clientsList) {
 
 let manualTelePickupState = {
   clientId: null,
+  establishmentName: '',
   isCustom: false,
+  defaultAddress: '',
+  defaultLat: null,
+  defaultLng: null,
+  defaultPlaceId: '',
   customAddress: '',
   customLat: null,
   customLng: null,
   customPlaceId: ''
 };
-
-function invalidateManualTeleCustomPickup(newAddress = '') {
-  manualTelePickupState.isCustom = true;
-  manualTelePickupState.customAddress = newAddress;
-  manualTelePickupState.customLat = null;
-  manualTelePickupState.customLng = null;
-  manualTelePickupState.customPlaceId = '';
-}
 
 async function geocodeClientAddressOnDemand(addressText) {
   if (!addressText || !addressText.trim()) return null;
@@ -12289,6 +12314,91 @@ async function recoverClientPickupLocationSynchronously(clientObj) {
   }
 }
 
+function updateManualTelePickupUI() {
+  const estEl = document.getElementById('manual-pickup-establishment-name');
+  const defAddrEl = document.getElementById('manual-pickup-default-address');
+  const custAddrEl = document.getElementById('manual-pickup-custom-address');
+  const custContEl = document.getElementById('manual-pickup-custom-container');
+  const btnToggleEl = document.getElementById('btn-toggle-custom-pickup');
+  const btnResetEl = document.getElementById('btn-reset-default-pickup');
+
+  if (estEl) {
+    estEl.innerText = manualTelePickupState.establishmentName || 'Selecione um estabelecimento acima';
+  }
+  if (defAddrEl) {
+    if (manualTelePickupState.defaultAddress) {
+      defAddrEl.innerText = manualTelePickupState.defaultAddress;
+    } else if (manualTelePickupState.clientId) {
+      defAddrEl.innerText = '⚠️ Endereço não cadastrado para este estabelecimento.';
+    } else {
+      defAddrEl.innerText = 'O endereço cadastrado do estabelecimento será usado como coleta padrão.';
+    }
+  }
+
+  if (manualTelePickupState.isCustom) {
+    if (custContEl) custContEl.classList.remove('hidden');
+    if (btnToggleEl) btnToggleEl.classList.add('hidden');
+    if (btnResetEl) btnResetEl.classList.remove('hidden');
+    if (custAddrEl && manualTelePickupState.customAddress && custAddrEl.value !== manualTelePickupState.customAddress) {
+      custAddrEl.value = manualTelePickupState.customAddress;
+    }
+  } else {
+    if (custContEl) custContEl.classList.add('hidden');
+    if (btnToggleEl) btnToggleEl.classList.remove('hidden');
+    if (btnResetEl) btnResetEl.classList.add('hidden');
+    if (custAddrEl) custAddrEl.value = '';
+  }
+
+  updateManualTelePickupMarker();
+}
+
+function updateManualTelePickupMarker() {
+  if (!requestMaps.manual || !requestMaps.manual.map) return;
+
+  const lat = manualTelePickupState.isCustom ? manualTelePickupState.customLat : manualTelePickupState.defaultLat;
+  const lng = manualTelePickupState.isCustom ? manualTelePickupState.customLng : manualTelePickupState.defaultLng;
+  const labelName = manualTelePickupState.isCustom
+    ? (manualTelePickupState.customAddress ? `Coleta: ${manualTelePickupState.customAddress}` : 'Coleta (Externa)')
+    : (manualTelePickupState.establishmentName ? `Coleta: ${manualTelePickupState.establishmentName}` : 'Ponto de Coleta');
+
+  if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+    const center = new window.google.maps.LatLng(lat, lng);
+    const pickupIconHtml = `
+      <div class="custom-map-marker central-marker" style="background-color: #10b981; box-shadow: 0 0 15px #10b981; border-color: #ffffff; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative;">
+        <div class="marker-pulse" style="border-color: #10b981; animation-duration: 2.5s; position: absolute; top: -5px; left: -5px; width: 24px; height: 24px; border: 2px solid #10b981; border-radius: 50%; animation: pulse-dot-anim 2.5s infinite;"></div>
+        <i class="marker-icon-dot" style="background-color: #ffffff; width: 6px; height: 6px; border-radius: 50%; display: block;"></i>
+      </div>
+    `;
+
+    if (requestMaps.manual.restaurantMarker && requestMaps.manual.restaurantMarker.setMap) {
+      requestMaps.manual.restaurantMarker.setMap(null);
+    }
+
+    requestMaps.manual.restaurantMarker = new window.CustomHTMLMapMarker(center, requestMaps.manual.map, pickupIconHtml, () => {
+      const info = new window.google.maps.InfoWindow({ content: `<strong style="color:var(--color-text);">${escapeHtml(labelName)}</strong>` });
+      info.open(requestMaps.manual.map, requestMaps.manual.restaurantMarker);
+    });
+
+    if (!requestMaps.manual.destCoords) {
+      requestMaps.manual.map.setCenter(center);
+    } else {
+      const destLatLng = new window.google.maps.LatLng(requestMaps.manual.destCoords.lat, requestMaps.manual.destCoords.lng);
+      if (requestMaps.manual.polyline) {
+        requestMaps.manual.polyline.setPath([center, destLatLng]);
+      }
+    }
+  } else {
+    if (requestMaps.manual.restaurantMarker && requestMaps.manual.restaurantMarker.setMap) {
+      requestMaps.manual.restaurantMarker.setMap(null);
+    }
+    requestMaps.manual.restaurantMarker = null;
+    if (requestMaps.manual.polyline) {
+      requestMaps.manual.polyline.setMap(null);
+      requestMaps.manual.polyline = null;
+    }
+  }
+}
+
 function selectCommercialClientForTele(id, name) {
   const selectedInput = document.getElementById('selectedClientId');
   const searchInput = document.getElementById('admin-client-search');
@@ -12299,35 +12409,186 @@ function selectCommercialClientForTele(id, name) {
   if (dropdownEl) dropdownEl.classList.add('hidden');
 
   const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(id));
+  const parsedLat = (clientObj?.pickup_latitude != null && !isNaN(Number(clientObj.pickup_latitude))) ? Number(clientObj.pickup_latitude) : null;
+  const parsedLng = (clientObj?.pickup_longitude != null && !isNaN(Number(clientObj.pickup_longitude))) ? Number(clientObj.pickup_longitude) : null;
+
   manualTelePickupState = {
     clientId: id,
+    establishmentName: clientObj?.establishment_name || name,
     isCustom: false,
+    defaultAddress: clientObj?.address || '',
+    defaultLat: parsedLat,
+    defaultLng: parsedLng,
+    defaultPlaceId: clientObj?.pickup_place_id || '',
     customAddress: '',
     customLat: null,
     customLng: null,
     customPlaceId: ''
   };
 
+  updateManualTelePickupUI();
+
   if (clientObj) {
-    const hasValidCoords = clientObj.pickup_latitude && clientObj.pickup_longitude && !isNaN(Number(clientObj.pickup_latitude)) && !isNaN(Number(clientObj.pickup_longitude));
+    const hasValidCoords = parsedLat != null && parsedLng != null;
     if (!hasValidCoords) {
       const clientAddr = (clientObj.address || clientObj.pickup_address || '').trim();
       if (clientAddr) {
         showToastNotification(`Geocodificando e salvando ponto de coleta de "${clientObj.establishment_name}"...`);
         recoverClientPickupLocationSynchronously(clientObj).then(ok => {
           if (ok) {
+            manualTelePickupState.defaultLat = Number(clientObj.pickup_latitude);
+            manualTelePickupState.defaultLng = Number(clientObj.pickup_longitude);
+            manualTelePickupState.defaultPlaceId = clientObj.pickup_place_id || '';
+            updateManualTelePickupUI();
             showToastNotification(`Coleta padrão de "${clientObj.establishment_name}" confirmada no banco: ${clientObj.address}`);
           } else {
-            showToastNotification(`Não foi possível salvar automaticamente o ponto de coleta deste cliente. Configure o ponto de coleta manualmente.`, 'warning');
+            showToastNotification(`Não foi possível salvar automaticamente o ponto de coleta deste cliente. Altere a coleta desta Tele manualmente.`, 'warning');
           }
         });
       } else {
-        showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um endereço cadastrado.`);
+        showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um endereço cadastrado.`);
       }
     } else {
       showToastNotification(`Coleta padrão do cliente carregada: ${clientObj.address}`);
     }
   }
+}
+
+function toggleCustomPickupManualTele() {
+  if (!manualTelePickupState.clientId) {
+    showToastNotification('Selecione primeiro um estabelecimento comercial.');
+    return;
+  }
+  manualTelePickupState.isCustom = true;
+  updateManualTelePickupUI();
+  setupManualPickupAddressAutocomplete();
+  const inputEl = document.getElementById('manual-pickup-custom-address');
+  if (inputEl) {
+    inputEl.focus();
+  }
+}
+
+function resetToDefaultPickupManualTele() {
+  manualTelePickupState.isCustom = false;
+  manualTelePickupState.customAddress = '';
+  manualTelePickupState.customLat = null;
+  manualTelePickupState.customLng = null;
+  manualTelePickupState.customPlaceId = '';
+  updateManualTelePickupUI();
+  showToastNotification('Coleta restaurada para o ponto padrão do estabelecimento.');
+}
+
+async function setupManualPickupAddressAutocomplete() {
+  const addressInput = document.getElementById('manual-pickup-custom-address');
+  if (!addressInput) return;
+  if (addressInput.dataset.autocompleteInitialized) return;
+
+  try {
+    await loadGoogleMapsApi();
+    if (!window.google?.maps?.places) return;
+
+    addressInput.dataset.autocompleteInitialized = 'true';
+
+    const rsBounds = new window.google.maps.LatLngBounds(
+      { lat: -33.75, lng: -57.65 },
+      { lat: -27.08, lng: -49.69 }
+    );
+
+    const options = {
+      componentRestrictions: { country: "br" },
+      bounds: rsBounds,
+      strictBounds: true,
+      fields: ["address_components", "geometry", "formatted_address", "place_id"],
+      types: ["address"]
+    };
+
+    const autocomplete = new window.google.maps.places.Autocomplete(addressInput, options);
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place || !place.geometry || !place.geometry.location) {
+        showToastNotification('Endereço de coleta não encontrado ou inválido. Selecione uma sugestão da lista.', 'warning');
+        return;
+      }
+
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      manualTelePickupState.isCustom = true;
+      manualTelePickupState.customAddress = place.formatted_address || addressInput.value;
+      manualTelePickupState.customLat = lat;
+      manualTelePickupState.customLng = lng;
+      manualTelePickupState.customPlaceId = place.place_id || '';
+      addressInput.value = manualTelePickupState.customAddress;
+
+      updateManualTelePickupUI();
+      showToastNotification(`Ponto de coleta alterado temporariamente para esta Tele: ${manualTelePickupState.customAddress}`);
+    });
+
+    addressInput.addEventListener('input', () => {
+      const val = addressInput.value.trim();
+      if (val !== manualTelePickupState.customAddress) {
+        manualTelePickupState.customAddress = val;
+        manualTelePickupState.customLat = null;
+        manualTelePickupState.customLng = null;
+        manualTelePickupState.customPlaceId = '';
+        updateManualTelePickupMarker();
+      }
+    });
+  } catch (err) {
+    console.warn("Pickup places autocomplete notice:", err.message);
+  }
+}
+
+function deliverToEstablishmentManualTele() {
+  const clientId = document.getElementById('selectedClientId')?.value || manualTelePickupState.clientId;
+  if (!clientId) {
+    showToastNotification('Selecione primeiro um estabelecimento comercial acima.', 'warning');
+    return;
+  }
+
+  const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(clientId));
+  if (!clientObj || !clientObj.address) {
+    showToastNotification('O estabelecimento selecionado ainda não possui endereço padrão cadastrado.', 'warning');
+    return;
+  }
+
+  const addrInput = document.getElementById('manual-delivery-address');
+  const numInput = document.getElementById('manual-delivery-number');
+  const numVisInput = document.getElementById('manual-delivery-number-input');
+  const neighInput = document.getElementById('manual-delivery-neighborhood');
+  const cityInput = document.getElementById('manual-delivery-city');
+  const stateInput = document.getElementById('manual-delivery-state');
+  const postalInput = document.getElementById('manual-delivery-postal-code');
+  const placeIdInput = document.getElementById('manual-delivery-place-id');
+  const latInput = document.getElementById('manual-delivery-lat');
+  const lngInput = document.getElementById('manual-delivery-lng');
+  const precInput = document.getElementById('manual-geocoding-precision');
+  const isManInput = document.getElementById('manual-location-adjusted-manually');
+
+  const establishmentAddr = clientObj.address;
+  const numVal = clientObj.street_number || extractHouseNumberFromAddress(establishmentAddr) || '';
+
+  if (addrInput) addrInput.value = establishmentAddr;
+  if (numInput) numInput.value = numVal;
+  if (numVisInput) numVisInput.value = numVal;
+  if (neighInput) neighInput.value = clientObj.neighborhood || '';
+  if (cityInput) cityInput.value = clientObj.city || 'Sapucaia do Sul';
+  if (stateInput) stateInput.value = clientObj.state || 'RS';
+  if (postalInput) postalInput.value = clientObj.postal_code || '';
+  if (placeIdInput) placeIdInput.value = clientObj.pickup_place_id || '';
+
+  const lat = (clientObj.pickup_latitude != null && !isNaN(Number(clientObj.pickup_latitude))) ? Number(clientObj.pickup_latitude) : null;
+  const lng = (clientObj.pickup_longitude != null && !isNaN(Number(clientObj.pickup_longitude))) ? Number(clientObj.pickup_longitude) : null;
+
+  if (lat != null && lng != null) {
+    if (latInput) latInput.value = lat;
+    if (lngInput) lngInput.value = lng;
+    if (precInput) precInput.value = 'rooftop';
+    if (isManInput) isManInput.value = 'false';
+    updateRequestDeliveryDestination(lat, lng, true, false, 'manual');
+  }
+
+  showToastNotification(`Destino da Tele definido como o estabelecimento (${clientObj.establishment_name || 'Comércio'}).`);
 }
 
 function toggleManualDeliverySN() {

@@ -1626,22 +1626,16 @@ function showTeleDetailsModal(teleId) {
   if (routeBtn) {
     const isAssigned = (tele.status === 'motoboy_designado' || tele.status === 'indo_coletar' || tele.status === 'aguardando_coleta');
     if (isAssigned) {
-      routeBtn.innerText = '🗺️ Abrir Coleta no Mapa';
+      routeBtn.innerText = '🗺️ Rota para Coleta (Google Maps)';
       routeBtn.onclick = (e) => {
         e.stopPropagation();
-        selectTeleAndFocusMap(tele.id);
+        openPWARoute(tele.id, 'pickup');
       };
     } else {
-      routeBtn.innerText = '🗺️ Abrir Rota de Entrega';
+      routeBtn.innerText = '🗺️ Rota para Entrega (Google Maps)';
       routeBtn.onclick = (e) => {
         e.stopPropagation();
-        let routeUrl = '';
-        if (tele.delivery_latitude !== null && tele.delivery_longitude !== null && !isNaN(tele.delivery_latitude) && !isNaN(tele.delivery_longitude)) {
-          routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${tele.delivery_latitude},${tele.delivery_longitude}&travelmode=driving`;
-        } else {
-          routeUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullDeliveryAddress)}&travelmode=driving`;
-        }
-        window.open(routeUrl, '_blank');
+        openPWARoute(tele.id, 'delivery');
       };
     }
   }

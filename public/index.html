@@ -3326,6 +3326,54 @@
             </div>
           </div>
 
+          <!-- Seção: PONTO DE COLETA -->
+          <div id="manual-pickup-section" class="form-section-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label style="margin: 0; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; color: var(--color-text);">
+                <i data-lucide="map-pin" style="width: 15px; height: 15px; color: #10b981;"></i>
+                Ponto de Coleta
+              </label>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" id="btn-toggle-custom-pickup" onclick="toggleCustomPickupManualTele()" style="background: none; border: none; color: var(--primary); font-size: 0.75rem; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0;">
+                  Alterar coleta
+                </button>
+                <button type="button" id="btn-reset-default-pickup" class="hidden" onclick="resetToDefaultPickupManualTele()" style="background: none; border: none; color: #ef4444; font-size: 0.75rem; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0;">
+                  Restaurar padrão
+                </button>
+              </div>
+            </div>
+
+            <!-- Visualização da Coleta Padrão do Estabelecimento -->
+            <div id="manual-pickup-default-display" style="font-size: 0.82rem; color: var(--color-text-muted); line-height: 1.4;">
+              <div id="manual-pickup-establishment-name" style="font-weight: 600; color: #ffffff;">Selecione um estabelecimento acima</div>
+              <div id="manual-pickup-default-address" style="font-size: 0.78rem;">O endereço cadastrado do estabelecimento será usado como coleta padrão.</div>
+            </div>
+
+            <!-- Campo de Coleta Customizada (Inicialmente Oculto) -->
+            <div id="manual-pickup-custom-container" class="hidden" style="margin-top: 4px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="font-size: 0.75rem; color: #f59e0b; display: flex; align-items: center; gap: 4px;">
+                <i data-lucide="info" style="width: 13px; height: 13px;"></i>
+                <span>Coleta temporária para esta Tele (não altera o cadastro do cliente):</span>
+              </div>
+              <div style="position: relative;">
+                <input type="text" id="manual-pickup-custom-address" placeholder="Digite o endereço de coleta externo..." style="padding: 9px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--color-text); font-size: 0.82rem; outline: none; width: 100%;" autocomplete="off">
+                <div id="manual-pickup-address-suggestions" class="autocomplete-dropdown hidden" style="position: absolute; top: 100%; left: 0; right: 0; max-height: 180px; overflow-y: auto; background: #1e293b; border: 1px solid var(--border-color); border-radius: 6px; z-index: 1100; box-shadow: 0 10px 25px rgba(0,0,0,0.5); font-size: 0.82rem;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Seção: PONTO DE ENTREGA -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+            <label style="margin: 0; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; color: var(--color-text);">
+              <i data-lucide="navigation" style="width: 15px; height: 15px; color: #ffb700;"></i>
+              Ponto de Entrega
+            </label>
+            <button type="button" id="btn-deliver-to-establishment" onclick="deliverToEstablishmentManualTele()" style="background: rgba(255, 183, 0, 0.1); border: 1px solid rgba(255, 183, 0, 0.3); color: #ffb700; border-radius: 4px; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <i data-lucide="store" style="width: 12px; height: 12px;"></i>
+              Entregar no estabelecimento
+            </button>
+          </div>
+
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
               <label for="manual-delivery-dest-name" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.85rem;">Destinatário *</label>
