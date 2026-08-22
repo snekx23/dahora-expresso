@@ -12399,22 +12399,31 @@ function updateManualTelePickupMarker() {
   }
 }
 
-function selectCommercialClientForTele(id, name) {
+function selectCommercialClientForTele(id, name, directClientObj = null) {
+  if (!id) return;
   const selectedInput = document.getElementById('selectedClientId');
   const searchInput = document.getElementById('admin-client-search');
   const dropdownEl = document.getElementById('admin-client-dropdown');
 
   if (selectedInput) selectedInput.value = id;
-  if (searchInput) searchInput.value = name;
+  if (searchInput && name) {
+    searchInput.value = name;
+    searchInput.setAttribute('aria-expanded', 'false');
+  }
   if (dropdownEl) dropdownEl.classList.add('hidden');
 
-  const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(id));
+  const clientObj = directClientObj ||
+                    (commercialClientsSelectCache || []).find(c => String(c.id) === String(id)) ||
+                    (commercialClientsForSelect || []).find(c => String(c.id) === String(id)) ||
+                    opClientsStoreMap.get(String(id));
+
+  const establishmentName = clientObj?.establishment_name || name || 'Estabelecimento';
   const parsedLat = (clientObj?.pickup_latitude != null && !isNaN(Number(clientObj.pickup_latitude))) ? Number(clientObj.pickup_latitude) : null;
   const parsedLng = (clientObj?.pickup_longitude != null && !isNaN(Number(clientObj.pickup_longitude))) ? Number(clientObj.pickup_longitude) : null;
 
   manualTelePickupState = {
     clientId: id,
-    establishmentName: clientObj?.establishment_name || name,
+    establishmentName: establishmentName,
     isCustom: false,
     defaultAddress: clientObj?.address || '',
     defaultLat: parsedLat,
@@ -12433,20 +12442,20 @@ function selectCommercialClientForTele(id, name) {
     if (!hasValidCoords) {
       const clientAddr = (clientObj.address || clientObj.pickup_address || '').trim();
       if (clientAddr) {
-        showToastNotification(`Geocodificando e salvando ponto de coleta de "${clientObj.establishment_name}"...`);
+        showToastNotification(`Geocodificando e salvando ponto de coleta de "${establishmentName}"...`);
         recoverClientPickupLocationSynchronously(clientObj).then(ok => {
           if (ok) {
             manualTelePickupState.defaultLat = Number(clientObj.pickup_latitude);
             manualTelePickupState.defaultLng = Number(clientObj.pickup_longitude);
             manualTelePickupState.defaultPlaceId = clientObj.pickup_place_id || '';
             updateManualTelePickupUI();
-            showToastNotification(`Coleta padrão de "${clientObj.establishment_name}" confirmada no banco: ${clientObj.address}`);
+            showToastNotification(`Coleta padrão de "${establishmentName}" confirmada no banco: ${clientObj.address}`);
           } else {
             showToastNotification(`Não foi possível salvar automaticamente o ponto de coleta deste cliente. Altere a coleta desta Tele manualmente.`, 'warning');
           }
         });
       } else {
-        showToastNotification(`⚠️ Atenção: O cliente "${clientObj.establishment_name}" ainda não possui um endereço cadastrado.`);
+        showToastNotification(`⚠️ Atenção: O cliente "${establishmentName}" ainda não possui um endereço cadastrado.`);
       }
     } else {
       showToastNotification(`Coleta padrão do cliente carregada: ${clientObj.address}`);
@@ -12455,9 +12464,16 @@ function selectCommercialClientForTele(id, name) {
 }
 
 function toggleCustomPickupManualTele() {
-  if (!manualTelePickupState.clientId) {
+  const currentClientId = manualTelePickupState.clientId || document.getElementById('selectedClientId')?.value;
+  if (!currentClientId) {
     showToastNotification('Selecione primeiro um estabelecimento comercial.');
     return;
+  }
+  if (!manualTelePickupState.clientId && currentClientId) {
+    const clientObj = (commercialClientsSelectCache || []).find(c => String(c.id) === String(currentClientId)) ||
+                      (commercialClientsForSelect || []).find(c => String(c.id) === String(currentClientId)) ||
+                      opClientsStoreMap.get(String(currentClientId));
+    selectCommercialClientForTele(currentClientId, clientObj?.establishment_name || '', clientObj);
   }
   manualTelePickupState.isCustom = true;
   updateManualTelePickupUI();
@@ -13974,6 +13990,7 @@ function renderClientSelectDropdownItems(clients = []) {
 }
 
 function selectCommercialClient(client) {
+  if (!client) return;
   const hiddenInput = document.getElementById('selectedClientId');
   const searchInput = document.getElementById('admin-client-search');
   const dropdown = document.getElementById('admin-client-dropdown');
@@ -13985,6 +14002,11 @@ function selectCommercialClient(client) {
     searchInput.setAttribute('aria-expanded', 'false');
   }
   if (dropdown) dropdown.classList.add('hidden');
+
+  // Integrar autoritativamente a seleção com o estado do Ponto de Coleta da Tele Manual
+  if (typeof selectCommercialClientForTele === 'function') {
+    selectCommercialClientForTele(client.id, client.establishment_name || client.name || '', client);
+  }
 
   // Validação Visual para Clientes Inativos/Suspensos
   const status = (client.lifecycle_status || 'ativo').toLowerCase();
@@ -14032,6 +14054,24 @@ function initClientSelectComponent() {
     dropdown.classList.remove('hidden');
     searchInput.setAttribute('aria-expanded', 'true');
     const q = searchInput.value.toLowerCase().trim();
+    if (!q) {
+      const hiddenInput = document.getElementById('selectedClientId');
+      if (hiddenInput) hiddenInput.value = '';
+      manualTelePickupState = {
+        clientId: null,
+        establishmentName: '',
+        isCustom: false,
+        defaultAddress: '',
+        defaultLat: null,
+        defaultLng: null,
+        defaultPlaceId: '',
+        customAddress: '',
+        customLat: null,
+        customLng: null,
+        customPlaceId: ''
+      };
+      if (typeof updateManualTelePickupUI === 'function') updateManualTelePickupUI();
+    }
     const filtered = commercialClientsForSelect.filter(c => {
       const nameMatch = (c.establishment_name || c.name || '').toLowerCase().includes(q);
       const codeMatch = (c.client_code || '').toLowerCase().includes(q);

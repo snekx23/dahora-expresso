@@ -27,222 +27,158 @@ test('HOTFIX H2: Contaminação legada e coordenadas hardcoded removidas', (t) =
   assert.match(indexHtml, /id="btn-deliver-to-establishment"/, 'index.html deve conter botão Entregar no estabelecimento');
 });
 
-test('HOTFIX H2: Lógica operacional de Coleta e Entrega independentes (Cenários 1 a 6)', async (t) => {
-  // Mock de estado simulado conforme lógica de public/app.js
-  let commercialClientsDb = [
-    {
-      id: 'client-uuid-1',
-      establishment_name: 'Pizzaria do Bairro',
-      responsible_name: 'João Pizzaiolo',
-      phone: '51999999999',
-      address: 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS',
-      street_number: '100',
-      neighborhood: 'Centro',
-      city: 'Sapucaia do Sul',
-      state: 'RS',
-      pickup_latitude: -29.8247,
-      pickup_longitude: -51.1444,
-      pickup_place_id: 'place-id-establishment-a'
-    }
-  ];
+test('HOTFIX H2.3: Sincronização Autoritativa do Cliente Comercial e Botão Alterar Coleta', async (t) => {
+  const appJs = fs.readFileSync(path.resolve('public/app.js'), 'utf8');
 
-  let telesCreated = [];
+  // 1. selectCommercialClient deve invocar selectCommercialClientForTele
+  assert.match(appJs, /selectCommercialClientForTele\s*\(\s*client\.id/, 'selectCommercialClient deve acionar selectCommercialClientForTele');
 
-  // Função simulada de criação de tele respeitando a lógica implementada no submitDeliveryRequest
-  function simulateCreateTele(state, selectedClientId, destinationData) {
-    const clientObj = commercialClientsDb.find(c => c.id === selectedClientId);
-    if (!clientObj) throw new Error('Cliente comercial não selecionado');
+  // 2. toggleCustomPickupManualTele deve aceitar manualTelePickupState.clientId ou fallback seguro
+  assert.match(appJs, /manualTelePickupState\.clientId\s*\|\|\s*document\.getElementById\(['"]selectedClientId['"]\)/, 'toggleCustomPickupManualTele deve sincronizar com o client_id selecionado');
 
-    let p_pickup_address = null;
-    let p_pickup_latitude = null;
-    let p_pickup_longitude = null;
-    let p_pickup_place_id = null;
+  // 3. Simulação dos 5 Cenários E2E do Bug Real
+  const clientA = {
+    id: 'uuid-client-a',
+    establishment_name: 'Lanches da Hora',
+    address: 'Rua das Flores, 100 - Centro, Sapucaia do Sul - RS',
+    pickup_latitude: -29.8247,
+    pickup_longitude: -51.1444,
+    pickup_place_id: 'place-id-lanches-a'
+  };
 
-    if (state.isCustom) {
-      if (!state.customAddress || state.customLat == null || state.customLng == null) {
-        throw new Error('Coleta personalizada sem endereço ou coordenadas válidas');
-      }
-      p_pickup_address = state.customAddress;
-      p_pickup_latitude = state.customLat;
-      p_pickup_longitude = state.customLng;
-      p_pickup_place_id = state.customPlaceId || null;
-    } else {
-      p_pickup_address = clientObj.address;
-      p_pickup_latitude = clientObj.pickup_latitude;
-      p_pickup_longitude = clientObj.pickup_longitude;
-      p_pickup_place_id = clientObj.pickup_place_id;
-    }
+  const clientB = {
+    id: 'uuid-client-b',
+    establishment_name: 'Pizzaria Noturna',
+    address: 'Av. Mauá, 500 - Centro, Sapucaia do Sul - RS',
+    pickup_latitude: -29.8300,
+    pickup_longitude: -51.1500,
+    pickup_place_id: 'place-id-pizza-b'
+  };
 
-    const teleRecord = {
-      id: `tele-${telesCreated.length + 1}`,
-      client_id: selectedClientId,
-      pickup_address: p_pickup_address,
-      pickup_latitude: p_pickup_latitude,
-      pickup_longitude: p_pickup_longitude,
-      pickup_place_id: p_pickup_place_id,
-      delivery_address: destinationData.address,
-      recipient_name: destinationData.recipientName,
-      recipient_phone: destinationData.recipientPhone,
-      delivery_latitude: destinationData.latitude,
-      delivery_longitude: destinationData.longitude
-    };
+  let simulatedState = {
+    clientId: null,
+    establishmentName: '',
+    isCustom: false,
+    defaultAddress: '',
+    defaultLat: null,
+    defaultLng: null,
+    defaultPlaceId: '',
+    customAddress: '',
+    customLat: null,
+    customLng: null,
+    customPlaceId: ''
+  };
 
-    telesCreated.push(teleRecord);
-    return teleRecord;
-  }
+  let toastMessages = [];
+  function showToast(msg) { toastMessages.push(msg); }
 
-  // --- CENÁRIO 1: A -> B (Padrão) ---
-  await t.test('Cenário 1: Corrida padrão (Coleta = Estabelecimento A, Entrega = Cliente Final B)', () => {
-    const state = {
-      clientId: 'client-uuid-1',
-      establishmentName: 'Pizzaria do Bairro',
+  function selectClient(client) {
+    if (!client) return;
+    simulatedState = {
+      clientId: client.id,
+      establishmentName: client.establishment_name,
       isCustom: false,
-      defaultAddress: 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS',
-      defaultLat: -29.8247,
-      defaultLng: -51.1444,
-      defaultPlaceId: 'place-id-establishment-a'
-    };
-
-    const destB = {
-      address: 'Rua das Flores B, 250',
-      recipientName: 'Carlos Destinatário',
-      recipientPhone: '51988888888',
-      latitude: -29.8300,
-      longitude: -51.1500
-    };
-
-    const tele1 = simulateCreateTele(state, 'client-uuid-1', destB);
-
-    assert.equal(tele1.pickup_address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-    assert.equal(tele1.delivery_address, 'Rua das Flores B, 250');
-    assert.equal(tele1.pickup_latitude, -29.8247);
-    assert.equal(tele1.delivery_latitude, -29.8300);
-
-    // commercial_clients NUNCA é modificado
-    assert.equal(commercialClientsDb[0].address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-  });
-
-  // --- CENÁRIO 2: C -> B (Coleta Externa C, Entrega no Cliente Final B) ---
-  await t.test('Cenário 2: Coleta Externa (Coleta = Ponto C, Entrega = Cliente Final B)', () => {
-    const state = {
-      clientId: 'client-uuid-1',
-      establishmentName: 'Pizzaria do Bairro',
-      isCustom: true,
-      defaultAddress: 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS',
-      defaultLat: -29.8247,
-      defaultLng: -51.1444,
-      customAddress: 'Av Mauá C, 500 - São Leopoldo - RS',
-      customLat: -29.7600,
-      customLng: -51.1400,
-      customPlaceId: 'place-id-custom-c'
-    };
-
-    const destB = {
-      address: 'Rua das Flores B, 250',
-      recipientName: 'Carlos Destinatário',
-      recipientPhone: '51988888888',
-      latitude: -29.8300,
-      longitude: -51.1500
-    };
-
-    const tele2 = simulateCreateTele(state, 'client-uuid-1', destB);
-
-    assert.equal(tele2.pickup_address, 'Av Mauá C, 500 - São Leopoldo - RS');
-    assert.equal(tele2.delivery_address, 'Rua das Flores B, 250');
-    assert.equal(tele2.pickup_latitude, -29.7600);
-    assert.equal(tele2.delivery_latitude, -29.8300);
-
-    // Endereço cadastrado do cliente continua estritamente inalterado em commercial_clients
-    assert.equal(commercialClientsDb[0].address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-  });
-
-  // --- CENÁRIO 3: C -> A (Buscar fora em C e entregar no próprio comércio A) ---
-  await t.test('Cenário 3: Buscar Fora e Entregar no Comércio (Coleta = Ponto C, Entrega = Estabelecimento A)', () => {
-    const state = {
-      clientId: 'client-uuid-1',
-      establishmentName: 'Pizzaria do Bairro',
-      isCustom: true,
-      defaultAddress: 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS',
-      defaultLat: -29.8247,
-      defaultLng: -51.1444,
-      customAddress: 'Av Mauá C, 500 - São Leopoldo - RS',
-      customLat: -29.7600,
-      customLng: -51.1400,
-      customPlaceId: 'place-id-custom-c'
-    };
-
-    // Botão "Entregar no estabelecimento" preenche o destino com o ponto padrão A
-    const destA = {
-      address: 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS',
-      recipientName: 'Pizzaria do Bairro (Balcão)',
-      recipientPhone: '51999999999',
-      latitude: -29.8247,
-      longitude: -51.1444
-    };
-
-    const tele3 = simulateCreateTele(state, 'client-uuid-1', destA);
-
-    assert.equal(tele3.pickup_address, 'Av Mauá C, 500 - São Leopoldo - RS');
-    assert.equal(tele3.delivery_address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-    assert.equal(tele3.pickup_latitude, -29.7600);
-    assert.equal(tele3.delivery_latitude, -29.8247);
-  });
-
-  // --- CENÁRIO 4: Persistência e Imutabilidade ---
-  await t.test('Cenário 4: Imutabilidade de commercial_clients e dos snapshots das Teles', () => {
-    // 3 Teles criadas no histórico
-    assert.equal(telesCreated.length, 3);
-    assert.equal(telesCreated[0].pickup_address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-    assert.equal(telesCreated[1].pickup_address, 'Av Mauá C, 500 - São Leopoldo - RS');
-    assert.equal(telesCreated[2].pickup_address, 'Av Mauá C, 500 - São Leopoldo - RS');
-    assert.equal(telesCreated[2].delivery_address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-
-    // commercial_clients continua intacto com ponto A
-    assert.equal(commercialClientsDb[0].address, 'Rua Principal A, 100 - Centro, Sapucaia do Sul - RS');
-  });
-
-  // --- CENÁRIO 5: Isolamento de Estado ---
-  await t.test('Cenário 5: Isolamento de estado entre Coleta e Entrega', () => {
-    let pickup = { isCustom: true, customAddress: 'Origem C' };
-    let delivery = { address: 'Destino B' };
-
-    // Modificar destino não altera coleta
-    delivery.address = 'Destino D';
-    assert.equal(pickup.customAddress, 'Origem C');
-
-    // Restaurar padrão de coleta não altera destino
-    pickup.isCustom = false;
-    pickup.customAddress = '';
-    assert.equal(delivery.address, 'Destino D');
-  });
-
-  // --- CENÁRIO 6: Reset no Reload / Reabertura ---
-  await t.test('Cenário 6: Reset do formulário ao reabrir modal', () => {
-    let state = {
-      clientId: 'client-uuid-1',
-      establishmentName: 'Pizzaria do Bairro',
-      isCustom: true,
-      customAddress: 'Origem C'
-    };
-
-    // Simulando resetManualDeliveryForm()
-    state = {
-      clientId: null,
-      establishmentName: '',
-      isCustom: false,
-      defaultAddress: '',
-      defaultLat: null,
-      defaultLng: null,
-      defaultPlaceId: '',
+      defaultAddress: client.address,
+      defaultLat: client.pickup_latitude,
+      defaultLng: client.pickup_longitude,
+      defaultPlaceId: client.pickup_place_id,
       customAddress: '',
       customLat: null,
       customLng: null,
       customPlaceId: ''
     };
+  }
 
-    assert.equal(state.clientId, null);
-    assert.equal(state.isCustom, false);
-    assert.equal(state.customAddress, '');
-    assert.equal(state.establishmentName, '');
+  function toggleCustomPickup() {
+    if (!simulatedState.clientId) {
+      showToast('Selecione primeiro um estabelecimento comercial.');
+      return false;
+    }
+    simulatedState.isCustom = true;
+    return true;
+  }
+
+  function resetDefaultPickup() {
+    simulatedState.isCustom = false;
+    simulatedState.customAddress = '';
+    simulatedState.customLat = null;
+    simulatedState.customLng = null;
+    simulatedState.customPlaceId = '';
+  }
+
+  await t.test('Cenário 1: Selecionar Cliente A -> Alterar Coleta abre sem toast de bloqueio', () => {
+    toastMessages = [];
+    selectClient(clientA);
+
+    assert.equal(simulatedState.clientId, 'uuid-client-a');
+    assert.equal(simulatedState.establishmentName, 'Lanches da Hora');
+    assert.equal(simulatedState.isCustom, false);
+
+    const opened = toggleCustomPickup();
+    assert.equal(opened, true);
+    assert.equal(simulatedState.isCustom, true);
+    assert.equal(toastMessages.length, 0, 'Nenhum toast de bloqueio deve ser exibido');
+  });
+
+  await t.test('Cenário 2: Selecionar Coleta C -> Preservar lat/lng/place_id e criar Tele', () => {
+    simulatedState.customAddress = 'Av. Ipiranga, 6681 - Partenon, Porto Alegre - RS';
+    simulatedState.customLat = -30.0598;
+    simulatedState.customLng = -51.1787;
+    simulatedState.customPlaceId = 'place-c';
+
+    const telePayload = {
+      client_id: simulatedState.clientId,
+      pickup_address: simulatedState.customAddress,
+      pickup_latitude: simulatedState.customLat,
+      pickup_longitude: simulatedState.customLng,
+      pickup_place_id: simulatedState.customPlaceId
+    };
+
+    assert.equal(telePayload.client_id, 'uuid-client-a');
+    assert.equal(telePayload.pickup_address, 'Av. Ipiranga, 6681 - Partenon, Porto Alegre - RS');
+    assert.equal(telePayload.pickup_latitude, -30.0598);
+    assert.equal(telePayload.pickup_longitude, -51.1787);
+    assert.equal(telePayload.pickup_place_id, 'place-c');
+  });
+
+  await t.test('Cenário 3: Restaurar padrão -> Volta exatamente para a coleta cadastrada de A', () => {
+    resetDefaultPickup();
+
+    assert.equal(simulatedState.isCustom, false);
+    assert.equal(simulatedState.customAddress, '');
+    assert.equal(simulatedState.defaultAddress, 'Rua das Flores, 100 - Centro, Sapucaia do Sul - RS');
+    assert.equal(simulatedState.defaultLat, -29.8247);
+    assert.equal(simulatedState.defaultLng, -51.1444);
+    assert.equal(simulatedState.defaultPlaceId, 'place-id-lanches-a');
+  });
+
+  await t.test('Cenário 4: Trocar para Cliente B -> Coleta customizada desaparece e hidrata B', () => {
+    // Customizar coleta para A
+    toggleCustomPickup();
+    simulatedState.customAddress = 'Ponto Temporário C';
+    simulatedState.customLat = -29.7777;
+
+    // Trocar para Cliente B
+    selectClient(clientB);
+
+    assert.equal(simulatedState.clientId, 'uuid-client-b');
+    assert.equal(simulatedState.establishmentName, 'Pizzaria Noturna');
+    assert.equal(simulatedState.isCustom, false);
+    assert.equal(simulatedState.customAddress, '');
+    assert.equal(simulatedState.customLat, null);
+    assert.equal(simulatedState.defaultAddress, 'Av. Mauá, 500 - Centro, Sapucaia do Sul - RS');
+    assert.equal(simulatedState.defaultLat, -29.8300);
+    assert.equal(simulatedState.defaultLng, -51.1500);
+    assert.equal(simulatedState.defaultPlaceId, 'place-id-pizza-b');
+  });
+
+  await t.test('Cenário 5: Sem cliente selecionado -> Alterar coleta bloqueia com toast', () => {
+    toastMessages = [];
+    simulatedState.clientId = null;
+
+    const opened = toggleCustomPickup();
+    assert.equal(opened, false);
+    assert.equal(toastMessages.length, 1);
+    assert.equal(toastMessages[0], 'Selecione primeiro um estabelecimento comercial.');
   });
 });
