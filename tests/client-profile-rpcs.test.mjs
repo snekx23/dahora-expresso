@@ -15,6 +15,18 @@ test('Módulo de Perfil do Cliente Comercial (RPCs Autoritativas)', async (t) =>
   const clientUser = await createAuthedTestClient('padaria.central@homolog.test', 'dahoraexpresso1');
   const adminUser = await createAuthedTestClient('admin1@dahoraexpresso.com.br', 'dahoraexpresso1');
 
+  // Isolamento do fixture do usuário de homologação
+  const { data: users } = await serviceClient.from('user_profiles').select('user_id').eq('email', 'padaria.central@homolog.test');
+  if (users?.length) {
+    await serviceClient.from('client_users').delete().eq('user_id', users[0].user_id).neq('client_id', padariaId);
+    await serviceClient.from('client_users').upsert({
+      user_id: users[0].user_id,
+      client_id: padariaId,
+      role: 'owner',
+      status: 'ativo'
+    }, { onConflict: 'user_id,client_id' });
+  }
+
   await t.test('1. get_my_commercial_client_profile retorna perfil completo do cliente autenticado', async () => {
     const { data: profile, error } = await clientUser.rpc('get_my_commercial_client_profile');
     assert.ok(!error, `RPC error: ${error?.message}`);

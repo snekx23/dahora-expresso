@@ -50,7 +50,8 @@ const nodeCompatibleFiles = [
   'seed-homologation-safety-locks.test.mjs',
   'tele-manual-and-client-flow.test.mjs',
   'tele-manual-authoritative-pickup-delivery.test.mjs',
-  'geographic-precision-and-routing.test.mjs'
+  'geographic-precision-and-routing.test.mjs',
+  'rider-assignment-integrity-and-realtime.test.mjs'
 ];
 
 console.log('=====================================================================');

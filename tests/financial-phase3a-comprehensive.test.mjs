@@ -103,7 +103,7 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
       p_period_end: '2026-08-17T00:00:00.000Z'
     });
 
-    const { data: stl } = await adminClient.from('rider_weekly_settlements').select('id, version').eq('id', calcRes.settlement_id).single();
+    const { data: stl } = await serviceClient.from('rider_weekly_settlements').select('id, version').eq('id', calcRes.settlement_id).single();
 
     const { data: closeRes } = await adminClient.rpc('admin_close_rider_weekly_settlement', {
       p_settlement_id: stl.id,
@@ -130,9 +130,9 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
   });
 
   await t.test('B2. Pagamento do lote é ACEITO com sucesso', async () => {
-    const { data: stl } = await adminClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const { data: stl } = await serviceClient.from('rider_weekly_settlements').select('id').eq('rider_id', riderFleetId).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (stl) {
-      const { data: batch } = await adminClient.from('rider_payment_batches').select('id, version').eq('settlement_id', stl.id).maybeSingle();
+      const { data: batch } = await serviceClient.from('rider_payment_batches').select('id, version').eq('settlement_id', stl.id).maybeSingle();
       if (batch) {
         const { data: payRes } = await adminClient.rpc('admin_mark_rider_payment_batch_paid', {
           p_batch_id: batch.id,
@@ -149,16 +149,17 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
   });
 
   await t.test('B3. Lote com idempotency_key repetida retorna resposta idempotente sem duplicar lote', async () => {
+    const internalClientId = '29c7ad13-49f6-448f-a008-2d1b00468603';
     const teleCode = `TL-IDEMP-${Date.now()}`;
     const { data: tele, error: insTeleErr } = await serviceClient.from('teles').insert({
       tele_code: teleCode,
-      client_id: null,
-      rider_id: riderFleetId,
+      client_id: internalClientId,
+      motoboy_id: riderFleetId,
       status: 'concluida',
       pickup_address: 'Av. Brasil, 100',
       delivery_address: 'Rua Flores, 200',
       delivery_charge: 30.00,
-      completed_at: '2026-08-19T14:00:00.000Z'
+      completed_at: '2026-08-05T14:00:00.000Z'
     }).select('id').single();
 
     await serviceClient.from('rider_financial_transactions').insert({
@@ -172,11 +173,11 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
 
     const { data: calcRes } = await adminClient.rpc('admin_calculate_rider_weekly_settlement', {
       p_rider_id: riderFleetId,
-      p_period_start: '2026-08-17T03:00:00.000Z',
-      p_period_end: '2026-08-24T03:00:00.000Z'
+      p_period_start: '2026-08-03T00:00:00.000Z',
+      p_period_end: '2026-08-10T00:00:00.000Z'
     });
 
-    const { data: stl } = await adminClient.from('rider_weekly_settlements').select('id, version').eq('id', calcRes.settlement_id).single();
+    const { data: stl } = await serviceClient.from('rider_weekly_settlements').select('id, version').eq('id', calcRes.settlement_id).single();
 
     const { data: closeRes } = await adminClient.rpc('admin_close_rider_weekly_settlement', {
       p_settlement_id: stl.id,
@@ -187,13 +188,13 @@ test('Suíte de Testes Exaustiva da Fase 3A (Fundação Backend & Fundação Fin
 
     const { data: res1 } = await adminClient.rpc('admin_create_rider_payment_batch', {
       p_settlement_id: stl.id,
-      p_expected_version: closeRes.version || stl.version,
+      p_expected_version: closeRes?.version || stl.version,
       p_idempotency_key: key
     });
 
     const { data: res2, error: err2 } = await adminClient.rpc('admin_create_rider_payment_batch', {
       p_settlement_id: stl.id,
-      p_expected_version: closeRes.version || stl.version,
+      p_expected_version: closeRes?.version || stl.version,
       p_idempotency_key: key
     });
 

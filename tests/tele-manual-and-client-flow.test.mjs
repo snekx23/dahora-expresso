@@ -43,6 +43,17 @@ async function loginUser(email, password) {
     });
   }
 
+  const { data: usersFinal } = await sbAdmin.from('user_profiles').select('user_id').eq('email', email);
+  if (usersFinal?.length && email.includes('padaria.central')) {
+    const padariaId = '8e40963a-9146-4bfd-9447-d8d373be7ca6';
+    await sbAdmin.from('client_users').upsert({
+      user_id: usersFinal[0].user_id,
+      client_id: padariaId,
+      role: 'owner',
+      status: 'ativo'
+    }, { onConflict: 'user_id,client_id' });
+  }
+
   if (!res.ok) throw new Error(`Login failed for ${email}: ${await res.text()}`);
   return await res.json();
 }

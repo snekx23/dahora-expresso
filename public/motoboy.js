@@ -448,7 +448,13 @@ function updatePushBadgeStatus(text) {
 }
 
 
+const alertedNewTeleIds = new Set();
+
 function showHighPriorityNewTeleModal(tele) {
+  if (!tele || !tele.id) return;
+  if (alertedNewTeleIds.has(tele.id)) return;
+  alertedNewTeleIds.add(tele.id);
+
   AudioController.playTeleAlert();
 
   const clientEl = document.getElementById('high-priority-client');
@@ -456,10 +462,10 @@ function showHighPriorityNewTeleModal(tele) {
   const addrEl   = document.getElementById('high-priority-address');
   const priceEl  = document.getElementById('high-priority-price');
 
-  if (clientEl) clientEl.innerText = tele.client || 'Cliente Comercial';
+  if (clientEl) clientEl.innerText = tele.pickup_establishment_name || tele.client || 'Cliente Comercial';
   if (pickupEl) pickupEl.innerText = tele.pickup_address || 'Endereço de Coleta';
-  if (addrEl)   addrEl.innerText   = tele.address || 'Endereço de Entrega';
-  if (priceEl)  priceEl.innerText  = tele.price || 'R$ 8,00';
+  if (addrEl)   addrEl.innerText   = tele.delivery_address || tele.address || 'Endereço de Entrega';
+  if (priceEl)  priceEl.innerText  = tele.price || (tele.delivery_charge ? `R$ ${parseFloat(tele.delivery_charge).toFixed(2).replace('.', ',')}` : 'R$ 8,00');
 
   const modal = document.getElementById('modal-high-priority-tele');
   if (modal) modal.classList.remove('hidden');
@@ -1183,10 +1189,13 @@ async function loadMyDeliveries() {
     const currentIds = activeDeliveries.map(t => t.id);
 
     if (knownActiveTeleIds !== null) {
-      const newTeles = currentIds.filter(id => !knownActiveTeleIds.includes(id));
+      const newTeles = currentIds.filter(id => !knownActiveTeleIds.includes(id) && !alertedNewTeleIds.has(id));
       if (newTeles.length > 0) {
+        newTeles.forEach(id => alertedNewTeleIds.add(id));
         playNotificationSound();
       }
+    } else {
+      currentIds.forEach(id => alertedNewTeleIds.add(id));
     }
     knownActiveTeleIds = currentIds;
     activeDeliveriesList = activeDeliveries;
@@ -2066,6 +2075,7 @@ function subscribeRealtime() {
         }
       } else if (payload.eventType === 'DELETE') {
         if (wasMine) {
+          if (payload.old?.id) alertedNewTeleIds.delete(payload.old.id);
           sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
           AudioController.playMessageAlert();
           loadMyDeliveries();
@@ -2083,6 +2093,8 @@ function subscribeRealtime() {
           loadReportsData();
           loadWeeklyBalance();
         } else if (isRemoval) {
+          const removedId = payload.new?.id || payload.old?.id;
+          if (removedId) alertedNewTeleIds.delete(removedId);
           sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
           AudioController.playMessageAlert();
           loadMyDeliveries();

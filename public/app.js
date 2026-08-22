@@ -371,30 +371,35 @@ async function fetchClientHistory() {
     }
 
 
-    mockData.clientHistory = (data || []).map(item => ({
-      id: escapeHtml(String(item.id || '')),
-      raw_id: item.id,
-      tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
-      client_id: item.client_id,
-      client: escapeHtml(resolveClientDisplayName(item)),
-      destName: escapeHtml(item.recipient_name || item.dest_name || 'Cliente'),
-      address: escapeHtml(item.delivery_address || item.address || ''),
-      delivery_address: escapeHtml(item.delivery_address || item.address || ''),
-      pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
-      rider: escapeHtml(item.rider || 'Aguardando Despacho'),
-      dist: '—',
-      price: formatMoneyBR(Number(item.delivery_charge || item.valor || 15)),
-      date: item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : 'Hoje',
-      status: escapeHtml(item.status),
-      statusClass: item.status === 'concluida' ? 'status-success' : (item.status === 'cancelada' ? 'status-danger' : 'status-warning'),
-      payment_status: 'Pendente',
-      dest_lat: item.dest_lat !== undefined && item.dest_lat !== null ? Number(item.dest_lat) : (item.delivery_latitude !== undefined && item.delivery_latitude !== null ? Number(item.delivery_latitude) : null),
-      dest_lng: item.dest_lng !== undefined && item.dest_lng !== null ? Number(item.dest_lng) : (item.delivery_longitude !== undefined && item.delivery_longitude !== null ? Number(item.delivery_longitude) : null),
-      motoboy_id: item.motoboy_id || null,
-      created_at: item.created_at,
-      version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
-      total_order_amount: item.total_order_amount || null
-    }));
+    mockData.clientHistory = (data || []).map(item => {
+      const assignedRider = item.motoboy_id ? mockData.fleet.find(r => r.id === item.motoboy_id || String(r.id) === String(item.motoboy_id)) : null;
+      const riderDisplayName = assignedRider ? assignedRider.name : (item.rider || (item.motoboy_id ? 'Motoboy Vinculado' : 'Aguardando Despacho'));
+
+      return {
+        id: escapeHtml(String(item.id || '')),
+        raw_id: item.id,
+        tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
+        client_id: item.client_id,
+        client: escapeHtml(resolveClientDisplayName(item)),
+        destName: escapeHtml(item.recipient_name || item.dest_name || 'Cliente'),
+        address: escapeHtml(item.delivery_address || item.address || ''),
+        delivery_address: escapeHtml(item.delivery_address || item.address || ''),
+        pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
+        rider: escapeHtml(riderDisplayName),
+        dist: '—',
+        price: formatMoneyBR(Number(item.delivery_charge || item.valor || 15)),
+        date: item.created_at ? new Date(item.created_at).toLocaleDateString('pt-BR') : 'Hoje',
+        status: escapeHtml(item.status),
+        statusClass: item.status === 'concluida' ? 'status-success' : (item.status === 'cancelada' ? 'status-danger' : 'status-warning'),
+        payment_status: 'Pendente',
+        dest_lat: item.dest_lat !== undefined && item.dest_lat !== null ? Number(item.dest_lat) : (item.delivery_latitude !== undefined && item.delivery_latitude !== null ? Number(item.delivery_latitude) : null),
+        dest_lng: item.dest_lng !== undefined && item.dest_lng !== null ? Number(item.dest_lng) : (item.delivery_longitude !== undefined && item.delivery_longitude !== null ? Number(item.delivery_longitude) : null),
+        motoboy_id: item.motoboy_id || null,
+        created_at: item.created_at,
+        version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
+        total_order_amount: item.total_order_amount || null
+      };
+    });
   } catch (err) {
     console.error("Error fetching teles history from Supabase:", err);
   }
@@ -583,28 +588,35 @@ async function fetchPendingDeliveries() {
       return;
     }
 
-    mockData.pendingDeliveries = (data || []).map(item => ({
-      id: escapeHtml(String(item.id || '')),
-      raw_id: item.id,
-      tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
-      client_id: item.client_id,
-      client: escapeHtml(resolveClientDisplayName(item)),
-      destName: escapeHtml(item.recipient_name || item.dest_name || 'Destinatário'),
-      address: escapeHtml(item.delivery_address || item.address || ''),
-      delivery_address: escapeHtml(item.delivery_address || item.address || ''),
-      pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
-      dist: item.dist || '3,5 km',
-      price: item.delivery_charge ? `R$ ${parseFloat(item.delivery_charge).toFixed(2).replace('.', ',')}` : getFixedPriceFormatted(item.delivery_address || item.address),
-      payment: escapeHtml(item.payment_method || item.payment || 'Faturado'),
-      cargo: escapeHtml(item.cargo || 'Pacote'),
-      pickup_lat: item.pickup_lat,
-      pickup_lng: item.pickup_lng,
-      dest_lat: item.dest_lat,
-      dest_lng: item.dest_lng,
-      created_at: item.created_at,
-      version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
-      total_order_amount: item.total_order_amount || null
-    }));
+    mockData.pendingDeliveries = (data || []).map(item => {
+      const assignedRider = item.motoboy_id ? mockData.fleet.find(r => r.id === item.motoboy_id || String(r.id) === String(item.motoboy_id)) : null;
+      const riderDisplayName = assignedRider ? assignedRider.name : (item.rider || 'Aguardando...');
+
+      return {
+        id: escapeHtml(String(item.id || '')),
+        raw_id: item.id,
+        tele_code: (item.tele_code && !isUuidString(item.tele_code)) ? item.tele_code : null,
+        client_id: item.client_id,
+        client: escapeHtml(resolveClientDisplayName(item)),
+        destName: escapeHtml(item.recipient_name || item.dest_name || 'Destinatário'),
+        address: escapeHtml(item.delivery_address || item.address || ''),
+        delivery_address: escapeHtml(item.delivery_address || item.address || ''),
+        pickup_address: escapeHtml(item.pickup_address || item.origin_address || ''),
+        dist: item.dist || '3,5 km',
+        price: item.delivery_charge ? `R$ ${parseFloat(item.delivery_charge).toFixed(2).replace('.', ',')}` : getFixedPriceFormatted(item.delivery_address || item.address),
+        payment: escapeHtml(item.payment_method || item.payment || 'Faturado'),
+        cargo: escapeHtml(item.cargo || 'Pacote'),
+        pickup_lat: item.pickup_lat,
+        pickup_lng: item.pickup_lng,
+        dest_lat: item.dest_lat,
+        dest_lng: item.dest_lng,
+        motoboy_id: item.motoboy_id || null,
+        rider: escapeHtml(riderDisplayName),
+        created_at: item.created_at,
+        version: item.version !== undefined && item.version !== null ? Number(item.version) : null,
+        total_order_amount: item.total_order_amount || null
+      };
+    });
   } catch (err) {
     console.warn("Aviso ao buscar teles pendentes:", err.message);
   }
@@ -3130,6 +3142,9 @@ window.renderTelesUnified = function() {
     const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
     const repasseFormatted = `R$ ${(fixedPrice * 0.9).toFixed(2).replace('.', ',')}`;
 
+    const assignedRider = d.motoboy_id ? mockData.fleet.find(r => r.id === d.motoboy_id || String(r.id) === String(d.motoboy_id)) : null;
+    const riderDisplayName = assignedRider ? assignedRider.name : (d.rider && d.rider !== 'Aguardando...' ? d.rider : 'Aguardando...');
+
     return {
       id: d.id,
       tele_code: d.tele_code || null,
@@ -3139,13 +3154,14 @@ window.renderTelesUnified = function() {
       address: d.address,
       dest_lat: d.dest_lat,
       dest_lng: d.dest_lng,
+      motoboy_id: d.motoboy_id || null,
       dist: d.dist || '—',
       price: priceFormatted,
       payment: d.payment || 'A combinar',
       cargo: d.cargo || 'Pedido',
       repasseMotoboy: repasseFormatted,
-      rider: 'Aguardando...',
-      riderId: null,
+      rider: riderDisplayName,
+      riderId: assignedRider ? assignedRider.id : null,
       date: 'Hoje, Agora',
       created_at: d.created_at,
       status: 'Pendente',
@@ -3162,6 +3178,9 @@ window.renderTelesUnified = function() {
     const priceFormatted = `R$ ${fixedPrice.toFixed(2).replace('.', ',')}`;
     const repasseFormatted = `R$ ${(fixedPrice * 0.9).toFixed(2).replace('.', ',')}`;
 
+    const assignedRider = o.motoboy_id ? mockData.fleet.find(r => r.id === o.motoboy_id || String(r.id) === String(o.motoboy_id)) : null;
+    const riderDisplayName = assignedRider ? assignedRider.name : (o.rider && o.rider !== 'Aguardando Despacho' ? o.rider : (o.motoboy_id ? 'Motoboy Vinculado' : 'Aguardando Despacho'));
+
     return {
       id: o.id,
       tele_code: o.tele_code || null,
@@ -3177,8 +3196,8 @@ window.renderTelesUnified = function() {
       payment: o.payment || 'Pago',
       cargo: o.cargo || 'Pedido',
       repasseMotoboy: repasseFormatted,
-      rider: o.rider || 'Aguardando Despacho',
-      riderId: (mockData.fleet.find(r => r.name === o.rider) || {}).id || null,
+      rider: riderDisplayName,
+      riderId: assignedRider ? assignedRider.id : null,
       date: o.date,
       created_at: o.created_at,
       status: isTerminalStatus(o.status) ? 'Concluída' : (isCanceledStatus(o.status) ? 'Cancelada' : o.status),
@@ -3446,7 +3465,10 @@ function renderTelesTable(list) {
       `;
     } else if (item.type === 'active') {
       const selectId = `table-select-${item.id.replace('#', '')}`;
-      const riderOptions = mockData.fleet.map(r => `<option value="${r.id}" ${r.name === item.rider ? 'selected' : ''}>${formatRiderOptionLabel(r)}</option>`).join('');
+      const riderOptions = mockData.fleet.map(r => {
+        const isSelected = (item.motoboy_id && String(r.id) === String(item.motoboy_id)) || (r.name && r.name === item.rider);
+        return `<option value="${r.id}" ${isSelected ? 'selected' : ''}>${formatRiderOptionLabel(r)}</option>`;
+      }).join('');
       riderColumnHtml = `
         <select id="${selectId}" class="inline-select" onchange="handleTableReassign('${item.id}', '${item.rider}', this.value)" style="background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--color-text); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; outline: none; width: 100%;">
           ${riderOptions}
@@ -3549,38 +3571,56 @@ window.handleTableReassign = function(deliveryId, oldRiderName, newRiderId) {
 };
 
 window.handleTableReassignRider = async function(deliveryId, oldRiderName, newRiderId) {
-  const newRider = mockData.fleet.find(r => r.id === newRiderId);
+  const newRider = mockData.fleet.find(r => r.id === newRiderId || String(r.id) === String(newRiderId));
   if (!newRider) return;
 
-  const order = mockData.clientHistory.find(o => o.id === deliveryId);
+  const order = mockData.clientHistory.find(o => o.id === deliveryId || o.raw_id === deliveryId || o.tele_code === deliveryId) ||
+                mockData.pendingDeliveries.find(o => o.id === deliveryId || o.raw_id === deliveryId || o.tele_code === deliveryId);
   if (!order) return;
 
-  if (confirm(`Deseja alterar o motoboy da tele ${deliveryId} de ${oldRiderName} para ${newRider.name}?`)) {
+  const targetUuid = (order && order.raw_id) ? order.raw_id : deliveryId;
+  const displayCode = order ? (order.tele_code || order.id) : deliveryId;
+
+  if (confirm(`Deseja alterar o motoboy da tele ${displayCode} para ${newRider.name}?`)) {
     if (supabaseClient) {
-      // 1. Free old rider
-      const oldRider = mockData.fleet.find(r => r.name === oldRiderName);
-      if (oldRider) {
-        await supabaseClient
-          .from('fleet')
-          .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
-          .eq('id', oldRider.id);
+      let rpcSuccess = false;
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabaseClient.rpc('assign_rider_to_tele', {
+          p_tele_id: targetUuid,
+          p_motoboy_id: newRider.id,
+          p_expected_version: (order && order.version) ? order.version : 1,
+          p_reassignment_reason: 'Reatribuição operacional pelo Admin'
+        });
+        if (!rpcErr && rpcRes && rpcRes.success) {
+          rpcSuccess = true;
+        }
+      } catch (e) {
+        console.warn('Fallback para update direto na reatribuição:', e);
       }
 
-      // 2. Assign new rider
-      await supabaseClient
-        .from('fleet')
-        .update({ status: order.status, status_class: order.statusClass, delivery: deliveryId })
-        .eq('id', newRiderId);
+      if (!rpcSuccess) {
+        const oldRider = mockData.fleet.find(r => r.name === oldRiderName);
+        if (oldRider) {
+          await supabaseClient
+            .from('fleet')
+            .update({ status: 'Disponível', status_class: 'status-success', delivery: 'Nenhuma' })
+            .eq('id', oldRider.id);
+        }
 
-      // 3. Update history
-      await supabaseClient
-        .from('teles')
-        .update({ motoboy_id: newRiderId, updated_at: new Date().toISOString() })
-        .eq('id', deliveryId);
+        await supabaseClient
+          .from('fleet')
+          .update({ status: order.status || 'Em entrega', status_class: order.statusClass || 'status-progress', delivery: displayCode })
+          .eq('id', newRider.id);
+
+        await supabaseClient
+          .from('teles')
+          .update({ motoboy_id: newRider.id, updated_at: new Date().toISOString() })
+          .eq('id', targetUuid);
+      }
     }
 
     await loadTelesManagement();
-    showToastNotification(`Tele ${deliveryId} reatribuída para ${newRider.name}.`);
+    showToastNotification(`Tele ${displayCode} reatribuída para ${newRider.name}.`);
   } else {
     renderTelesUnified();
   }
@@ -3976,7 +4016,7 @@ async function dispatchDelivery(deliveryId, riderId) {
     try {
       const { data: rpcRes, error: rpcErr } = await supabaseClient.rpc('assign_rider_to_tele', {
         p_tele_id: targetUuid,
-        p_rider_id: rider.id,
+        p_motoboy_id: rider.id,
         p_expected_version: (delivery && delivery.version) ? delivery.version : 1
       });
       if (!rpcErr && rpcRes && rpcRes.success) {
@@ -4693,6 +4733,54 @@ window.handleCompleteClick = function(deliveryId, riderName) {
   if (confirm(`Deseja concluir e finalizar a entrega ${deliveryId} realizada por ${riderName}?`)) {
     completeDelivery(deliveryId, riderName);
   }
+};
+
+window.handleWithdrawClick = async function(deliveryId, currentRiderName) {
+  const tele = mockData.clientHistory.find(d => d.id === deliveryId || d.raw_id === deliveryId || d.tele_code === deliveryId) ||
+               mockData.pendingDeliveries.find(d => d.id === deliveryId || d.raw_id === deliveryId || d.tele_code === deliveryId);
+  const targetUuid = (tele && tele.raw_id) ? tele.raw_id : deliveryId;
+  const displayCode = tele ? (tele.tele_code || tele.id) : deliveryId;
+
+  if (!confirm(`Deseja retirar o motoboy da tele ${displayCode} e retornar para Aguardando Despacho?`)) return;
+
+  if (supabaseClient) {
+    const { error: teleErr } = await supabaseClient
+      .from('teles')
+      .update({
+        motoboy_id: null,
+        status: 'aguardando_despacho',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', targetUuid);
+
+    if (teleErr) {
+      console.error('Erro ao retirar motoboy da tele:', teleErr);
+      alert('Erro ao retirar motoboy: ' + teleErr.message);
+      return;
+    }
+
+    if (tele && tele.motoboy_id) {
+      const { data: otherActive } = await supabaseClient
+        .from('teles')
+        .select('id')
+        .eq('motoboy_id', tele.motoboy_id)
+        .in('status', ['motoboy_designado', 'indo_coletar', 'aguardando_coleta', 'coletada', 'em_entrega']);
+
+      if (!otherActive || otherActive.length === 0) {
+        await supabaseClient
+          .from('fleet')
+          .update({
+            status: 'Disponível',
+            status_class: 'status-success',
+            delivery: 'Nenhuma'
+          })
+          .eq('id', tele.motoboy_id);
+      }
+    }
+  }
+
+  await loadTelesManagement();
+  showToastNotification(`Motoboy retirado da tele ${displayCode}. Tele retornou para Aguardando Despacho.`);
 };
 
 /* ================= CREDENTIAL CARD ================= */
