@@ -96,10 +96,63 @@ function safeRemoveStorage(key) {
   memoryStorageMap.delete(key);
 }
 
+// ─── PREFERÊNCIAS DE ALERTAS E SONS ──────────────────────────────────────────
+const ALERT_PREFERENCES_STORAGE_KEY = 'dahora_rider_alert_preferences_v1';
+
+function getRiderAlertPreferences() {
+  try {
+    const raw = safeGetStorage(ALERT_PREFERENCES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        soundEnabled: parsed.soundEnabled !== false,
+        vibrationEnabled: parsed.vibrationEnabled !== false
+      };
+    }
+  } catch (e) {}
+  return { soundEnabled: true, vibrationEnabled: true };
+}
+
+function saveRiderAlertPreferences(prefs) {
+  try {
+    safeSetStorage(ALERT_PREFERENCES_STORAGE_KEY, JSON.stringify(prefs));
+    updateAlertPreferencesUI();
+  } catch (e) {}
+}
+
+function toggleSoundPreference() {
+  const prefs = getRiderAlertPreferences();
+  prefs.soundEnabled = !prefs.soundEnabled;
+  saveRiderAlertPreferences(prefs);
+}
+
+function toggleVibrationPreference() {
+  const prefs = getRiderAlertPreferences();
+  prefs.vibrationEnabled = !prefs.vibrationEnabled;
+  saveRiderAlertPreferences(prefs);
+}
+
+function updateAlertPreferencesUI() {
+  if (typeof document === 'undefined') return;
+  const prefs = getRiderAlertPreferences();
+  const soundBtn = document.getElementById('pwa-setting-sound-btn');
+  if (soundBtn) {
+    soundBtn.innerText = prefs.soundEnabled ? 'Ativado' : 'Desativado';
+    soundBtn.style.color = prefs.soundEnabled ? '#10b981' : '#ef4444';
+  }
+  const vibBtn = document.getElementById('pwa-setting-vibration-btn');
+  if (vibBtn) {
+    vibBtn.innerText = prefs.vibrationEnabled ? 'Ativada' : 'Desativada';
+    vibBtn.style.color = prefs.vibrationEnabled ? '#10b981' : '#ef4444';
+  }
+}
+
 // ─── CONTROLADOR DE ÁUDIO ───────────────────────────────────────────────────
 const AudioController = {
   unlocked: false,
   audioCtx: null,
+  newTeleAudio: null,
+  teleRemovedAudio: null,
 
   getAudioContext() {
     if (this.audioCtx) return this.audioCtx;
@@ -116,6 +169,21 @@ const AudioController = {
   },
 
   unlock() {
+    if (typeof window === 'undefined') return;
+
+    try {
+      if (!this.newTeleAudio && typeof Audio !== 'undefined') {
+        this.newTeleAudio = new Audio('/audio/nova-tele.mp3');
+        this.newTeleAudio.preload = 'auto';
+      }
+      if (!this.teleRemovedAudio && typeof Audio !== 'undefined') {
+        this.teleRemovedAudio = new Audio('/audio/tele-retirada.mp3');
+        this.teleRemovedAudio.preload = 'auto';
+      }
+    } catch (e) {
+      console.warn('[AUDIO] Falha ao instanciar elementos de áudio:', e.message);
+    }
+
     if (this.unlocked && this.audioCtx && this.audioCtx.state === 'running') return;
     try {
       const ctx = this.getAudioContext();
@@ -123,7 +191,6 @@ const AudioController = {
       if (ctx.state === 'suspended') {
         ctx.resume().catch(() => {});
       }
-      // Buffer de 1 amostra de silêncio para satisfazer a política de gesto do iOS Safari
       const buffer = ctx.createBuffer(1, 1, 22050);
       const source = ctx.createBufferSource();
       source.buffer = buffer;
@@ -135,38 +202,28 @@ const AudioController = {
     }
   },
 
-  playTeleAlert() {
-    this.unlock();
+  playFallbackNewTeleTone() {
     try {
       const ctx = this.getAudioContext();
       if (ctx) {
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
         const now = ctx.currentTime;
-        // Toca 3 badaladas cristalinas (D5: 587.33Hz + A5: 880Hz)
         for (let i = 0; i < 3; i++) {
           const startTime = now + (i * 0.75);
           const duration = 0.55;
-
           const osc1 = ctx.createOscillator();
           const osc2 = ctx.createOscillator();
           const gainNode = ctx.createGain();
-
           osc1.type = 'sine';
           osc1.frequency.setValueAtTime(587.33, startTime);
-
           osc2.type = 'sine';
           osc2.frequency.setValueAtTime(880, startTime);
-
           gainNode.gain.setValueAtTime(0, startTime);
           gainNode.gain.linearRampToValueAtTime(0.6, startTime + 0.04);
           gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-
           osc1.connect(gainNode);
           osc2.connect(gainNode);
           gainNode.connect(ctx.destination);
-
           osc1.start(startTime);
           osc1.stop(startTime + duration);
           osc2.start(startTime);
@@ -174,38 +231,159 @@ const AudioController = {
         }
       }
     } catch (err) {
-      console.warn('[AUDIO] playTeleAlert error:', err.message);
-    }
-
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      try { navigator.vibrate([600, 250, 600, 250, 900]); } catch (e) {}
+      console.warn('[AUDIO] playFallbackNewTeleTone error:', err.message);
     }
   },
 
-  playMessageAlert() {
-    this.unlock();
+  playFallbackTeleRemovedTone() {
     try {
       const ctx = this.getAudioContext();
       if (ctx) {
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
         const now = ctx.currentTime;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(659.25, now);
-        osc.frequency.setValueAtTime(880, now + 0.1);
-        gain.gain.setValueAtTime(0.4, now);
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(260, now + 0.28);
+        gain.gain.setValueAtTime(0.5, now);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(now);
         osc.stop(now + 0.3);
       }
-    } catch (e) {}
+    } catch (err) {
+      console.warn('[AUDIO] playFallbackTeleRemovedTone error:', err.message);
+    }
+  },
 
+  playNewTeleAlert() {
+    this.unlock();
+    const prefs = getRiderAlertPreferences();
+
+    if (prefs.soundEnabled) {
+      let playedMp3 = false;
+      try {
+        if (this.newTeleAudio) {
+          this.newTeleAudio.currentTime = 0;
+          const promise = this.newTeleAudio.play();
+          if (promise !== undefined) {
+            promise.then(() => { playedMp3 = true; }).catch((err) => {
+              console.warn('[AUDIO] newTeleAudio play falhou, acionando fallback:', err.message);
+              this.playFallbackNewTeleTone();
+            });
+            playedMp3 = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[AUDIO] newTeleAudio erro síncrono:', e.message);
+      }
+
+      if (!playedMp3) {
+        this.playFallbackNewTeleTone();
+      }
+    }
+
+    if (prefs.vibrationEnabled && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([600, 250, 600, 250, 900]); } catch (e) {}
+    }
+  },
+
+  playTeleAlert() {
+    this.playNewTeleAlert();
+  },
+
+  playTeleRemovedAlert() {
+    this.unlock();
+    const prefs = getRiderAlertPreferences();
+
+    if (prefs.soundEnabled) {
+      let playedMp3 = false;
+      try {
+        if (this.teleRemovedAudio) {
+          this.teleRemovedAudio.currentTime = 0;
+          const promise = this.teleRemovedAudio.play();
+          if (promise !== undefined) {
+            promise.then(() => { playedMp3 = true; }).catch((err) => {
+              console.warn('[AUDIO] teleRemovedAudio play falhou, acionando fallback:', err.message);
+              this.playFallbackTeleRemovedTone();
+            });
+            playedMp3 = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[AUDIO] teleRemovedAudio erro síncrono:', e.message);
+      }
+
+      if (!playedMp3) {
+        this.playFallbackTeleRemovedTone();
+      }
+    }
+
+    if (prefs.vibrationEnabled && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([300, 150, 300]); } catch (e) {}
+    }
+  },
+
+  testNewTeleSound() {
+    this.unlock();
+    try {
+      if (this.newTeleAudio) {
+        this.newTeleAudio.currentTime = 0;
+        this.newTeleAudio.play().catch(() => this.playFallbackNewTeleTone());
+      } else {
+        this.playFallbackNewTeleTone();
+      }
+    } catch (e) {
+      this.playFallbackNewTeleTone();
+    }
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([600, 250, 600]); } catch (e) {}
+    }
+  },
+
+  testTeleRemovedSound() {
+    this.unlock();
+    try {
+      if (this.teleRemovedAudio) {
+        this.teleRemovedAudio.currentTime = 0;
+        this.teleRemovedAudio.play().catch(() => this.playFallbackTeleRemovedTone());
+      } else {
+        this.playFallbackTeleRemovedTone();
+      }
+    } catch (e) {
+      this.playFallbackTeleRemovedTone();
+    }
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([300, 150, 300]); } catch (e) {}
+    }
+  },
+
+  playMessageAlert() {
+    this.unlock();
+    const prefs = getRiderAlertPreferences();
+    if (prefs.soundEnabled) {
+      try {
+        const ctx = this.getAudioContext();
+        if (ctx) {
+          if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(659.25, now);
+          osc.frequency.setValueAtTime(880, now + 0.1);
+          gain.gain.setValueAtTime(0.4, now);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        }
+      } catch (e) {}
+    }
+    if (prefs.vibrationEnabled && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try { navigator.vibrate([250, 120, 250]); } catch (e) {}
     }
   }
@@ -1148,6 +1326,7 @@ function togglePWADrawer(isOpen) {
   const drawer = document.getElementById('pwa-drawer');
   if (!drawer) return;
   if (isOpen) {
+    updateAlertPreferencesUI();
     drawer.classList.add('active');
   } else {
     drawer.classList.remove('active');
@@ -1182,7 +1361,17 @@ function selectTeleAndFocusMap(teleId) {
   }
 }
 
+let isDeliveriesLoading = false;
+let hasPendingDeliveriesRefresh = false;
+const locallyCompletedTeleIds = new Set();
+
 async function loadMyDeliveries() {
+  if (isDeliveriesLoading) {
+    hasPendingDeliveriesRefresh = true;
+    return;
+  }
+  isDeliveriesLoading = true;
+
   const container = document.getElementById('pwa-teles-container');
   // Só exibe spinner de carregamento no primeiro load da sessão ou se container estiver vazio
   if (container && knownActiveTeleIds === null && container.children.length === 0) {
@@ -1290,18 +1479,30 @@ async function loadMyDeliveries() {
           showHighPriorityNewTeleModal(newestTele);
           sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${newestTele.tele_code || newestTele.id} foi atribuída a você.`);
         }
-        AudioController.playTeleAlert();
+        AudioController.playNewTeleAlert();
       }
 
       // Remoção durante a sessão ativa
       const removedIds = previousIds.filter(id => !currentIds.includes(id));
       if (removedIds.length > 0) {
-        removedIds.forEach(id => alertedNewTeleIds.delete(id));
+        let hasAdminRemoval = false;
+        removedIds.forEach(id => {
+          alertedNewTeleIds.delete(id);
+          if (locallyCompletedTeleIds.has(id)) {
+            locallyCompletedTeleIds.delete(id);
+          } else {
+            hasAdminRemoval = true;
+          }
+        });
+
         const modal = document.getElementById('modal-high-priority-tele');
         if (modal && !modal.classList.contains('hidden')) {
           closeHighPriorityModal();
         }
-        // NÃO toca som de alerta na remoção
+
+        if (hasAdminRemoval) {
+          AudioController.playTeleRemovedAlert();
+        }
       }
     } else {
       // Primeiro load: registrar IDs conhecidos sem disparar som de alerta
@@ -1330,6 +1531,12 @@ async function loadMyDeliveries() {
     logSafeError('loadMyDeliveriesCatch', err);
     if (container && (!activeDeliveriesList || activeDeliveriesList.length === 0)) {
       container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
+    }
+  } finally {
+    isDeliveriesLoading = false;
+    if (hasPendingDeliveriesRefresh) {
+      hasPendingDeliveriesRefresh = false;
+      setTimeout(() => loadMyDeliveries(), 50);
     }
   }
 }
@@ -2114,6 +2321,7 @@ async function executeTeleAction(teleId, actionType, btnEl) {
     if (res && res.success === true) {
       if (targetAction === 'complete') {
         if (selectedTeleId === tele.id) selectedTeleId = null;
+        locallyCompletedTeleIds.add(tele.id);
         showPWAToast('Entrega concluída com sucesso! 🏍️');
       } else if (targetAction === 'collect') {
         showPWAToast('Pedido marcado como coletado.');
@@ -2145,7 +2353,7 @@ function startForegroundSafetyPolling() {
     if (typeof document !== 'undefined' && document.visibilityState === 'visible' && (currentRiderId || currentRider?.id)) {
       loadMyDeliveries();
     }
-  }, 15000);
+  }, 5000);
 }
 
 function stopForegroundSafetyPolling() {
