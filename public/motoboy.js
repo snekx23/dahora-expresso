@@ -741,6 +741,7 @@ function showLoginError(msg) {
 
 async function handleMotoLogout() {
   if (!confirm('Sair do aplicativo?')) return;
+  stopForegroundSafetyPolling();
   if (db) {
     try { await db.auth.signOut(); } catch (e) {}
   }
@@ -770,6 +771,7 @@ async function handleMotoLogout() {
   reportsStatementOffset = 0;
   currentRider = null;
   knownActiveTeleIds = null;
+  activeDeliveriesList = [];
   hasCenteredOnce = false;
   document.getElementById('pwa-app').classList.add('hidden');
   document.getElementById('pwa-login').classList.remove('hidden');
@@ -812,6 +814,7 @@ function showApp() {
   try { initRiderDeviceTelemetry(); } catch (e) { logSafeError('showApp:telemetry', e); }
   try { startGeolocation(); } catch (e) { logSafeError('showApp:geolocation', e); }
   try { subscribeRealtime(); } catch (e) { logSafeError('showApp:subscribeRealtime', e); }
+  try { startForegroundSafetyPolling(); } catch (e) { logSafeError('showApp:startForegroundSafetyPolling', e); }
 
   // Execução independente de dados secundários
   try { loadLocalProfile(); } catch (e) {}
@@ -1181,7 +1184,8 @@ function selectTeleAndFocusMap(teleId) {
 
 async function loadMyDeliveries() {
   const container = document.getElementById('pwa-teles-container');
-  if (container) {
+  // Só exibe spinner de carregamento no primeiro load da sessão ou se container estiver vazio
+  if (container && knownActiveTeleIds === null && container.children.length === 0) {
     container.innerHTML = `
       <div class="pwa-loading">
         <div class="pwa-spinner"></div>
@@ -1193,6 +1197,8 @@ async function loadMyDeliveries() {
   try {
     const riderId = currentRiderId || currentRider?.id;
     if (!db || !riderId) {
+      knownActiveTeleIds = [];
+      activeDeliveriesList = [];
       if (container) renderEmptyStateCard();
       return;
     }
@@ -1206,7 +1212,9 @@ async function loadMyDeliveries() {
 
     if (error) {
       logSafeError('loadMyDeliveries', error);
-      if (container) container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
+      if (container && (!activeDeliveriesList || activeDeliveriesList.length === 0)) {
+        container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
+      }
       return;
     }
 
@@ -1267,17 +1275,39 @@ async function loadMyDeliveries() {
       return new Date(a.created_at || 0) - new Date(b.created_at || 0);
     });
 
+    const previousIds = knownActiveTeleIds !== null ? [...knownActiveTeleIds] : null;
     const currentIds = activeDeliveries.map(t => t.id);
 
-    if (knownActiveTeleIds !== null) {
-      const newTeles = currentIds.filter(id => !knownActiveTeleIds.includes(id) && !alertedNewTeleIds.has(id));
+    console.log(`[RIDER REFRESH] [LAST REFRESH: ${new Date().toISOString()}] Total ativas: ${currentIds.length}`);
+
+    if (previousIds !== null) {
+      // Nova tele atribuída durante a sessão ativa
+      const newTeles = currentIds.filter(id => !previousIds.includes(id) && !alertedNewTeleIds.has(id));
       if (newTeles.length > 0) {
         newTeles.forEach(id => alertedNewTeleIds.add(id));
-        playNotificationSound();
+        const newestTele = activeDeliveries.find(t => t.id === newTeles[0]);
+        if (newestTele) {
+          showHighPriorityNewTeleModal(newestTele);
+          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${newestTele.tele_code || newestTele.id} foi atribuída a você.`);
+        }
+        AudioController.playTeleAlert();
+      }
+
+      // Remoção durante a sessão ativa
+      const removedIds = previousIds.filter(id => !currentIds.includes(id));
+      if (removedIds.length > 0) {
+        removedIds.forEach(id => alertedNewTeleIds.delete(id));
+        const modal = document.getElementById('modal-high-priority-tele');
+        if (modal && !modal.classList.contains('hidden')) {
+          closeHighPriorityModal();
+        }
+        // NÃO toca som de alerta na remoção
       }
     } else {
+      // Primeiro load: registrar IDs conhecidos sem disparar som de alerta
       currentIds.forEach(id => alertedNewTeleIds.add(id));
     }
+
     knownActiveTeleIds = currentIds;
     activeDeliveriesList = activeDeliveries;
 
@@ -1298,7 +1328,7 @@ async function loadMyDeliveries() {
     renderTeleCards(activeDeliveries);
   } catch (err) {
     logSafeError('loadMyDeliveriesCatch', err);
-    if (container) {
+    if (container && (!activeDeliveriesList || activeDeliveriesList.length === 0)) {
       container.innerHTML = `<p class="pwa-empty-msg">Erro ao carregar teles. Tente novamente.</p>`;
     }
   }
@@ -2104,9 +2134,26 @@ async function executeTeleAction(teleId, actionType, btnEl) {
   }
 }
 
-// ─── REALTIME SUBSCRIPTION & RECONNECTION ───────────────────────────────────
+// ─── REALTIME SUBSCRIPTION, RECONNECTION & FOREGROUND POLLING ─────────────────
 
 let riderRealtimeStatus = 'DISCONNECTED';
+let foregroundSafetyPollingInterval = null;
+
+function startForegroundSafetyPolling() {
+  stopForegroundSafetyPolling();
+  foregroundSafetyPollingInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible' && (currentRiderId || currentRider?.id)) {
+      loadMyDeliveries();
+    }
+  }, 15000);
+}
+
+function stopForegroundSafetyPolling() {
+  if (foregroundSafetyPollingInterval) {
+    clearInterval(foregroundSafetyPollingInterval);
+    foregroundSafetyPollingInterval = null;
+  }
+}
 
 function subscribeRealtime() {
   const activeRiderId = currentRiderId || currentRider?.id;
@@ -2133,66 +2180,19 @@ function subscribeRealtime() {
       schema: 'public',
       table: 'teles'
     }, async (payload) => {
-      console.log('[RIDER REALTIME] UPDATE TELE', payload.eventType, {
+      console.log('[RIDER REALTIME EVENT]', {
+        eventType: payload.eventType,
         id: payload.new?.id || payload.old?.id,
-        status: payload.new?.status,
-        motoboy_id: payload.new?.motoboy_id
+        old_motoboy_id: payload.old?.motoboy_id,
+        new_motoboy_id: payload.new?.motoboy_id,
+        currentRiderId: activeRiderId,
+        timestamp: new Date().toISOString()
       });
 
-      const isMyTeleRow = (row) => {
-        if (!row || !row.motoboy_id || !activeRiderId) return false;
-        return String(row.motoboy_id).toLowerCase() === String(activeRiderId).toLowerCase();
-      };
-
-      const isMine = isMyTeleRow(payload.new);
-      const isOldMine = isMyTeleRow(payload.old);
-      const isAlreadyKnown = Boolean(
-        knownActiveTeleIds &&
-        (knownActiveTeleIds.includes(payload.new?.id) || knownActiveTeleIds.includes(payload.old?.id))
-      );
-      const wasMine = isOldMine || isAlreadyKnown;
-
-      if (payload.eventType === 'INSERT') {
-        if (isMine) {
-          showHighPriorityNewTeleModal(payload.new);
-          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.tele_code || payload.new.id} foi atribuída a você.`);
-          await loadMyDeliveries();
-          loadReportsData();
-          loadWeeklyBalance();
-        }
-      } else if (payload.eventType === 'DELETE') {
-        if (wasMine) {
-          if (payload.old?.id) alertedNewTeleIds.delete(payload.old.id);
-          sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
-          AudioController.playMessageAlert();
-          await loadMyDeliveries();
-          loadReportsData();
-          loadWeeklyBalance();
-        }
-      } else if (payload.eventType === 'UPDATE') {
-        const isNewAssignment = isMine && !isAlreadyKnown;
-        const isRemoval = !isMine && wasMine;
-
-        if (isNewAssignment) {
-          showHighPriorityNewTeleModal(payload.new);
-          sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.tele_code || payload.new.id} foi atribuída a você.`);
-          await loadMyDeliveries();
-          loadReportsData();
-          loadWeeklyBalance();
-        } else if (isRemoval) {
-          const removedId = payload.new?.id || payload.old?.id;
-          if (removedId) alertedNewTeleIds.delete(removedId);
-          sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
-          AudioController.playMessageAlert();
-          await loadMyDeliveries();
-          loadReportsData();
-          loadWeeklyBalance();
-        } else if (isMine) {
-          await loadMyDeliveries();
-          loadReportsData();
-          loadWeeklyBalance();
-        }
-      }
+      // Executar imediatamente o refresh autoritativo de teles
+      await loadMyDeliveries();
+      loadReportsData();
+      loadWeeklyBalance();
     })
     .on('postgres_changes', {
       event: 'INSERT',
@@ -2296,7 +2296,7 @@ function handleForegroundAndNetworkRecovery() {
     if (riderRealtimeStatus !== 'SUBSCRIBED') {
       subscribeRealtime();
     }
-    loadMyDeliveries();
+    await loadMyDeliveries();
   }, 300);
 }
 
@@ -2304,13 +2304,25 @@ if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       handleForegroundAndNetworkRecovery();
+      startForegroundSafetyPolling();
+    } else {
+      stopForegroundSafetyPolling();
     }
   });
 }
 if (typeof window !== 'undefined') {
-  window.addEventListener('pageshow', handleForegroundAndNetworkRecovery);
-  window.addEventListener('online', handleForegroundAndNetworkRecovery);
-  window.addEventListener('focus', handleForegroundAndNetworkRecovery);
+  window.addEventListener('pageshow', () => {
+    handleForegroundAndNetworkRecovery();
+    startForegroundSafetyPolling();
+  });
+  window.addEventListener('online', () => {
+    handleForegroundAndNetworkRecovery();
+    startForegroundSafetyPolling();
+  });
+  window.addEventListener('focus', () => {
+    handleForegroundAndNetworkRecovery();
+    startForegroundSafetyPolling();
+  });
 }
 
 // ─── MAP (SINGLETON LOADER & REUSABLE INSTANCE) ──────────────────────────────

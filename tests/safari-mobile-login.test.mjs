@@ -163,9 +163,10 @@ async function runSafariLoginTest() {
   assert.strictEqual(savedInMemory, null, 'Chave informal speedMotoSession deve ser removida');
 
   console.log('[PASS] Login do motoboy no Safari concluído com sucesso sem travar por APIs ausentes ou storage em modo privado.');
+  process.exit(0);
 }
 
 runSafariLoginTest().catch(err => {
   console.error('[FAIL] Erro no teste de homologação Safari:', err);
-  process.exitCode = 1;
+  process.exit(1);
 });
