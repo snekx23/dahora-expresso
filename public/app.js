@@ -11405,17 +11405,45 @@ async function submitConfigureClientPickup(event) {
 
   try {
     if (supabaseClient) {
-      const { error } = await supabaseClient
+      // Obter registro autoritativo atual do cliente no banco para preservar integralmente todos os campos cadastrais
+      const { data: dbClient, error: dbFetchErr } = await supabaseClient
         .from('commercial_clients')
-        .update({
-          address: address,
-          pickup_latitude: lat,
-          pickup_longitude: lng,
-          pickup_place_id: configurePickupLocationState.place_id || null
-        })
-        .eq('id', clientId);
+        .select('id, responsible_name, phone, address, street_number, neighborhood, city, state, postal_code')
+        .eq('id', clientId)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (dbFetchErr || !dbClient) {
+        throw new Error("Cliente comercial não localizado no banco de dados.");
+      }
+
+      const cleanResp = (dbClient.responsible_name || '').trim();
+      const cleanPhone = (dbClient.phone || '').trim();
+      const cleanCity = (configurePickupLocationState.city || dbClient.city || 'Sapucaia do Sul').trim();
+      const cleanState = (configurePickupLocationState.state || dbClient.state || 'RS').trim().toUpperCase();
+
+      if (cleanResp.length < 2 || cleanPhone.length < 8) {
+        throw new Error("Dados cadastrais do cliente (responsável/telefone) incompletos para atualização.");
+      }
+
+      const { data: resData, error: rpcErr } = await supabaseClient.rpc('admin_update_commercial_client_profile', {
+        p_client_id: clientId,
+        p_responsible_name: cleanResp,
+        p_phone: cleanPhone,
+        p_address: address,
+        p_street_number: dbClient.street_number || null,
+        p_neighborhood: dbClient.neighborhood || null,
+        p_city: cleanCity || 'Sapucaia do Sul',
+        p_state: cleanState === 'RS' ? 'RS' : 'RS',
+        p_postal_code: dbClient.postal_code || null,
+        p_pickup_latitude: Number(lat),
+        p_pickup_longitude: Number(lng),
+        p_pickup_place_id: configurePickupLocationState.place_id || null
+      });
+
+      if (rpcErr) throw rpcErr;
+      if (resData && !resData.success) {
+        throw new Error(resData.message || 'Erro ao atualizar ponto de coleta no banco de dados.');
+      }
 
       // Confirmação pós-UPDATE: re-consultar no Supabase para garantir que persistiu
       const { data: verifiedData, error: verifyErr } = await supabaseClient
@@ -12159,9 +12187,11 @@ async function geocodeClientAddressOnDemand(addressText) {
   }
   return null;
 }
-
 async function recoverClientPickupLocationSynchronously(clientObj) {
   if (!clientObj || !clientObj.id) return false;
+  if (!supabaseClient || !currentActiveSession) return false;
+  const ADMIN_ROLES = ['owner', 'admin', 'operador', 'gerente'];
+  if (!currentUserProfile || !ADMIN_ROLES.includes(currentUserProfile.role)) return false;
 
   if (clientObj.pickup_latitude && clientObj.pickup_longitude && !isNaN(Number(clientObj.pickup_latitude)) && !isNaN(Number(clientObj.pickup_longitude))) {
     return true;
@@ -12184,60 +12214,75 @@ async function recoverClientPickupLocationSynchronously(clientObj) {
   }
 
   try {
-    if (supabaseClient) {
-      const { error: updateErr } = await supabaseClient
-        .from('commercial_clients')
-        .update({
-          pickup_latitude: latNum,
-          pickup_longitude: lngNum,
-          pickup_place_id: geo.place_id || null
-        })
-        .eq('id', clientObj.id);
+    // Obter registro autoritativo atual do cliente no banco para preservar integralmente todos os campos cadastrais
+    const { data: dbClient, error: dbFetchErr } = await supabaseClient
+      .from('commercial_clients')
+      .select('id, responsible_name, phone, address, street_number, neighborhood, city, state, postal_code')
+      .eq('id', clientObj.id)
+      .maybeSingle();
 
-      if (updateErr) {
-        console.error("Erro no UPDATE de recuperação automática do ponto de coleta:", updateErr);
-        return false;
-      }
+    if (dbFetchErr || !dbClient) return false;
 
-      // Confirmação pós-UPDATE: re-consultar no Supabase para garantir persistência
-      const { data: verifiedData, error: verifyErr } = await supabaseClient
-        .from('commercial_clients')
-        .select('id, pickup_latitude, pickup_longitude, pickup_place_id')
-        .eq('id', clientObj.id)
-        .maybeSingle();
+    const cleanResp = (dbClient.responsible_name || '').trim();
+    const cleanPhone = (dbClient.phone || '').trim();
+    const cleanCity = (dbClient.city || 'Sapucaia do Sul').trim();
+    const cleanState = (dbClient.state || 'RS').trim().toUpperCase();
 
-      if (verifyErr || !verifiedData) {
-        console.error("Não foi possível confirmar a gravação da recuperação automática:", verifyErr);
-        return false;
-      }
+    if (cleanResp.length < 2 || cleanPhone.length < 8) return false;
 
-      if (verifiedData.pickup_latitude == null || verifiedData.pickup_longitude == null || isNaN(Number(verifiedData.pickup_latitude)) || isNaN(Number(verifiedData.pickup_longitude))) {
-        console.error("As coordenadas relidas do banco para o cliente continuam nulas.");
-        return false;
-      }
+    const { data: resData, error: updateErr } = await supabaseClient.rpc('admin_update_commercial_client_profile', {
+      p_client_id: clientObj.id,
+      p_responsible_name: cleanResp,
+      p_phone: cleanPhone,
+      p_address: clientAddr,
+      p_street_number: dbClient.street_number || null,
+      p_neighborhood: dbClient.neighborhood || null,
+      p_city: cleanCity || 'Sapucaia do Sul',
+      p_state: cleanState === 'RS' ? 'RS' : 'RS',
+      p_postal_code: dbClient.postal_code || null,
+      p_pickup_latitude: latNum,
+      p_pickup_longitude: lngNum,
+      p_pickup_place_id: geo.place_id || null
+    });
 
-      const confirmedLat = Number(verifiedData.pickup_latitude);
-      const confirmedLng = Number(verifiedData.pickup_longitude);
-      const confirmedPlaceId = verifiedData.pickup_place_id || null;
-
-      clientObj.pickup_latitude = confirmedLat;
-      clientObj.pickup_longitude = confirmedLng;
-      clientObj.pickup_place_id = confirmedPlaceId;
-
-      const cached = (commercialClientsSelectCache || []).find(c => String(c.id) === String(clientObj.id));
-      if (cached) {
-        cached.pickup_latitude = confirmedLat;
-        cached.pickup_longitude = confirmedLng;
-        cached.pickup_place_id = confirmedPlaceId;
-      }
-
-      return true;
-    } else {
-      clientObj.pickup_latitude = latNum;
-      clientObj.pickup_longitude = lngNum;
-      clientObj.pickup_place_id = geo.place_id || null;
-      return true;
+    if (updateErr || (resData && !resData.success)) {
+      console.error("Erro no UPDATE de recuperação automática do ponto de coleta via RPC:", updateErr || resData?.message);
+      return false;
     }
+
+    // Confirmação pós-UPDATE: re-consultar no Supabase para garantir persistência
+    const { data: verifiedData, error: verifyErr } = await supabaseClient
+      .from('commercial_clients')
+      .select('id, pickup_latitude, pickup_longitude, pickup_place_id')
+      .eq('id', clientObj.id)
+      .maybeSingle();
+
+    if (verifyErr || !verifiedData) {
+      console.error("Não foi possível confirmar a gravação da recuperação automática:", verifyErr);
+      return false;
+    }
+
+    if (verifiedData.pickup_latitude == null || verifiedData.pickup_longitude == null || isNaN(Number(verifiedData.pickup_latitude)) || isNaN(Number(verifiedData.pickup_longitude))) {
+      console.error("As coordenadas relidas do banco para o cliente continuam nulas.");
+      return false;
+    }
+
+    const confirmedLat = Number(verifiedData.pickup_latitude);
+    const confirmedLng = Number(verifiedData.pickup_longitude);
+    const confirmedPlaceId = verifiedData.pickup_place_id || null;
+
+    clientObj.pickup_latitude = confirmedLat;
+    clientObj.pickup_longitude = confirmedLng;
+    clientObj.pickup_place_id = confirmedPlaceId;
+
+    const cached = (commercialClientsSelectCache || []).find(c => String(c.id) === String(clientObj.id));
+    if (cached) {
+      cached.pickup_latitude = confirmedLat;
+      cached.pickup_longitude = confirmedLng;
+      cached.pickup_place_id = confirmedPlaceId;
+    }
+
+    return true;
   } catch (err) {
     console.error("Falha ao salvar/confirmar recuperação do ponto de coleta:", err);
     return false;

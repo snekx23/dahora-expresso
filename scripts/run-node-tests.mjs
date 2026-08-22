@@ -12,6 +12,7 @@ const nodeCompatibleFiles = [
   'client-profile-rpcs.test.mjs',
   'cloudflare-pages-runtime-config.test.mjs',
   'commercial-client-access-recovery.test.mjs',
+  'commercial-client-pickup-persistence.test.mjs',
   'commercial-clients-fase1.test.mjs',
   'commercial-clients-full.test.mjs',
   'commercial-clients-loading.test.mjs',
