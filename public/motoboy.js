@@ -99,37 +99,83 @@ function safeRemoveStorage(key) {
 // ─── CONTROLADOR DE ÁUDIO ───────────────────────────────────────────────────
 const AudioController = {
   unlocked: false,
-  teleAudio: null,
+  audioCtx: null,
 
-  init() {
-    if (typeof window === 'undefined') return;
+  getAudioContext() {
+    if (this.audioCtx) return this.audioCtx;
+    if (typeof window === 'undefined') return null;
     try {
-      this.teleAudio = new Audio('data:audio/wav;base64,UklGRl9vAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU...');
-    } catch (e) {}
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtxClass) {
+        this.audioCtx = new AudioCtxClass();
+      }
+    } catch (e) {
+      console.warn('[AUDIO] Falha ao instanciar AudioContext:', e.message);
+    }
+    return this.audioCtx;
   },
 
   unlock() {
-    if (this.unlocked) return;
+    if (this.unlocked && this.audioCtx && this.audioCtx.state === 'running') return;
     try {
-      if (this.teleAudio) {
-        this.teleAudio.play().then(() => {
-          this.teleAudio.pause();
-          this.teleAudio.currentTime = 0;
-          this.unlocked = true;
-        }).catch(() => {});
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
       }
-    } catch (e) {}
+      // Buffer de 1 amostra de silêncio para satisfazer a política de gesto do iOS Safari
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      this.unlocked = true;
+    } catch (e) {
+      console.warn('[AUDIO] Unlock falhou:', e.message);
+    }
   },
 
   playTeleAlert() {
+    this.unlock();
     try {
-      if (this.teleAudio) {
-        this.teleAudio.currentTime = 0;
-        this.teleAudio.play().catch(err => {
-          console.warn("Áudio em primeiro plano bloqueado pelo navegador:", err.message);
-        });
+      const ctx = this.getAudioContext();
+      if (ctx) {
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+        const now = ctx.currentTime;
+        // Toca 3 badaladas cristalinas (D5: 587.33Hz + A5: 880Hz)
+        for (let i = 0; i < 3; i++) {
+          const startTime = now + (i * 0.75);
+          const duration = 0.55;
+
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(587.33, startTime);
+
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(880, startTime);
+
+          gainNode.gain.setValueAtTime(0, startTime);
+          gainNode.gain.linearRampToValueAtTime(0.6, startTime + 0.04);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+          osc1.connect(gainNode);
+          osc2.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          osc1.start(startTime);
+          osc1.stop(startTime + duration);
+          osc2.start(startTime);
+          osc2.stop(startTime + duration);
+        }
       }
-    } catch (e) {}
+    } catch (err) {
+      console.warn('[AUDIO] playTeleAlert error:', err.message);
+    }
 
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try { navigator.vibrate([600, 250, 600, 250, 900]); } catch (e) {}
@@ -137,13 +183,38 @@ const AudioController = {
   },
 
   playMessageAlert() {
+    this.unlock();
+    try {
+      const ctx = this.getAudioContext();
+      if (ctx) {
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(659.25, now);
+        osc.frequency.setValueAtTime(880, now + 0.1);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+    } catch (e) {}
+
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try { navigator.vibrate([250, 120, 250]); } catch (e) {}
     }
   }
 };
 
-AudioController.init();
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', () => AudioController.unlock(), { passive: true });
+  document.addEventListener('touchstart', () => AudioController.unlock(), { passive: true });
+}
 
 function logSafeError(op, err) {
   if (!err) return;
@@ -255,9 +326,19 @@ function urlBase64ToUint8Array(base64String) {
 function updatePushAlertCardUI(statusText, buttonText, buttonState = 'normal') {
   const badge = document.getElementById('pwa-push-status-badge');
   const btn = document.getElementById('pwa-push-toggle-btn') || document.querySelector('#pwa-push-alert-card button');
+  const pushCard = document.getElementById('pwa-push-alert-card');
 
   if (badge && statusText) {
     badge.innerText = statusText;
+  }
+
+  if (buttonState === 'active') {
+    if (pushCard) pushCard.style.display = 'none';
+    if (riderMap && typeof window.google !== 'undefined' && window.google?.maps) {
+      try { window.google.maps.event.trigger(riderMap, 'resize'); } catch (e) {}
+    }
+  } else {
+    if (pushCard) pushCard.style.display = '';
   }
 
   if (btn) {
@@ -2023,21 +2104,27 @@ async function executeTeleAction(teleId, actionType, btnEl) {
   }
 }
 
-// ─── REALTIME SUBSCRIPTION ────────────────────────────────────────────────────
+// ─── REALTIME SUBSCRIPTION & RECONNECTION ───────────────────────────────────
+
+let riderRealtimeStatus = 'DISCONNECTED';
 
 function subscribeRealtime() {
   const activeRiderId = currentRiderId || currentRider?.id;
-  if (!db || !activeRiderId) return;
+  if (!db || !activeRiderId) {
+    riderRealtimeStatus = 'DISCONNECTED';
+    return;
+  }
 
   if (realtimeChannel) {
     try {
       db.removeChannel(realtimeChannel);
     } catch (e) {
-      console.warn('[REALTIME MOTOBOY] Erro ao remover canal anterior:', e.message);
+      console.warn('[RIDER REALTIME] Erro ao remover canal anterior:', e.message);
     }
     realtimeChannel = null;
   }
 
+  riderRealtimeStatus = 'CONNECTING';
   const channelName = 'moto-realtime-' + activeRiderId;
 
   realtimeChannel = db.channel(channelName)
@@ -2045,8 +2132,8 @@ function subscribeRealtime() {
       event: '*',
       schema: 'public',
       table: 'teles'
-    }, (payload) => {
-      console.log('[REALTIME MOTOBOY TELES EVENT]', payload.eventType, {
+    }, async (payload) => {
+      console.log('[RIDER REALTIME] UPDATE TELE', payload.eventType, {
         id: payload.new?.id || payload.old?.id,
         status: payload.new?.status,
         motoboy_id: payload.new?.motoboy_id
@@ -2069,7 +2156,7 @@ function subscribeRealtime() {
         if (isMine) {
           showHighPriorityNewTeleModal(payload.new);
           sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.tele_code || payload.new.id} foi atribuída a você.`);
-          loadMyDeliveries();
+          await loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
@@ -2078,7 +2165,7 @@ function subscribeRealtime() {
           if (payload.old?.id) alertedNewTeleIds.delete(payload.old.id);
           sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
           AudioController.playMessageAlert();
-          loadMyDeliveries();
+          await loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
@@ -2089,7 +2176,7 @@ function subscribeRealtime() {
         if (isNewAssignment) {
           showHighPriorityNewTeleModal(payload.new);
           sendWebNotification("Nova Tele Atribuída! 🏍️", `A tele ${payload.new.tele_code || payload.new.id} foi atribuída a você.`);
-          loadMyDeliveries();
+          await loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         } else if (isRemoval) {
@@ -2097,11 +2184,11 @@ function subscribeRealtime() {
           if (removedId) alertedNewTeleIds.delete(removedId);
           sendWebNotification("Tele Removida! ❌", `A tele foi removida.`);
           AudioController.playMessageAlert();
-          loadMyDeliveries();
+          await loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         } else if (isMine) {
-          loadMyDeliveries();
+          await loadMyDeliveries();
           loadReportsData();
           loadWeeklyBalance();
         }
@@ -2114,9 +2201,10 @@ function subscribeRealtime() {
     }, (payload) => {
 
       const newMsg = payload.new;
-      if (newMsg.client_email === currentRider.id) {
+      const activeId = currentRiderId || currentRider?.id;
+      if (newMsg.client_email === activeId) {
         if (newMsg.sender_role !== 'rider') {
-          playNotificationSound();
+          AudioController.playMessageAlert();
           sendWebNotification("Nova Mensagem do Suporte! 💬", `${newMsg.sender_name}: ${newMsg.message}`);
           
           // Check if chat tab is active
@@ -2163,7 +2251,8 @@ function subscribeRealtime() {
       schema: 'public',
       table: 'rider_consumables'
     }, (payload) => {
-      if (!currentRider) return;
+      const activeId = currentRiderId || currentRider?.id;
+      if (!activeId) return;
       
       const isInsert = payload.eventType === 'INSERT';
       const isDelete = payload.eventType === 'DELETE';
@@ -2171,14 +2260,13 @@ function subscribeRealtime() {
       
       let belongsToMe = false;
       
-      if (isInsert && payload.new && payload.new.rider_id === currentRider.id) {
+      if (isInsert && payload.new && payload.new.rider_id === activeId) {
         belongsToMe = true;
         sendWebNotification("Novo Consumível Lançado! 🍔", `Um novo consumível de tipo ${payload.new.item_type} (${formatMoney(parseFloat(payload.new.amount))}) foi lançado para você.`);
-        playNotificationSound();
+        AudioController.playMessageAlert();
       } else if (isDelete) {
-        // Fallback for delete: reload just in case, since old payload may not contain all columns
         belongsToMe = true;
-      } else if (isUpdate && (payload.new.rider_id === currentRider.id || (payload.old && payload.old.rider_id === currentRider.id))) {
+      } else if (isUpdate && (payload.new.rider_id === activeId || (payload.old && payload.old.rider_id === activeId))) {
         belongsToMe = true;
       }
       
@@ -2189,12 +2277,40 @@ function subscribeRealtime() {
     });
 
   realtimeChannel.subscribe((status, err) => {
+    riderRealtimeStatus = status;
     if (status === 'SUBSCRIBED') {
-      console.log('[REALTIME MOTOBOY] Inscrito no canal com sucesso:', channelName);
-    } else if (err || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-      console.warn('[REALTIME MOTOBOY] Erro/Status no canal:', status, err);
+      console.log('[RIDER REALTIME] SUBSCRIBED');
+    } else if (err || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      console.warn('[RIDER REALTIME] Status:', status, err);
     }
   });
+}
+
+let reconnectDebounceTimer = null;
+function handleForegroundAndNetworkRecovery() {
+  const activeId = currentRiderId || currentRider?.id;
+  if (!activeId) return;
+  if (reconnectDebounceTimer) clearTimeout(reconnectDebounceTimer);
+  reconnectDebounceTimer = setTimeout(async () => {
+    console.log('[RIDER REALTIME] RECONNECT check (status:', riderRealtimeStatus, ')');
+    if (riderRealtimeStatus !== 'SUBSCRIBED') {
+      subscribeRealtime();
+    }
+    loadMyDeliveries();
+  }, 300);
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      handleForegroundAndNetworkRecovery();
+    }
+  });
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('pageshow', handleForegroundAndNetworkRecovery);
+  window.addEventListener('online', handleForegroundAndNetworkRecovery);
+  window.addEventListener('focus', handleForegroundAndNetworkRecovery);
 }
 
 // ─── MAP (SINGLETON LOADER & REUSABLE INSTANCE) ──────────────────────────────
@@ -2554,75 +2670,8 @@ function showPWAToast(msg) {
   }, 3500);
 }
 
-// ─── NOTIFICATION AUDIO SYNTHESIZER ──────────────────────────────────────────
-
-let audioContextUnlocked = false;
-function unlockAudioContext() {
-  if (audioContextUnlocked) return;
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(() => {
-        audioContextUnlocked = true;
-        document.removeEventListener('click', unlockAudioContext);
-        document.removeEventListener('touchstart', unlockAudioContext);
-      });
-    } else {
-      audioContextUnlocked = true;
-      document.removeEventListener('click', unlockAudioContext);
-      document.removeEventListener('touchstart', unlockAudioContext);
-    }
-  } catch (e) {
-    console.error('AudioContext unlock failed:', e);
-  }
-}
-document.addEventListener('click', unlockAudioContext);
-document.addEventListener('touchstart', unlockAudioContext);
-
 function playNotificationSound() {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
-    
-    const now = ctx.currentTime;
-    
-    // Play a crisp bell chime 3 times (constant bell ringing)
-    for (let i = 0; i < 3; i++) {
-      const startTime = now + i * 0.75; // 750ms spacing between rings
-      const duration = 0.55;
-      
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(587.33, startTime); // D5
-      
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(880, startTime); // A5 (consonant fifth)
-      
-      gainNode.gain.setValueAtTime(0, startTime);
-      gainNode.gain.linearRampToValueAtTime(0.55, startTime + 0.04); // Quick attack
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration); // Smooth decay
-      
-      osc1.connect(gainNode);
-      osc2.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      osc1.start(startTime);
-      osc1.stop(startTime + duration);
-      osc2.start(startTime);
-      osc2.stop(startTime + duration);
-    }
-  } catch (error) {
-    console.error('Error playing notification sound:', error);
-  }
+  AudioController.playTeleAlert();
 }
 
 // ─── PROFILE AND STATS HELPERS ───────────────────────────────────────────────

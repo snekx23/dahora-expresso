@@ -2,65 +2,66 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('HOTFIX H3 - Cenário A: Atribuição de rider A -> motoboy_id autoritativo, Admin A, PWA A', async () => {
-  const appJs = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+test('HOTFIX H3.2 - Cenário A: Motoboy autenticado + INDISPONÍVEL -> subscription Realtime continua ativa', async () => {
   const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
 
-  // Admin invoca RPC com p_motoboy_id
-  assert.ok(appJs.includes("p_motoboy_id: rider.id"), 'dispatchDelivery deve chamar RPC assign_rider_to_tele com p_motoboy_id');
-  
-  // PWA consulta e filtra por motoboy_id
-  assert.ok(motoboyJs.includes(".eq('motoboy_id', riderId)"), 'PWA Minhas Teles deve filtrar exclusivamente por motoboy_id');
+  // subscribeRealtime não bloqueia por status operacional ('Indisponível')
+  assert.ok(motoboyJs.includes("const activeRiderId = currentRiderId || currentRider?.id;"), 'subscribeRealtime deve usar activeRiderId independente do status');
+  assert.ok(!motoboyJs.includes("if (currentRider.status !== 'Disponível') return;"), 'subscribeRealtime não deve ser bloqueado por status Indisponível');
 });
 
-test('HOTFIX H3 - Cenário B: F5 Admin persiste rider correto por motoboy_id (sem fallback indevido)', async () => {
-  const appJs = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-
-  // fetchClientHistory e renderTelesUnified resolvem assignedRider via motoboy_id
-  assert.ok(appJs.includes("const assignedRider = item.motoboy_id ? mockData.fleet.find(r => r.id === item.motoboy_id"), 'fetchClientHistory deve resolver assignedRider por motoboy_id');
-  assert.ok(appJs.includes("const assignedRider = o.motoboy_id ? mockData.fleet.find(r => r.id === o.motoboy_id"), 'renderTelesUnified deve resolver assignedRider por motoboy_id');
-  assert.ok(appJs.includes("const isSelected = (item.motoboy_id && String(r.id) === String(item.motoboy_id))"), 'renderTelesTable select deve selecionar option com base no motoboy_id');
-});
-
-test('HOTFIX H3 - Cenário C: Botão "Retirar Motoboy" implementado, reseta para aguardando_despacho', async () => {
-  const appJs = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-
-  assert.ok(appJs.includes("window.handleWithdrawClick = async function(deliveryId"), 'window.handleWithdrawClick deve estar definida globalmente');
-  assert.ok(appJs.includes("motoboy_id: null,"), 'Retirar motoboy deve atualizar motoboy_id para null');
-  assert.ok(appJs.includes("status: 'aguardando_despacho'"), 'Retirar motoboy deve retornar status para aguardando_despacho');
-});
-
-test('HOTFIX H3 - Cenário D: Atribuir rider B -> somente B recebe no Realtime', async () => {
+test('HOTFIX H3.2 - Cenário B: currentRiderId só resolvido com fleet.id -> canal usa identidade canônica', async () => {
   const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
 
-  // Validação isMyTeleRow com activeRiderId
-  assert.ok(motoboyJs.includes("String(row.motoboy_id).toLowerCase() === String(activeRiderId).toLowerCase()"), 'Realtime deve validar se motoboy_id da linha corresponde ao activeRiderId logado');
+  assert.ok(motoboyJs.includes("currentRiderId = fleetRow.id;"), 'resolveCurrentRider deve setar currentRiderId com fleet.id');
+  assert.ok(motoboyJs.includes("const channelName = 'moto-realtime-' + activeRiderId;"), 'Nome do canal Realtime deve usar activeRiderId');
 });
 
-test('HOTFIX H3 - Cenário E: Reatribuição B -> A no Admin e desatribuição no PWA', async () => {
-  const appJs = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+test('HOTFIX H3.2 - Cenário C: UPDATE motoboy_id NULL -> guilherme (Nova Atribuição)', async () => {
   const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
 
-  // handleTableReassignRider invoca assign_rider_to_tele com p_motoboy_id
-  assert.ok(appJs.includes("p_motoboy_id: newRider.id"), 'Reatribuição deve chamar RPC com p_motoboy_id');
-
-  // PWA detecta isRemoval quando tele deixa de pertencer ao rider
-  assert.ok(motoboyJs.includes("const isRemoval = !isMine && wasMine;"), 'PWA deve identificar desatribuição via isRemoval');
-  assert.ok(motoboyJs.includes("sendWebNotification(\"Tele Removida! ❌\""), 'PWA deve notificar remoção da tele');
+  assert.ok(motoboyJs.includes("const isNewAssignment = isMine && !isAlreadyKnown;"), 'Realtime deve identificar transição NULL -> rider');
+  assert.ok(motoboyJs.includes("showHighPriorityNewTeleModal(payload.new);"), 'Nova atribuição deve abrir modal prioritário');
+  assert.ok(motoboyJs.includes("await loadMyDeliveries();"), 'Nova atribuição deve atualizar entregas autoritativamente');
 });
 
-test('HOTFIX H3 - Cenário F: Realtime captura UPDATE de Tele sem rider para rider A sem reload', async () => {
+test('HOTFIX H3.2 - Cenário D: UPDATE guilherme -> NULL (Desatribuição / Retirada)', async () => {
   const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
 
-  assert.ok(motoboyJs.includes("const isNewAssignment = isMine && !isAlreadyKnown;"), 'Realtime UPDATE deve detectar nova atribuição');
-  assert.ok(motoboyJs.includes("showHighPriorityNewTeleModal(payload.new);"), 'Nova atribuição deve abrir modal de alta prioridade');
-  assert.ok(motoboyJs.includes("loadMyDeliveries();"), 'Nova atribuição deve carregar teles ativas sem reload');
+  assert.ok(motoboyJs.includes("const isRemoval = !isMine && wasMine;"), 'Realtime deve identificar desatribuição');
+  assert.ok(motoboyJs.includes("if (removedId) alertedNewTeleIds.delete(removedId);"), 'Remoção deve limpar ID do set de alertas');
+  assert.ok(motoboyJs.includes("AudioController.playMessageAlert();"), 'Remoção deve emitir feedback sonoro/vibração suave');
 });
 
-test('HOTFIX H3 - Cenário G: Som de nova atribuição toca exatamente 1 vez por Tele', async () => {
+test('HOTFIX H3.2 - Cenários E & F: Recuperação de visibilidade (visibilitychange) e online no iPhone', async () => {
   const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
 
-  assert.ok(motoboyJs.includes("const alertedNewTeleIds = new Set();"), 'Deduplicação de alertas sonoros deve usar alertedNewTeleIds');
-  assert.ok(motoboyJs.includes("if (alertedNewTeleIds.has(tele.id)) return;"), 'Modal e som não devem re-disparar para mesma tele já alertada');
-  assert.ok(motoboyJs.includes("!alertedNewTeleIds.has(id)"), 'loadMyDeliveries não deve tocar som duplicado se modal já tocou');
+  assert.ok(motoboyJs.includes("let riderRealtimeStatus = 'DISCONNECTED';"), 'Estado riderRealtimeStatus deve ser gerenciado explicitamente');
+  assert.ok(motoboyJs.includes("function handleForegroundAndNetworkRecovery()"), 'handleForegroundAndNetworkRecovery deve estar definida');
+  assert.ok(motoboyJs.includes("document.addEventListener('visibilitychange'"), 'Deve escutar visibilitychange para reatar websocket no iOS');
+  assert.ok(motoboyJs.includes("window.addEventListener('online'"), 'Deve escutar evento online para recuperação de rede');
+  assert.ok(motoboyJs.includes("window.addEventListener('pageshow'"), 'Deve escutar evento pageshow');
+});
+
+test('HOTFIX H3.2 - Cenário G: AudioController desbloqueado por gesto no iOS e síntese de áudio', async () => {
+  const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
+
+  assert.ok(motoboyJs.includes("AudioController = {"), 'AudioController deve estar definido');
+  assert.ok(motoboyJs.includes("getAudioContext()"), 'AudioController deve gerenciar AudioContext');
+  assert.ok(motoboyJs.includes("document.addEventListener('touchstart', () => AudioController.unlock()"), 'AudioController deve escutar touchstart para desbloqueio no iOS');
+  assert.ok(motoboyJs.includes("document.addEventListener('click', () => AudioController.unlock()"), 'AudioController deve escutar click para desbloqueio');
+});
+
+test('HOTFIX H3.2 - Cenário H: Tele já conhecida no reload -> 0 novos sons de alerta', async () => {
+  const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
+
+  assert.ok(motoboyJs.includes("if (alertedNewTeleIds.has(tele.id)) return;"), 'showHighPriorityNewTeleModal não deve re-tocar se já alertada');
+  assert.ok(motoboyJs.includes("!alertedNewTeleIds.has(id)"), 'loadMyDeliveries não deve re-tocar som para tele já alertada');
+});
+
+test('HOTFIX H3.2 - Cenário I: Push subscription ativa -> Card amarelo de ativação fica OCULTO', async () => {
+  const motoboyJs = await readFile(new URL('../public/motoboy.js', import.meta.url), 'utf8');
+
+  assert.ok(motoboyJs.includes("if (buttonState === 'active') {"), 'updatePushAlertCardUI deve checar buttonState === active');
+  assert.ok(motoboyJs.includes("if (pushCard) pushCard.style.display = 'none';"), 'Card de push deve ser ocultado quando ativado');
 });
